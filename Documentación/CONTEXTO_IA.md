@@ -98,6 +98,8 @@ Namespace actual: `dingconnect/v1`
 19. Resiliencia del balance administrativo: el endpoint `/balance` normaliza múltiples formatos de respuesta de DingConnect (top-level, `Result` o `Items`) para exponer siempre `Balance`, `CurrencyIso` y `ResultCode` al panel.
 20. Diagnóstico operativo ampliado en transferencias: los errores `ProviderError` ahora incluyen contexto (`ding_error_context`) y referencias de la operación (`transfer_ref`, `distributor_ref`, `processing_state`) para soporte y trazabilidad.
 21. Operación de bundles más ágil en admin: los bundles guardados ya pueden eliminarse de forma masiva mediante checkboxes por fila y selección global en la tabla.
+22. Flujo de alta de bundles más guiado en admin: la pestaña "Catálogo y alta" ahora obliga a escoger origen (CSV, API o manual) antes de mostrar el formulario de guardado, mantiene autocompletado consistente desde API y CSV, y presenta estado vacío explicativo cuando API no devuelve paquetes.
+23. Refinamiento visual del flujo guiado de bundles: se añadió jerarquía por pasos, contraste y espaciado mejorados, y comportamiento responsive para mantener legibilidad y orden en móvil dentro del admin.
 
 ## Hallazgos clave para futuras IA
 
