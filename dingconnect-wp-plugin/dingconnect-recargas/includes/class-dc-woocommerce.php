@@ -129,7 +129,7 @@ class DC_Recargas_WooCommerce {
         $added = WC()->cart->add_to_cart($product_id, 1, 0, [], $cart_item_data);
 
         if (!$added) {
-            return new WP_Error('dc_cart_error', 'No se pudo a�adir la recarga al carrito.');
+            return new WP_Error('dc_cart_error', 'No se pudo añadir la recarga al carrito.');
         }
 
         return true;
@@ -155,8 +155,8 @@ class DC_Recargas_WooCommerce {
     public function display_cart_item_data($item_data, $cart_item) {
         if (empty($cart_item['dc_recarga'])) return $item_data;
 
-        $item_data[] = ['key' => 'Pa�s',     'value' => strtoupper($cart_item['dc_country_iso'] ?? '')];
-        $item_data[] = ['key' => 'Tel�fono', 'value' => $cart_item['dc_account_number'] ?? ''];
+        $item_data[] = ['key' => 'País',     'value' => strtoupper($cart_item['dc_country_iso'] ?? '')];
+        $item_data[] = ['key' => 'Teléfono', 'value' => $cart_item['dc_account_number'] ?? ''];
         $item_data[] = ['key' => 'Operador', 'value' => $cart_item['dc_provider_name'] ?? ''];
         $item_data[] = ['key' => 'Paquete',  'value' => $cart_item['dc_bundle_label'] ?? ''];
         $item_data[] = ['key' => 'Moneda',   'value' => $cart_item['dc_send_currency_iso'] ?? ''];
@@ -169,7 +169,7 @@ class DC_Recargas_WooCommerce {
         if (!empty($cart_item['dc_recarga'])) {
             $label    = $cart_item['dc_bundle_label'] ?? 'Recarga';
             $provider = $cart_item['dc_provider_name'] ?? '';
-            return esc_html($provider ? $provider . ' � ' . $label : $label);
+            return esc_html($provider ? $provider . ' - ' . $label : $label);
         }
         return $name;
     }
@@ -231,7 +231,7 @@ class DC_Recargas_WooCommerce {
         if (isset($fields['billing']['billing_phone'])) {
             $fields['billing']['billing_phone']['required'] = true;
             $fields['billing']['billing_phone']['priority'] = 15;
-            $fields['billing']['billing_phone']['label']    = 'N�mero de celular';
+            $fields['billing']['billing_phone']['label']    = 'Número de celular';
         }
 
         return $fields;
@@ -278,7 +278,7 @@ class DC_Recargas_WooCommerce {
     }
 
     /* ---------------------------------------------------------------
-     * 9. Order Processing � Execute Real DingConnect Transfer
+     * 9. Order Processing - Execute Real DingConnect Transfer
      * ------------------------------------------------------------- */
 
     /**
@@ -319,7 +319,7 @@ class DC_Recargas_WooCommerce {
                 'SkuCode'         => $sku_code,
                 'SendValue'       => $send_value,
                 'SendCurrencyIso' => $send_currency_iso,
-                'ValidateOnly'    => false, // REAL transfer � payment already confirmed
+                'ValidateOnly'    => false, // REAL transfer - payment already confirmed
             ];
 
             $response = $this->api->send_transfer($payload);
@@ -353,14 +353,14 @@ class DC_Recargas_WooCommerce {
                 $item->save();
 
                 $note = sprintf(
-                    'Recarga EXITOSA para %s (SKU: %s) � Ref: %s � Estado: %s',
+                    'Recarga EXITOSA para %s (SKU: %s) - Ref: %s - Estado: %s',
                     $account_number,
                     $sku_code,
                     $transfer_ref,
                     $status
                 );
                 if ($receive_value) {
-                    $note .= sprintf(' � Recibe: %s %s', $receive_currency, $receive_value);
+                    $note .= sprintf(' - Recibe: %s %s', $receive_currency, $receive_value);
                 }
                 $order->add_order_note($note);
             }
@@ -387,8 +387,8 @@ class DC_Recargas_WooCommerce {
         if ($item->get_meta('_dc_recarga') !== 'yes') return;
 
         $fields = [
-            '_dc_account_number'  => 'Tel�fono',
-            '_dc_country_iso'     => 'Pa�s',
+            '_dc_account_number'  => 'Teléfono',
+            '_dc_country_iso'     => 'País',
             '_dc_provider_name'   => 'Operador',
             '_dc_bundle_label'    => 'Paquete',
             '_dc_transfer_ref'    => 'Ref. DingConnect',

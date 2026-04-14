@@ -47,9 +47,15 @@ class DC_Recargas_Admin {
     }
 
     public function sanitize_options($input) {
+        $mode = sanitize_text_field((string) ($input['payment_mode'] ?? 'direct'));
+        if (!in_array($mode, ['woocommerce', 'direct'], true)) {
+            $mode = 'direct';
+        }
+
         return [
             'api_base' => esc_url_raw(trim((string) ($input['api_base'] ?? 'https://www.dingconnect.com/api/V1'))),
             'api_key' => sanitize_text_field((string) ($input['api_key'] ?? '')),
+            'payment_mode' => $mode,
             'validate_only' => empty($input['validate_only']) ? 0 : 1,
             'allow_real_recharge' => empty($input['allow_real_recharge']) ? 0 : 1,
         ];
@@ -399,7 +405,6 @@ class DC_Recargas_Admin {
         $msg = sanitize_text_field($_GET['dc_msg'] ?? '');
         $editing_bundle_id = sanitize_text_field($_GET['dc_edit_bundle'] ?? '');
         $editing_bundle = $this->find_bundle_by_id($bundles, $editing_bundle_id);
-        $is_edit_mode = !empty($editing_bundle);
         $csv_path = $this->get_products_csv_path();
         $csv_found = !empty($csv_path);
         $csv_countries = $this->get_csv_countries();
@@ -411,19 +416,19 @@ class DC_Recargas_Admin {
             $active_tab = $requested_tab;
         }
 
-        if ($is_edit_mode) {
-            $active_tab = 'tab_catalog';
+        if (!empty($editing_bundle)) {
+            $active_tab = 'tab_saved';
         }
 
         if (in_array($msg, ['presets_imported', 'csv_uploaded', 'csv_upload_error', 'csv_no_file', 'bundle_error', 'bundle_duplicate'], true)) {
-            $active_tab = 'tab_catalog';
+            $active_tab = !empty($editing_bundle) ? 'tab_saved' : 'tab_catalog';
         }
 
         if (in_array($msg, ['bundle_added', 'bundle_updated', 'bundle_toggled', 'bundle_deleted'], true)) {
             $active_tab = 'tab_saved';
         }
         ?>
-        <div class="wrap">
+        <div class="wrap dc-admin-wrap">
             <h1>DingConnect Recargas - Configuración</h1>
             <p>Configura tu cuenta de DingConnect, define el modo de prueba y administra bundles visibles en el frontend.</p>
             <p><em>Hecho por Cambiodigital.net, personalizado para cubakilos.com.</em></p>
@@ -431,16 +436,87 @@ class DC_Recargas_Admin {
             <?php $this->render_notice($msg); ?>
 
             <style>
+                .dc-admin-wrap {
+                    --dc-bg: #f4f7fc;
+                    --dc-card: #ffffff;
+                    --dc-text: #0f172a;
+                    --dc-muted: #64748b;
+                    --dc-primary: #0f4aa3;
+                    --dc-primary-soft: #e6efff;
+                    --dc-border: #d9e1ef;
+                    --dc-shadow: none;
+                    background: radial-gradient(circle at top left, #eaf3ff 0%, #f7fafe 35%, #f4f7fc 100%);
+                    padding: 14px 18px 22px;
+                    border-radius: 14px;
+                }
+
+                .dc-admin-wrap > h1 {
+                    margin: 0;
+                    font-size: 30px;
+                    line-height: 1.2;
+                    color: var(--dc-text);
+                    letter-spacing: -0.01em;
+                }
+
+                .dc-admin-wrap > p {
+                    margin: 10px 0 0;
+                    max-width: 860px;
+                    color: #334155;
+                    font-size: 14px;
+                }
+
+                .dc-admin-wrap > p em {
+                    color: var(--dc-muted);
+                    font-style: normal;
+                    font-weight: 500;
+                }
+
                 .dc-admin-tabs {
-                    margin-top: 16px;
+                    margin-top: 20px;
+                }
+
+                .dc-admin-wrap .nav-tab-wrapper {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    border-bottom: 0 !important;
+                    padding: 0;
+                    margin: 0;
+                }
+
+                .dc-admin-wrap .nav-tab {
+                    float: none;
+                    border: 1px solid var(--dc-border);
+                    background: #ffffff;
+                    color: #334155;
+                    border-radius: 999px;
+                    padding: 9px 14px;
+                    margin: 0;
+                    font-weight: 600;
+                    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+                }
+
+                .dc-admin-wrap .nav-tab:hover {
+                    color: var(--dc-primary);
+                    border-color: #bdd0ef;
+                }
+
+                .dc-admin-wrap .nav-tab.nav-tab-active,
+                .dc-admin-wrap .nav-tab.nav-tab-active:focus,
+                .dc-admin-wrap .nav-tab.nav-tab-active:focus:active,
+                .dc-admin-wrap .nav-tab.nav-tab-active:hover {
+                    border-color: transparent;
+                    background: linear-gradient(135deg, #145dc9 0%, #0f4aa3 100%);
+                    color: #ffffff;
                 }
 
                 .dc-tab-panel {
                     display: none;
-                    background: #ffffff;
-                    border: 1px solid #dcdcde;
-                    border-top: none;
-                    padding: 16px 20px 20px;
+                    margin-top: 12px;
+                    background: var(--dc-card);
+                    border: 1px solid var(--dc-border);
+                    border-radius: 14px;
+                    padding: 20px 22px 22px;
                 }
 
                 .dc-tab-panel.is-active {
@@ -451,22 +527,164 @@ class DC_Recargas_Admin {
                     margin-top: 0;
                 }
 
+                .dc-tab-panel h2 {
+                    color: var(--dc-text);
+                    font-size: 22px;
+                    line-height: 1.3;
+                    letter-spacing: -0.01em;
+                }
+
+                .dc-tab-panel h3 {
+                    color: #1e293b;
+                    font-size: 17px;
+                    margin-bottom: 8px;
+                }
+
+                .dc-tab-panel p {
+                    color: #334155;
+                }
+
+                .dc-tab-panel hr {
+                    border: 0;
+                    border-top: 1px solid #e2e8f0;
+                    margin: 24px 0;
+                }
+
                 .dc-tab-panel.is-special {
-                    border-left: 4px solid #2271b1;
-                    background: #f6fbff;
+                    background: linear-gradient(180deg, #ffffff 0%, #f3f8ff 100%);
+                    border-left: 4px solid #0f4aa3;
+                }
+
+                .dc-admin-wrap .form-table th {
+                    color: #1f2937;
+                    font-weight: 600;
+                }
+
+                .dc-admin-wrap .form-table input[type="text"],
+                .dc-admin-wrap .form-table input[type="url"],
+                .dc-admin-wrap .form-table input[type="number"],
+                .dc-admin-wrap .form-table select,
+                .dc-admin-wrap .form-table textarea {
+                    border: 1px solid #c9d6ea;
+                    border-radius: 8px;
+                }
+
+                .dc-admin-wrap .button-primary {
+                    background: #0f4aa3;
+                    border-color: #0f4aa3;
+                }
+
+                .dc-admin-wrap .button-primary:hover,
+                .dc-admin-wrap .button-primary:focus {
+                    background: #0d3f8b;
+                    border-color: #0d3f8b;
+                }
+
+                @media (max-width: 782px) {
+                    .dc-admin-wrap {
+                        padding: 12px;
+                    }
+
+                    .dc-tab-panel {
+                        padding: 16px;
+                    }
+
+                    .dc-admin-wrap .nav-tab {
+                        width: 100%;
+                        text-align: center;
+                    }
+                }
+
+                .dc-edit-modal[hidden] {
+                    display: none;
+                }
+
+                .dc-edit-modal {
+                    position: fixed;
+                    inset: 0;
+                    z-index: 100000;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 24px;
+                }
+
+                .dc-edit-modal__backdrop {
+                    position: absolute;
+                    inset: 0;
+                    background: rgba(15, 23, 42, 0.55);
+                    backdrop-filter: blur(2px);
+                }
+
+                .dc-edit-modal__dialog {
+                    position: relative;
+                    width: min(760px, 100%);
+                    max-height: calc(100vh - 48px);
+                    overflow: auto;
+                    background: #ffffff;
+                    border-radius: 16px;
+                    padding: 22px 24px;
+                }
+
+                .dc-edit-modal__header {
+                    display: flex;
+                    align-items: start;
+                    justify-content: space-between;
+                    gap: 16px;
+                    margin-bottom: 12px;
+                }
+
+                .dc-edit-modal__header h3 {
+                    margin: 0;
+                    font-size: 22px;
+                }
+
+                .dc-edit-modal__header p {
+                    margin: 6px 0 0;
+                    color: var(--dc-muted);
+                }
+
+                .dc-edit-modal__close {
+                    border: 1px solid var(--dc-border);
+                    background: #ffffff;
+                    border-radius: 999px;
+                    width: 36px;
+                    height: 36px;
+                    font-size: 22px;
+                    line-height: 1;
+                    cursor: pointer;
+                    color: #334155;
+                }
+
+                .dc-bundle-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                }
+
+                @media (max-width: 782px) {
+                    .dc-edit-modal {
+                        padding: 12px;
+                        align-items: flex-start;
+                    }
+
+                    .dc-edit-modal__dialog {
+                        max-height: calc(100vh - 24px);
+                        padding: 18px;
+                    }
                 }
             </style>
 
             <div class="dc-admin-tabs">
                 <h2 class="nav-tab-wrapper" style="margin-bottom:0;">
-                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_setup">1) Credenciales</button>
-                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_catalog">2-3-4) Catálogo y alta</button>
-                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_saved">5) Bundles guardados</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_setup">Credenciales</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_catalog">Catálogo y alta</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_saved">Bundles guardados</button>
                 </h2>
 
                 <section id="dc-tab-setup" class="dc-tab-panel" data-dc-tab-panel="tab_setup">
 
-            <h2>1) Credenciales y modo de operación</h2>
+            <h2>Credenciales y modo de operación</h2>
             <form method="post" action="options.php">
                 <?php settings_fields('dc_recargas_group'); ?>
 
@@ -480,6 +698,25 @@ class DC_Recargas_Admin {
                         <td>
                             <input type="text" id="dc_api_key" name="dc_recargas_options[api_key]" class="regular-text" value="<?php echo esc_attr($options['api_key']); ?>">
                             <p class="description">Nunca publiques esta clave en JavaScript. El plugin la usa solo en el servidor.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Modo de pago</th>
+                        <td>
+                            <fieldset>
+                                <label style="display:block;margin-bottom:6px;">
+                                    <input type="radio" name="dc_recargas_options[payment_mode]" value="woocommerce" <?php checked(($options['payment_mode'] ?? 'direct'), 'woocommerce'); ?> <?php disabled(!class_exists('WooCommerce')); ?>>
+                                    WooCommerce (cuenta, carrito y checkout)
+                                    <?php if (!class_exists('WooCommerce')): ?>
+                                        <span style="color:#d63638;">— WooCommerce no está activo</span>
+                                    <?php endif; ?>
+                                </label>
+                                <label style="display:block;">
+                                    <input type="radio" name="dc_recargas_options[payment_mode]" value="direct" <?php checked(($options['payment_mode'] ?? 'direct'), 'direct'); ?>>
+                                    Pago directo (sin cuenta, el cliente ingresa su número y paga directamente)
+                                </label>
+                            </fieldset>
+                            <p class="description">Define cómo se procesa el pago de las recargas en el frontend.</p>
                         </td>
                     </tr>
                     <tr>
@@ -507,7 +744,7 @@ class DC_Recargas_Admin {
             </form>
 
             <hr>
-            <h2>6) Uso en frontend</h2>
+            <h2>Uso en frontend</h2>
             <p>Crea una página y coloca el shortcode:</p>
             <p><code>[dingconnect_recargas]</code></p>
 
@@ -517,7 +754,7 @@ class DC_Recargas_Admin {
 
             <hr>
 
-            <h2>2) Bundles preconfigurados por país</h2>
+            <h2>Bundles preconfigurados por país</h2>
             <p>Importa en un clic un conjunto base para Colombia, España, México y Cuba usando SKUs del catálogo exportado.</p>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="dc_import_country_presets">
@@ -525,7 +762,7 @@ class DC_Recargas_Admin {
                 <?php submit_button('Importar bundles sugeridos (CO, ES, MX, CU)', 'secondary', 'submit', false); ?>
             </form>
 
-            <h2>3) Catálogo de productos (Products-with-sku.csv)</h2>
+            <h2>Catálogo de productos (Products-with-sku.csv)</h2>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="dc_upload_csv">
                 <?php wp_nonce_field('dc_upload_csv'); ?>
@@ -581,67 +818,62 @@ class DC_Recargas_Admin {
                 </tr>
             </table>
 
-            <h2>4) <?php echo $is_edit_mode ? 'Editar bundle curado' : 'Añadir bundle curado'; ?></h2>
+            <h2>Añadir bundle curado</h2>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="<?php echo $is_edit_mode ? 'dc_update_bundle' : 'dc_add_bundle'; ?>">
-                <?php if ($is_edit_mode) : ?>
-                    <?php wp_nonce_field('dc_update_bundle'); ?>
-                    <input type="hidden" name="bundle_id" value="<?php echo esc_attr($editing_bundle['id'] ?? ''); ?>">
-                <?php else : ?>
-                    <?php wp_nonce_field('dc_add_bundle'); ?>
-                <?php endif; ?>
+                <input type="hidden" name="action" value="dc_add_bundle">
+                <?php wp_nonce_field('dc_add_bundle'); ?>
 
                 <table class="form-table" role="presentation">
                     <tr>
                         <th scope="row"><label for="dc_country_iso">País ISO</label></th>
-                        <td><input required type="text" id="dc_country_iso" name="country_iso" class="small-text" placeholder="CU" value="<?php echo esc_attr($editing_bundle['country_iso'] ?? ''); ?>"></td>
+                        <td><input required type="text" id="dc_country_iso" name="country_iso" class="small-text" placeholder="CU" value=""></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_label">Nombre comercial</label></th>
-                        <td><input required type="text" id="dc_label" name="label" class="regular-text" placeholder="Cubacel 500 CUP" value="<?php echo esc_attr($editing_bundle['label'] ?? ''); ?>"></td>
+                        <td><input required type="text" id="dc_label" name="label" class="regular-text" placeholder="Cubacel 500 CUP" value=""></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_sku_code">SKU Code</label></th>
-                        <td><input required type="text" id="dc_sku_code" name="sku_code" class="regular-text" placeholder="SKU_REAL_DING" value="<?php echo esc_attr($editing_bundle['sku_code'] ?? ''); ?>"></td>
+                        <td><input required type="text" id="dc_sku_code" name="sku_code" class="regular-text" placeholder="SKU_REAL_DING" value=""></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_send_value">Monto</label></th>
-                        <td><input type="number" step="0.01" id="dc_send_value" name="send_value" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['send_value']) ? (float) $editing_bundle['send_value'] : 0); ?>"></td>
+                        <td><input type="number" step="0.01" id="dc_send_value" name="send_value" class="small-text" value="0"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_send_currency_iso">Moneda</label></th>
-                        <td><input type="text" id="dc_send_currency_iso" name="send_currency_iso" class="small-text" value="<?php echo esc_attr($editing_bundle['send_currency_iso'] ?? 'USD'); ?>"></td>
+                        <td><input type="text" id="dc_send_currency_iso" name="send_currency_iso" class="small-text" value="USD"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_provider_name">Operador</label></th>
-                        <td><input type="text" id="dc_provider_name" name="provider_name" class="regular-text" placeholder="Cubacel" value="<?php echo esc_attr($editing_bundle['provider_name'] ?? ''); ?>"></td>
+                        <td><input type="text" id="dc_provider_name" name="provider_name" class="regular-text" placeholder="Cubacel" value=""></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="dc_description">Descripción</label></th>
-                        <td><input type="text" id="dc_description" name="description" class="regular-text" placeholder="Saldo principal" value="<?php echo esc_attr($editing_bundle['description'] ?? ''); ?>"></td>
+                        <th scope="row"><label for="dc_description">Beneficios recibidos</label></th>
+                        <td>
+                            <textarea id="dc_description" name="description" class="regular-text" rows="2" placeholder="Ej: Monthly 30GB, Daily 125 Min, USD 10"></textarea>
+                            <p class="description">Lo que recibe el usuario (columna <em>Receive</em> del CSV). Texto corto y claro.</p>
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row">Activo</th>
                         <td>
                             <label>
-                                <input type="checkbox" name="is_active" value="1" <?php checked($is_edit_mode ? !empty($editing_bundle['is_active']) : true); ?>>
+                                <input type="checkbox" name="is_active" value="1" checked>
                                 Mostrar bundle en el frontend
                             </label>
                         </td>
                     </tr>
                 </table>
 
-                <?php submit_button($is_edit_mode ? 'Guardar cambios del bundle' : 'Añadir bundle'); ?>
-                <?php if ($is_edit_mode) : ?>
-                    <a class="button button-secondary" href="<?php echo esc_url(add_query_arg(['page' => 'dc-recargas'], admin_url('admin.php'))); ?>">Cancelar edición</a>
-                <?php endif; ?>
+                <?php submit_button('Añadir bundle'); ?>
             </form>
 
                 </section>
 
                 <section id="dc-tab-saved" class="dc-tab-panel is-special" data-dc-tab-panel="tab_saved">
 
-            <h2>5) Bundles guardados</h2>
+            <h2>Bundles guardados</h2>
             <p>Estos bundles aparecen como respaldo o catálogo inicial en el formulario frontal.</p>
 
             <table class="widefat striped">
@@ -673,12 +905,13 @@ class DC_Recargas_Admin {
                             <td><?php echo esc_html($bundle['provider_name'] ?? ''); ?></td>
                             <td><?php echo !empty($bundle['is_active']) ? 'Activo' : 'Inactivo'; ?></td>
                             <td>
-                                <a class="button button-secondary" href="<?php echo esc_url(add_query_arg([
-                                    'page' => 'dc-recargas',
-                                    'dc_edit_bundle' => $bundle['id'] ?? '',
-                                ], admin_url('admin.php'))); ?>">
+                                <div class="dc-bundle-actions">
+                                <button
+                                    type="button"
+                                    class="button button-secondary dc-edit-bundle-btn"
+                                    data-bundle="<?php echo esc_attr(wp_json_encode($bundle)); ?>">
                                     Editar
-                                </a>
+                                </button>
 
                                 <a class="button" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
                                     'action' => 'dc_toggle_bundle',
@@ -693,12 +926,78 @@ class DC_Recargas_Admin {
                                 ], admin_url('admin-post.php')), 'dc_delete_bundle')); ?>" onclick="return confirm('¿Eliminar bundle?');">
                                     Eliminar
                                 </a>
+                                </div>
                             </td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>
                 </tbody>
             </table>
+
+            <div id="dc-edit-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-edit-modal-title" <?php echo empty($editing_bundle) ? 'hidden' : ''; ?>>
+                <div class="dc-edit-modal__backdrop" data-dc-edit-close></div>
+                <div class="dc-edit-modal__dialog">
+                    <div class="dc-edit-modal__header">
+                        <div>
+                            <h3 id="dc-edit-modal-title">Editar bundle</h3>
+                            <p>Modifica el bundle sin salir de la tabla de bundles guardados.</p>
+                        </div>
+                        <button type="button" class="dc-edit-modal__close" aria-label="Cerrar edición" data-dc-edit-close>&times;</button>
+                    </div>
+
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="dc_edit_bundle_form">
+                        <input type="hidden" name="action" value="dc_update_bundle">
+                        <?php wp_nonce_field('dc_update_bundle'); ?>
+                        <input type="hidden" id="dc_edit_bundle_id" name="bundle_id" value="<?php echo esc_attr($editing_bundle['id'] ?? ''); ?>">
+
+                        <table class="form-table" role="presentation">
+                            <tr>
+                                <th scope="row"><label for="dc_edit_country_iso">País ISO</label></th>
+                                <td><input required type="text" id="dc_edit_country_iso" name="country_iso" class="small-text" placeholder="CU" value="<?php echo esc_attr($editing_bundle['country_iso'] ?? ''); ?>"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_label">Nombre comercial</label></th>
+                                <td><input required type="text" id="dc_edit_label" name="label" class="regular-text" placeholder="Cubacel 500 CUP" value="<?php echo esc_attr($editing_bundle['label'] ?? ''); ?>"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_sku_code">SKU Code</label></th>
+                                <td><input required type="text" id="dc_edit_sku_code" name="sku_code" class="regular-text" placeholder="SKU_REAL_DING" value="<?php echo esc_attr($editing_bundle['sku_code'] ?? ''); ?>"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_send_value">Monto</label></th>
+                                <td><input type="number" step="0.01" id="dc_edit_send_value" name="send_value" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['send_value']) ? (float) $editing_bundle['send_value'] : 0); ?>"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_send_currency_iso">Moneda</label></th>
+                                <td><input type="text" id="dc_edit_send_currency_iso" name="send_currency_iso" class="small-text" value="<?php echo esc_attr($editing_bundle['send_currency_iso'] ?? 'USD'); ?>"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_provider_name">Operador</label></th>
+                                <td><input type="text" id="dc_edit_provider_name" name="provider_name" class="regular-text" placeholder="Cubacel" value="<?php echo esc_attr($editing_bundle['provider_name'] ?? ''); ?>"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_description">Beneficios recibidos</label></th>
+                                <td>
+                                    <textarea id="dc_edit_description" name="description" class="regular-text" rows="2" placeholder="Ej: Monthly 30GB, Daily 125 Min, USD 10"><?php echo esc_textarea($editing_bundle['description'] ?? ''); ?></textarea>
+                                    <p class="description">Lo que recibe el usuario (columna <em>Receive</em> del CSV).</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Activo</th>
+                                <td>
+                                    <label>
+                                        <input type="checkbox" id="dc_edit_is_active" name="is_active" value="1" <?php checked(!empty($editing_bundle['is_active'])); ?>>
+                                        Mostrar bundle en el frontend
+                                    </label>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <?php submit_button('Guardar cambios del bundle', 'primary', 'submit', false); ?>
+                        <button type="button" class="button button-secondary" data-dc-edit-close>Cancelar</button>
+                    </form>
+                </div>
+            </div>
 
                 </section>
             </div>
@@ -717,6 +1016,20 @@ class DC_Recargas_Admin {
                 var tabButtons = document.querySelectorAll('[data-dc-tab-btn]');
                 var tabPanels = document.querySelectorAll('[data-dc-tab-panel]');
                 var activeTabFromPhp = '<?php echo esc_js($active_tab); ?>';
+                var editModalEl = document.getElementById('dc-edit-modal');
+                var editFormEl = document.getElementById('dc_edit_bundle_form');
+                var editButtons = document.querySelectorAll('.dc-edit-bundle-btn');
+                var editCloseEls = document.querySelectorAll('[data-dc-edit-close]');
+                var initialEditingBundle = <?php echo wp_json_encode($editing_bundle ? $editing_bundle : null); ?>;
+                var editIdEl = document.getElementById('dc_edit_bundle_id');
+                var editCountryIsoEl = document.getElementById('dc_edit_country_iso');
+                var editLabelEl = document.getElementById('dc_edit_label');
+                var editSkuEl = document.getElementById('dc_edit_sku_code');
+                var editSendValueEl = document.getElementById('dc_edit_send_value');
+                var editSendCurrencyEl = document.getElementById('dc_edit_send_currency_iso');
+                var editProviderEl = document.getElementById('dc_edit_provider_name');
+                var editDescriptionEl = document.getElementById('dc_edit_description');
+                var editIsActiveEl = document.getElementById('dc_edit_is_active');
 
                 function setActiveTab(tabId, updateUrl) {
                     tabButtons.forEach(function (btn) {
@@ -742,6 +1055,61 @@ class DC_Recargas_Admin {
                     }
                 }
 
+                function updateEditParam(bundleId) {
+                    var url = new URL(window.location.href);
+
+                    if (bundleId) {
+                        url.searchParams.set('dc_edit_bundle', bundleId);
+                        url.searchParams.set('dc_tab', 'tab_saved');
+                    } else {
+                        url.searchParams.delete('dc_edit_bundle');
+                    }
+
+                    window.history.replaceState({}, '', url.toString());
+                }
+
+                function populateEditForm(bundle) {
+                    if (!bundle || !editFormEl) {
+                        return;
+                    }
+
+                    if (editIdEl) editIdEl.value = bundle.id || '';
+                    if (editCountryIsoEl) editCountryIsoEl.value = bundle.country_iso || '';
+                    if (editLabelEl) editLabelEl.value = bundle.label || '';
+                    if (editSkuEl) editSkuEl.value = bundle.sku_code || '';
+                    if (editSendValueEl) editSendValueEl.value = typeof bundle.send_value !== 'undefined' ? bundle.send_value : 0;
+                    if (editSendCurrencyEl) editSendCurrencyEl.value = bundle.send_currency_iso || 'USD';
+                    if (editProviderEl) editProviderEl.value = bundle.provider_name || '';
+                    if (editDescriptionEl) editDescriptionEl.value = bundle.description || '';
+                    if (editIsActiveEl) editIsActiveEl.checked = !!Number(bundle.is_active || 0) || bundle.is_active === true;
+                }
+
+                function openEditModal(bundle) {
+                    if (!editModalEl || !bundle) {
+                        return;
+                    }
+
+                    populateEditForm(bundle);
+                    editModalEl.hidden = false;
+                    document.body.classList.add('modal-open');
+                    updateEditParam(bundle.id || '');
+                    setActiveTab('tab_saved', true);
+
+                    if (editCountryIsoEl) {
+                        editCountryIsoEl.focus();
+                    }
+                }
+
+                function closeEditModal() {
+                    if (!editModalEl) {
+                        return;
+                    }
+
+                    editModalEl.hidden = true;
+                    document.body.classList.remove('modal-open');
+                    updateEditParam('');
+                }
+
                 if (tabButtons.length && tabPanels.length) {
                     tabButtons.forEach(function (btn) {
                         btn.addEventListener('click', function () {
@@ -752,8 +1120,32 @@ class DC_Recargas_Admin {
                     setActiveTab(activeTabFromPhp || 'tab_setup', false);
                 }
 
-                if (!searchBtn || !queryEl || !resultsEl) {
-                    return;
+                if (editButtons.length) {
+                    editButtons.forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            try {
+                                openEditModal(JSON.parse(btn.getAttribute('data-bundle') || '{}'));
+                            } catch (e) {
+                                window.alert('No se pudo abrir el editor del bundle seleccionado.');
+                            }
+                        });
+                    });
+                }
+
+                if (editCloseEls.length) {
+                    editCloseEls.forEach(function (el) {
+                        el.addEventListener('click', closeEditModal);
+                    });
+                }
+
+                document.addEventListener('keydown', function (event) {
+                    if (event.key === 'Escape' && editModalEl && !editModalEl.hidden) {
+                        closeEditModal();
+                    }
+                });
+
+                if (initialEditingBundle && initialEditingBundle.id) {
+                    openEditModal(initialEditingBundle);
                 }
 
                 var countryIsoEl = document.getElementById('dc_country_iso');
@@ -763,6 +1155,10 @@ class DC_Recargas_Admin {
                 var sendCurrencyEl = document.getElementById('dc_send_currency_iso');
                 var providerEl = document.getElementById('dc_provider_name');
                 var descriptionEl = document.getElementById('dc_description');
+
+                if (!searchBtn || !queryEl || !resultsEl) {
+                    return;
+                }
 
                 function optionLabel(item) {
                     return '[' + (item.country_iso || '--') + '] ' + item.operator + ' | ' + item.send_amount + ' | ' + item.receive + ' | ' + item.sku_code;

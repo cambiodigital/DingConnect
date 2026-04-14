@@ -85,6 +85,9 @@ Namespace actual: `dingconnect/v1`
 10. Release de branding aplicado en plugin WordPress: versión 1.2.0 con créditos visibles "Hecho por Cambiodigital.net" y "personalizado para cubakilos.com" en componentes clave de administración y frontend.
 8. Gestión de bundles guardados en panel admin con edición, activación/desactivación y eliminación por fila.
 9. Panel administrativo reorganizado en pestañas para operación más rápida: pestaña de configuración que agrupa credenciales y uso en frontend (1 y 6), pestaña operativa de catálogo y alta (2-3-4) y pestaña especial de bundles guardados (5).
+10. Edición de bundles guardados optimizada: el botón Editar abre un modal inline en la pestaña de bundles guardados, evitando navegación o recarga visual entre pantallas para cambios rápidos.
+11. Sincronización frontend-admin mejorada: la deduplicación de búsquedas por país+número en el frontend ahora usa expiración (TTL de 10 segundos), permitiendo que bundles y operadores añadidos en admin aparezcan sin recargar la página completa.
+12. Frontend público más resiliente: el script del shortcode ahora resuelve elementos dentro del contenedor del formulario y valida nodos críticos para evitar errores por `innerHTML` en elementos nulos cuando hay markup incompleto o plantillas desactualizadas.
 
 ## Hallazgos clave para futuras IA
 

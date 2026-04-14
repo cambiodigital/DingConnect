@@ -108,11 +108,23 @@ class DC_Recargas_REST {
             ], 200);
         }
 
+        $api_items = $response['Result'] ?? $response['Items'] ?? [];
+        $saved = $this->filter_bundles_by_country($country_iso);
+
+        // Merge saved bundles that aren't already in API results
+        if (!empty($saved)) {
+            $api_skus = array_column($api_items, 'SkuCode');
+            foreach ($saved as $bundle) {
+                if (!in_array($bundle['SkuCode'], $api_skus, true)) {
+                    $api_items[] = $bundle;
+                }
+            }
+        }
+
         return rest_ensure_response([
             'ok' => true,
-            'source' => 'dingconnect',
-            'result' => $response['Result'] ?? [],
-            'raw' => $response,
+            'source' => empty($response['Result'] ?? $response['Items'] ?? []) && !empty($saved) ? 'saved' : 'dingconnect',
+            'result' => $api_items,
         ]);
     }
 

@@ -328,10 +328,11 @@ Cuando se requiera documentación visual para QA o negocio, conviene adjuntar es
 
 ## 16. Catálogo operativo en panel admin (plugin WordPress)
 
-Desde abril de 2026, el plugin incorpora dos capacidades para acelerar operación y soporte:
+Desde abril de 2026, el plugin incorpora capacidades para acelerar operación y soporte:
 
 1. Importación de bundles preconfigurados para Colombia, España, México y Cuba.
 2. Búsqueda sobre `Products-with-sku.csv` con selector de resultados para autocompletar alta de bundles.
+3. Panel admin modernizado sin numeración en títulos y pestañas, con estilo visual más actual para navegación y operación diaria.
 
 ### Objetivo operativo
 

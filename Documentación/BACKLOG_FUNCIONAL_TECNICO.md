@@ -75,12 +75,16 @@ Una iniciativa se considera lista cuando cumple:
 10. Mejora UX en frontend público de recargas: auto-búsqueda de paquetes al escribir el número móvil o cambiar el país, con debounce y sin necesidad de pulsar el botón Buscar paquetes.
 11. Optimización del frontend público: deduplicación de consultas para no repetir llamadas al endpoint cuando país y número no cambiaron o ya hay una consulta idéntica en curso.
 12. Actualización de release y branding del plugin: versión 1.2.0, créditos visibles de Cambiodigital.net y personalización para cubakilos.com en cabecera del plugin, panel admin, frontend y manuales del plugin.
+13. Modernización visual del panel admin: eliminación de numeración en títulos y pestañas, actualización de estilo con tabs tipo píldora, paneles en tarjeta y jerarquía visual más limpia para reducir la apariencia clásica de WordPress.
+14. Mejora UX en bundles guardados: la acción Editar ahora abre un modal inline sobre la tabla, sin salto de pantalla, para actualizar el bundle de forma rápida y contextual.
+15. Corrección de sincronización frontend-admin: el caché de búsqueda por país+número en el frontend ahora expira (TTL 10 segundos) para refrescar operadores y bundles nuevos sin recargar toda la página.
+16. Corrección de robustez en frontend público: el script del shortcode ahora valida nodos requeridos y maneja markup parcial sin lanzar errores de JavaScript como `Cannot set properties of null (setting 'innerHTML')` durante la búsqueda automática de paquetes.
 
 ## Backlog actualizado por impacto
 
 1. Prioridad P2 - Administración de bundles más completa.
    - Estado: parcialmente completado.
-   - Completado: importación desde CSV filtrado, catálogo inicial multi-país, edición de bundles y activación/desactivación por registro.
+   - Completado: importación desde CSV filtrado, catálogo inicial multi-país, edición de bundles en modal inline y activación/desactivación por registro.
    - Pendiente: flujo de actualización masiva.
 2. Prioridad P1 - Flujo WooCommerce y post-pago.
    - Estado: parcialmente completado.
