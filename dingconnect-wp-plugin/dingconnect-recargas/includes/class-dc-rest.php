@@ -124,7 +124,19 @@ class DC_Recargas_REST {
             ], 400);
         }
 
-        $response = $this->api->get_products($account_number, 50);
+        $response = !empty($country_iso)
+            ? $this->api->get_products_by_country($country_iso, 250)
+            : $this->api->get_products($account_number, 250);
+
+        $response_items = is_wp_error($response) ? [] : ($response['Result'] ?? $response['Items'] ?? []);
+
+        if ((is_wp_error($response) || empty($response_items)) && !empty($account_number)) {
+            $account_response = $this->api->get_products($account_number, 250);
+            if (!is_wp_error($account_response)) {
+                $response = $account_response;
+            }
+        }
+
         if (is_wp_error($response)) {
             $fallback = $this->filter_bundles_by_country($country_iso);
             return new WP_REST_Response([
@@ -136,23 +148,15 @@ class DC_Recargas_REST {
             ], 200);
         }
 
-        $api_items = $response['Result'] ?? $response['Items'] ?? [];
+        $api_items = $this->normalize_products_for_frontend($response['Result'] ?? $response['Items'] ?? [], $country_iso);
         $saved = $this->filter_bundles_by_country($country_iso);
 
-        // Merge saved bundles that aren't already in API results
-        if (!empty($saved)) {
-            $api_skus = array_column($api_items, 'SkuCode');
-            foreach ($saved as $bundle) {
-                if (!in_array($bundle['SkuCode'], $api_skus, true)) {
-                    $api_items[] = $bundle;
-                }
-            }
-        }
+        $result = $this->merge_products_by_sku($api_items, $saved);
 
         return rest_ensure_response([
             'ok' => true,
-            'source' => empty($response['Result'] ?? $response['Items'] ?? []) && !empty($saved) ? 'saved' : 'dingconnect',
-            'result' => $api_items,
+            'source' => empty($api_items) && !empty($saved) ? 'saved' : 'dingconnect',
+            'result' => $result,
         ]);
     }
 
@@ -315,5 +319,177 @@ class DC_Recargas_REST {
                 'IsRange' => false,
             ];
         }, $active);
+    }
+
+    private function normalize_products_for_frontend($items, $country_iso) {
+        if (empty($items) || !is_array($items)) {
+            return [];
+        }
+
+        $provider_map = $this->get_provider_name_map($items, $country_iso);
+        $normalized = [];
+
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $sku_code = sanitize_text_field($item['SkuCode'] ?? '');
+            if ('' === $sku_code) {
+                continue;
+            }
+
+            $provider_code = sanitize_text_field($item['ProviderCode'] ?? '');
+            $provider_name = sanitize_text_field($item['ProviderName'] ?? ($provider_map[$provider_code] ?? $provider_code));
+            $price = $this->extract_product_price($item);
+
+            $normalized[] = [
+                'ProviderCode' => $provider_code,
+                'ProviderName' => $provider_name,
+                'SkuCode' => $sku_code,
+                'SendValue' => $price['SendValue'],
+                'SendCurrencyIso' => $price['SendCurrencyIso'],
+                'ReceiveValue' => $price['ReceiveValue'],
+                'ReceiveCurrencyIso' => $price['ReceiveCurrencyIso'],
+                'DefaultDisplayText' => sanitize_text_field($item['DefaultDisplayText'] ?? $sku_code),
+                'Description' => $this->build_product_description($item),
+                'IsPromotion' => !empty($item['IsPromotion']),
+                'IsRange' => $this->is_range_product($item),
+                'Benefits' => array_values(array_filter(array_map('sanitize_text_field', (array) ($item['Benefits'] ?? [])))),
+                'ValidityPeriodIso' => sanitize_text_field($item['ValidityPeriodIso'] ?? ''),
+                'RedemptionMechanism' => sanitize_text_field($item['RedemptionMechanism'] ?? ''),
+            ];
+        }
+
+        usort($normalized, function ($left, $right) {
+            $provider_compare = strcasecmp((string) ($left['ProviderName'] ?? ''), (string) ($right['ProviderName'] ?? ''));
+            if (0 !== $provider_compare) {
+                return $provider_compare;
+            }
+
+            $price_compare = (float) ($left['SendValue'] ?? 0) <=> (float) ($right['SendValue'] ?? 0);
+            if (0 !== $price_compare) {
+                return $price_compare;
+            }
+
+            return strcasecmp((string) ($left['DefaultDisplayText'] ?? ''), (string) ($right['DefaultDisplayText'] ?? ''));
+        });
+
+        return $normalized;
+    }
+
+    private function get_provider_name_map($items, $country_iso) {
+        $provider_codes = [];
+
+        foreach ((array) $items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $provider_code = sanitize_text_field($item['ProviderCode'] ?? '');
+            if ('' !== $provider_code) {
+                $provider_codes[] = $provider_code;
+            }
+        }
+
+        $provider_codes = array_values(array_unique($provider_codes));
+        if (empty($provider_codes)) {
+            return [];
+        }
+
+        $response = $this->api->get_providers_by_codes($provider_codes);
+
+        if (is_wp_error($response) && !empty($country_iso)) {
+            $response = $this->api->get_providers_by_country($country_iso);
+        }
+
+        if (is_wp_error($response)) {
+            return [];
+        }
+
+        $providers = $response['Result'] ?? $response['Items'] ?? [];
+        $map = [];
+
+        foreach ((array) $providers as $provider) {
+            if (!is_array($provider)) {
+                continue;
+            }
+
+            $provider_code = sanitize_text_field($provider['ProviderCode'] ?? '');
+            if ('' === $provider_code) {
+                continue;
+            }
+
+            $provider_name = sanitize_text_field($provider['Name'] ?? ($provider['ShortName'] ?? $provider_code));
+            $map[$provider_code] = $provider_name;
+        }
+
+        return $map;
+    }
+
+    private function extract_product_price($item) {
+        $minimum = is_array($item['Minimum'] ?? null) ? $item['Minimum'] : [];
+        $maximum = is_array($item['Maximum'] ?? null) ? $item['Maximum'] : [];
+        $price = !empty($minimum) ? $minimum : $maximum;
+
+        return [
+            'SendValue' => (float) ($item['SendValue'] ?? ($price['SendValue'] ?? 0)),
+            'SendCurrencyIso' => sanitize_text_field($item['SendCurrencyIso'] ?? ($price['SendCurrencyIso'] ?? 'USD')),
+            'ReceiveValue' => (float) ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0)),
+            'ReceiveCurrencyIso' => sanitize_text_field($item['ReceiveCurrencyIso'] ?? ($price['ReceiveCurrencyIso'] ?? '')),
+        ];
+    }
+
+    private function build_product_description($item) {
+        $description = sanitize_text_field($item['Description'] ?? '');
+        if ('' !== $description) {
+            return $description;
+        }
+
+        $additional = sanitize_text_field($item['AdditionalInformation'] ?? '');
+        if ('' !== $additional) {
+            return $additional;
+        }
+
+        $benefits = array_values(array_filter(array_map('sanitize_text_field', (array) ($item['Benefits'] ?? []))));
+        return implode(' · ', array_slice($benefits, 0, 3));
+    }
+
+    private function is_range_product($item) {
+        $minimum_value = (float) ($item['Minimum']['SendValue'] ?? 0);
+        $maximum_value = (float) ($item['Maximum']['SendValue'] ?? 0);
+
+        return $minimum_value > 0 && $maximum_value > 0 && abs($maximum_value - $minimum_value) > 0.00001;
+    }
+
+    private function merge_products_by_sku($primary_items, $secondary_items) {
+        $merged = [];
+
+        foreach ((array) $primary_items as $item) {
+            $sku_code = strtoupper((string) ($item['SkuCode'] ?? ''));
+            if ('' !== $sku_code) {
+                $merged[$sku_code] = $item;
+            }
+        }
+
+        foreach ((array) $secondary_items as $item) {
+            $sku_code = strtoupper((string) ($item['SkuCode'] ?? ''));
+            if ('' === $sku_code) {
+                continue;
+            }
+
+            if (!isset($merged[$sku_code])) {
+                $merged[$sku_code] = $item;
+                continue;
+            }
+
+            foreach (['ProviderName', 'Description', 'DefaultDisplayText', 'SendValue', 'SendCurrencyIso'] as $field) {
+                if ((empty($merged[$sku_code][$field]) && !empty($item[$field])) || (!isset($merged[$sku_code][$field]) && isset($item[$field]))) {
+                    $merged[$sku_code][$field] = $item[$field];
+                }
+            }
+        }
+
+        return array_values($merged);
     }
 }

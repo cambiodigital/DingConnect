@@ -90,7 +90,9 @@ Namespace actual: `dingconnect/v1`
 12. Frontend público más resiliente: el script del shortcode ahora resuelve elementos dentro del contenedor del formulario y valida nodos críticos para evitar errores por `innerHTML` en elementos nulos cuando hay markup incompleto o plantillas desactualizadas.
 13. Recargas directas más compatibles en producción: el backend REST del plugin normaliza `AccountNumber` en formato numérico puro (sin `+`) para cumplir validaciones regex de DingConnect y retorna el status HTTP real de errores de API al cliente.
 14. Diagnóstico operativo más claro: el backend API del plugin interpreta códigos de negocio de DingConnect (`InsufficientBalance`, `AccountNumberInvalid`, `RateLimited`, `RechargeNotAllowed`) y devuelve mensajes orientados a soporte sin perder el detalle técnico original.
+15. Catálogo público más robusto por país: el endpoint `/products` prioriza la consulta por `country_iso`, normaliza productos DingConnect al contrato del frontend y resuelve nombres de operador desde `ProviderCode`, evitando que operadores válidos queden ocultos cuando la API no envía `ProviderName`.
 15. Verificación interna de saldo disponible: el plugin expone `GET /wp-json/dingconnect/v1/balance` con permisos de administrador y lo integra en el panel de credenciales mediante un botón de consulta directa.
+16. Experiencia de balance mejorada en admin: al activar la pestaña Credenciales se consulta el balance automáticamente y se muestra en tarjeta legible (monto, moneda y estado), evitando salida JSON cruda para operación diaria.
 
 ## Hallazgos clave para futuras IA
 
@@ -112,6 +114,7 @@ Namespace actual: `dingconnect/v1`
 3. Posible diferencia de shape de respuesta (`Result` vs `Items`) entre llamadas y mapeos.
 4. El flujo WooCommerce depende de que el pedido alcance `processing` o `completed`; pasarelas con estados intermedios deben validarse manualmente.
 5. El plugin ya normaliza `Items -> Result`, pero todavía falta documentar un contrato canónico más amplio para promociones, rangos y receipts.
+6. DingConnect no garantiza `ProviderName` dentro de `GetProducts`; para renderizar operadores de forma consistente hay que enriquecer el catálogo con `GetProviders` usando `ProviderCode`.
 
 ## Fuente de verdad recomendada
 

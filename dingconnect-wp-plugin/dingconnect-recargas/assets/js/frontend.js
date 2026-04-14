@@ -82,6 +82,10 @@
         return div.innerHTML;
     }
 
+    function getProviderLabel(bundle) {
+        return String((bundle && (bundle.ProviderName || bundle.ProviderCode)) || 'Operador');
+    }
+
     /* -- Country picker -- */
     function selectCountry(c) {
         state.country = c;
@@ -245,7 +249,7 @@
         var providers = [];
         var seen = {};
         state.bundles.forEach(function (b) {
-            var name = b.ProviderName || '';
+            var name = getProviderLabel(b);
             if (name && !seen[name]) {
                 seen[name] = true;
                 providers.push(name);
@@ -256,7 +260,7 @@
 
         providerButtons.innerHTML = '';
         providers.forEach(function (p) {
-            var count = state.bundles.filter(function (b) { return b.ProviderName === p; }).length;
+            var count = state.bundles.filter(function (b) { return getProviderLabel(b) === p; }).length;
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'dc-provider-btn';
@@ -309,7 +313,7 @@
             });
         }
         state.filteredBundles = state.bundles.filter(function (b) {
-            return b.ProviderName === provider;
+            return getProviderLabel(b) === provider;
         });
         state.selected = null;
         confirmEl.hidden = true;
@@ -335,11 +339,12 @@
             card.className = 'dc-bundle-card';
             var benefit = bundle.Description || '';
             var isUssd = benefit && /dial|\bUSSD\b|\*\d/i.test(benefit);
+            var providerLabel = getProviderLabel(bundle);
             var benefitHtml = (benefit && !isUssd)
                 ? '<div class="dc-bundle-benefit">' + escapeHtml(benefit.length > 80 ? benefit.substring(0, 80) + '…' : benefit) + '</div>'
                 : '';
             card.innerHTML = '<div class="dc-bundle-info">'
-                + '<div class="dc-bundle-operator">' + escapeHtml(bundle.ProviderName || 'Operador') + '</div>'
+                + '<div class="dc-bundle-operator">' + escapeHtml(providerLabel) + '</div>'
                 + '<div class="dc-bundle-name">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode) + '</div>'
                 + benefitHtml
                 + '</div>'
@@ -377,9 +382,10 @@
         var countryName = state.country ? state.country.name : '';
         var benefit = bundle.Description || '';
         var isUssd = benefit && /dial|\bUSSD\b|\*\d/i.test(benefit);
+        var providerLabel = getProviderLabel(bundle);
         confirmSummary.innerHTML = '<strong>' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode) + '</strong>'
             + escapeHtml(countryName) + ' · +' + escapeHtml(state.country.dial) + ' ' + escapeHtml(phoneEl.value)
-            + ' · ' + escapeHtml(bundle.ProviderName || '')
+            + ' · ' + escapeHtml(providerLabel)
             + '<br><strong>' + Number(bundle.SendValue || 0).toFixed(2) + ' ' + escapeHtml(bundle.SendCurrencyIso || 'USD') + '</strong>'
             + (benefit && !isUssd ? '<br><span class="dc-confirm-benefit">✓ ' + escapeHtml(benefit) + '</span>' : '');
 
@@ -417,7 +423,7 @@
             sku_code: selected.SkuCode,
             send_value: Number(selected.SendValue || 0),
             send_currency_iso: selected.SendCurrencyIso || 'EUR',
-            provider_name: selected.ProviderName || '',
+            provider_name: getProviderLabel(selected),
             bundle_label: selected.DefaultDisplayText || selected.SkuCode,
         };
 

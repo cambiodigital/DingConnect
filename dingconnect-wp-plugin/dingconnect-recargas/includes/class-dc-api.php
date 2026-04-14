@@ -44,6 +44,70 @@ class DC_Recargas_API {
         return $result;
     }
 
+    public function get_products_by_country($country_iso, $take = 250) {
+        $country_iso = strtoupper((string) $country_iso);
+        $cache_key = 'dc_products_country_' . md5($country_iso . '_' . $take);
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $query = array_merge(
+            $this->build_array_query('CountryIsos', [$country_iso]),
+            ['Take' => (int) $take]
+        );
+
+        $result = $this->request('GET', 'GetProducts', $query);
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        }
+
+        return $result;
+    }
+
+    public function get_providers_by_codes($provider_codes = []) {
+        $provider_codes = array_values(array_unique(array_filter(array_map('strval', (array) $provider_codes))));
+        if (empty($provider_codes)) {
+            return ['Result' => []];
+        }
+
+        $cache_key = 'dc_providers_codes_' . md5(wp_json_encode($provider_codes));
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $result = $this->request('GET', 'GetProviders', $this->build_array_query('ProviderCodes', $provider_codes));
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        }
+
+        return $result;
+    }
+
+    public function get_providers_by_country($country_iso) {
+        $country_iso = strtoupper((string) $country_iso);
+        if (empty($country_iso)) {
+            return ['Result' => []];
+        }
+
+        $cache_key = 'dc_providers_country_' . md5($country_iso);
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $result = $this->request('GET', 'GetProviders', $this->build_array_query('CountryIsos', [$country_iso]));
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        }
+
+        return $result;
+    }
+
     public function get_promotions($country_iso, $take = 10) {
         return $this->request('GET', 'GetPromotions', [
             'CountryIso' => strtoupper($country_iso),
@@ -223,5 +287,17 @@ class DC_Recargas_API {
         }
 
         return is_array($data) ? $data : ['raw' => $raw_body];
+    }
+
+    private function build_array_query($name, $values) {
+        $query = [];
+
+        foreach (array_values(array_filter((array) $values, function ($value) {
+            return '' !== (string) $value;
+        })) as $index => $value) {
+            $query[$name . '[' . $index . ']'] = $value;
+        }
+
+        return $query;
     }
 }

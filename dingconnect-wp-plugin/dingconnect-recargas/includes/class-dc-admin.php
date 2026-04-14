@@ -664,6 +664,82 @@ class DC_Recargas_Admin {
                     gap: 8px;
                 }
 
+                .dc-balance-panel {
+                    display: none;
+                    margin-top: 10px;
+                    border: 1px solid #dbe3f0;
+                    border-radius: 12px;
+                    background: #f8fafc;
+                    padding: 14px;
+                    max-width: 920px;
+                }
+
+                .dc-balance-panel.is-visible {
+                    display: block;
+                }
+
+                .dc-balance-panel__top {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 10px;
+                }
+
+                .dc-balance-panel__label {
+                    margin: 0;
+                    color: #334155;
+                    font-size: 13px;
+                }
+
+                .dc-balance-panel__amount {
+                    margin: 4px 0 0;
+                    color: #0f172a;
+                    font-size: 28px;
+                    font-weight: 700;
+                    line-height: 1.15;
+                    letter-spacing: -0.01em;
+                }
+
+                .dc-balance-panel__status {
+                    display: inline-flex;
+                    align-items: center;
+                    border-radius: 999px;
+                    padding: 4px 10px;
+                    font-size: 12px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.02em;
+                }
+
+                .dc-balance-panel__status.is-ok {
+                    background: #dcfce7;
+                    color: #166534;
+                }
+
+                .dc-balance-panel__status.is-warn {
+                    background: #fef3c7;
+                    color: #92400e;
+                }
+
+                .dc-balance-panel__status.is-error {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+
+                .dc-balance-panel__meta {
+                    margin-top: 10px;
+                    color: #475569;
+                    font-size: 12px;
+                }
+
+                .dc-balance-panel__error {
+                    margin: 0;
+                    color: #b91c1c;
+                    font-size: 14px;
+                    font-weight: 600;
+                }
+
                 @media (max-width: 782px) {
                     .dc-edit-modal {
                         padding: 12px;
@@ -752,7 +828,7 @@ class DC_Recargas_Admin {
             <p>
                 <button type="button" class="button button-secondary" id="dc_check_balance_btn">Consultar balance ahora</button>
             </p>
-            <div id="dc_balance_result" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:12px;max-width:900px;"></div>
+            <div id="dc_balance_result" class="dc-balance-panel" aria-live="polite"></div>
 
             <hr>
             <h2>Uso en frontend</h2>
@@ -1446,6 +1522,8 @@ class DC_Recargas_Admin {
                 var editIsActiveEl = document.getElementById('dc_edit_is_active');
                 var checkBalanceBtn = document.getElementById('dc_check_balance_btn');
                 var balanceResultEl = document.getElementById('dc_balance_result');
+                var lastBalanceAutoAt = 0;
+                var BALANCE_AUTO_REFRESH_MS = 30000;
 
                 function escHtml(str) {
                     if (str === null || str === undefined) {
@@ -1469,8 +1547,8 @@ class DC_Recargas_Admin {
 
                     checkBalanceBtn.disabled = true;
                     checkBalanceBtn.textContent = 'Consultando...';
-                    balanceResultEl.style.display = 'block';
-                    balanceResultEl.innerHTML = '<p style="margin:0;color:#334155;">Consultando DingConnect...</p>';
+                    balanceResultEl.classList.add('is-visible');
+                    balanceResultEl.innerHTML = '<p class="dc-balance-panel__label">Consultando DingConnect...</p>';
 
                     try {
                         var response = await fetch(endpoint, {
@@ -1484,17 +1562,40 @@ class DC_Recargas_Admin {
                         var data = await response.json();
                         if (!response.ok || !data || !data.ok) {
                             var message = (data && data.message) ? data.message : 'No se pudo consultar el balance.';
-                            var details = (data && data.error) ? JSON.stringify(data.error, null, 2) : '';
-                            balanceResultEl.innerHTML = '<p style="margin:0 0 8px;color:#b91c1c;"><strong>' + escHtml(message) + '</strong></p>'
-                                + (details ? '<pre style="margin:0;white-space:pre-wrap;word-break:break-word;">' + escHtml(details) + '</pre>' : '');
+                            balanceResultEl.innerHTML = '<p class="dc-balance-panel__error">' + escHtml(message) + '</p>';
                             return;
                         }
 
-                        var pretty = JSON.stringify(data.result || {}, null, 2);
-                        balanceResultEl.innerHTML = '<p style="margin:0 0 8px;color:#0f4aa3;"><strong>Balance obtenido correctamente.</strong></p>'
-                            + '<pre style="margin:0;white-space:pre-wrap;word-break:break-word;">' + escHtml(pretty) + '</pre>';
+                        var result = data.result || {};
+                        var balance = Number(result.Balance || 0);
+                        var currencyIso = String(result.CurrencyIso || 'EUR');
+                        var resultCode = Number(result.ResultCode || 0);
+                        var statusClass = balance > 0 ? 'is-ok' : 'is-warn';
+                        var statusText = balance > 0 ? 'Saldo disponible' : 'Saldo en cero';
+
+                        if (resultCode !== 1) {
+                            statusClass = 'is-error';
+                            statusText = 'Respuesta con incidencia';
+                        }
+
+                        var now = new Date();
+                        var hh = String(now.getHours()).padStart(2, '0');
+                        var mm = String(now.getMinutes()).padStart(2, '0');
+                        var ss = String(now.getSeconds()).padStart(2, '0');
+
+                        balanceResultEl.innerHTML = ''
+                            + '<div class="dc-balance-panel__top">'
+                            + '  <div>'
+                            + '    <p class="dc-balance-panel__label">Balance actual del agente</p>'
+                            + '    <p class="dc-balance-panel__amount">' + escHtml(balance.toFixed(2)) + ' ' + escHtml(currencyIso) + '</p>'
+                            + '  </div>'
+                            + '  <span class="dc-balance-panel__status ' + statusClass + '">' + escHtml(statusText) + '</span>'
+                            + '</div>'
+                            + '<p class="dc-balance-panel__meta">Actualizado: ' + hh + ':' + mm + ':' + ss + ' · Código de resultado: ' + escHtml(String(resultCode)) + '</p>';
+
+                        lastBalanceAutoAt = Date.now();
                     } catch (err) {
-                        balanceResultEl.innerHTML = '<p style="margin:0;color:#b91c1c;"><strong>' + escHtml(err && err.message ? err.message : 'Error inesperado al consultar balance.') + '</strong></p>';
+                        balanceResultEl.innerHTML = '<p class="dc-balance-panel__error">' + escHtml(err && err.message ? err.message : 'Error inesperado al consultar balance.') + '</p>';
                     } finally {
                         checkBalanceBtn.disabled = false;
                         checkBalanceBtn.textContent = 'Consultar balance ahora';
@@ -1504,6 +1605,17 @@ class DC_Recargas_Admin {
                 if (checkBalanceBtn) {
                     checkBalanceBtn.addEventListener('click', checkBalance);
                 }
+
+                document.addEventListener('dc:tab-activated', function (e) {
+                    if (e.detail !== 'tab_setup') {
+                        return;
+                    }
+
+                    var shouldRefresh = (Date.now() - lastBalanceAutoAt) > BALANCE_AUTO_REFRESH_MS;
+                    if (shouldRefresh) {
+                        checkBalance();
+                    }
+                });
 
                 function setActiveTab(tabId, updateUrl) {
                     tabButtons.forEach(function (btn) {
