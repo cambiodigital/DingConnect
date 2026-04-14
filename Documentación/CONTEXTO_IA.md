@@ -94,6 +94,7 @@ Namespace actual: `dingconnect/v1`
 15. Verificación interna de saldo disponible: el plugin expone `GET /wp-json/dingconnect/v1/balance` con permisos de administrador y lo integra en el panel de credenciales mediante un botón de consulta directa.
 16. Experiencia de balance mejorada en admin: al activar la pestaña Credenciales se consulta el balance automáticamente y se muestra en tarjeta legible (monto, moneda y estado), evitando salida JSON cruda para operación diaria.
 17. Mejora visual en frontend público: la selección de operador ahora usa una grilla uniforme con tarjetas del mismo espacio y altura, para una lectura más organizada y consistente entre operadores.
+18. Mejora UX en panel admin de bundles: los campos País ISO, Nombre comercial, Moneda y Operador quedaron unificados con combobox de apertura inmediata al clic, lista posicionada bajo el input, filtrado por texto y sincronización de nuevas opciones entre formulario de alta y modal de edición.
 
 ## Hallazgos clave para futuras IA
 

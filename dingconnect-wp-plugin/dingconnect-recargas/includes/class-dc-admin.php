@@ -26,6 +26,7 @@ class DC_Recargas_Admin {
         add_action('admin_post_dc_upload_csv', [$this, 'handle_upload_csv']);
         add_action('wp_ajax_dc_get_transfer_logs', [$this, 'ajax_get_transfer_logs']);
         add_action('admin_post_dc_clear_logs', [$this, 'handle_clear_logs']);
+        add_action('wp_ajax_dc_fetch_api_products', [$this, 'ajax_fetch_api_products']);
     }
 
     public function register_menu() {
@@ -401,6 +402,69 @@ class DC_Recargas_Admin {
         ]);
     }
 
+    public function ajax_fetch_api_products() {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'No autorizado.'], 403);
+            return;
+        }
+
+        check_ajax_referer('dc_csv_search', 'nonce');
+
+        $country_iso = strtoupper(sanitize_text_field(wp_unslash($_GET['country_iso'] ?? '')));
+
+        if (strlen($country_iso) !== 2 || !ctype_alpha($country_iso)) {
+            wp_send_json_error(['message' => 'Código ISO de país inválido. Debe tener exactamente 2 letras, ej: CU, CO, MX.']);
+            return;
+        }
+
+        $raw = $this->api->get_products_by_country($country_iso);
+
+        if (is_wp_error($raw)) {
+            wp_send_json_error(['message' => $raw->get_error_message()]);
+            return;
+        }
+
+        if (empty($raw) || !is_array($raw)) {
+            wp_send_json_success(['items' => [], 'country_iso' => $country_iso, 'total' => 0]);
+            return;
+        }
+
+        $raw_items = $raw['Items'] ?? [];
+        if (!is_array($raw_items)) {
+            $raw_items = [];
+        }
+
+        $items = [];
+        foreach ($raw_items as $product) {
+            $benefits = [];
+            if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
+                foreach ($product['Benefits'] as $benefit) {
+                    $amount = trim((string) ($benefit['Amount'] ?? ''));
+                    $type   = trim((string) ($benefit['BenefitType'] ?? ''));
+                    if ($amount !== '') {
+                        $benefits[] = $type !== '' ? $amount . ' ' . $type : $amount;
+                    }
+                }
+            }
+
+            $receive = !empty($benefits) ? implode(', ', $benefits) : ($product['DefaultDisplayText'] ?? '');
+            $label   = ($product['DefaultDisplayText'] ?? '') ?: ($product['SkuCode'] ?? '');
+
+            $items[] = [
+                'country_iso'       => $country_iso,
+                'sku_code'          => $product['SkuCode'] ?? '',
+                'operator'          => $product['ProviderCode'] ?? '',
+                'label'             => $label,
+                'send_value'        => isset($product['Minimum']['SendValue']) ? (float) $product['Minimum']['SendValue'] : 0,
+                'send_currency_iso' => $product['Minimum']['SendCurrencyIso'] ?? 'USD',
+                'receive'           => $receive,
+                'validity'          => $product['ValidityPeriodIso'] ?? '',
+            ];
+        }
+
+        wp_send_json_success(['items' => $items, 'country_iso' => $country_iso, 'total' => count($items)]);
+    }
+
     public function render_page() {
         $options = $this->api->get_options();
         $bundles = get_option('dc_recargas_bundles', []);
@@ -683,6 +747,78 @@ class DC_Recargas_Admin {
                     background-color: #fff;
                 }
 
+                .dc-combo-wrap {
+                    position: relative;
+                    display: inline-block;
+                    vertical-align: top;
+                    width: min(420px, 100%);
+                    max-width: 100%;
+                }
+
+                .dc-combo-wrap.dc-combo-wrap--small {
+                    width: 120px;
+                }
+
+                .dc-combo-wrap .dc-combo-input {
+                    width: 100%;
+                    padding-right: 30px;
+                    margin: 0;
+                }
+
+                .dc-combo-toggle {
+                    position: absolute;
+                    right: 6px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    border: 0;
+                    background: transparent;
+                    color: #64748b;
+                    cursor: pointer;
+                    padding: 0 2px;
+                    line-height: 1;
+                    font-size: 14px;
+                }
+
+                .dc-combo-wrap.is-open .dc-combo-toggle {
+                    color: #0f172a;
+                }
+
+                .dc-combo-menu {
+                    position: absolute;
+                    left: 0;
+                    top: calc(100% + 4px);
+                    z-index: 1001;
+                    width: 100%;
+                    max-height: 220px;
+                    overflow: auto;
+                    border: 1px solid #cbd5e1;
+                    border-radius: 8px;
+                    background: #fff;
+                    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+                    display: none;
+                }
+
+                .dc-combo-wrap.is-open .dc-combo-menu {
+                    display: block;
+                }
+
+                .dc-combo-option {
+                    padding: 8px 10px;
+                    font-size: 13px;
+                    color: #1e293b;
+                    cursor: pointer;
+                    border-bottom: 1px solid #f1f5f9;
+                }
+
+                .dc-combo-option:last-child {
+                    border-bottom: 0;
+                }
+
+                .dc-combo-option:hover,
+                .dc-combo-option.is-active {
+                    background: #eff6ff;
+                }
+
                 .dc-combo-input.small-text {
                     width: 120px;
                 }
@@ -699,6 +835,20 @@ class DC_Recargas_Admin {
                 }
 
                 .dc-edit-modal .form-table td .dc-combo-input.regular-text {
+                    width: min(100%, 480px);
+                }
+
+                .dc-admin-wrap select,
+                .dc-edit-modal select,
+                .dc-logs-toolbar select {
+                    border: 1px solid #c9d6ea;
+                    border-radius: 8px;
+                    min-height: 34px;
+                    padding: 5px 10px;
+                    background-color: #fff;
+                }
+
+                .dc-edit-modal .dc-combo-wrap {
                     width: min(100%, 480px);
                 }
 
@@ -946,6 +1096,199 @@ class DC_Recargas_Admin {
                     </td>
                 </tr>
             </table>
+
+            <hr>
+            <h3>Buscar paquetes en la API de DingConnect por país</h3>
+            <p class="description">Consulta los paquetes disponibles directamente desde DingConnect. No necesitas el CSV; los resultados se traen en tiempo real y se guardan en caché por 10 minutos.</p>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="dc_api_country_iso">País (código ISO)</label></th>
+                    <td>
+                        <select id="dc_api_country_iso" class="regular-text">
+                            <option value="">Selecciona un país...</option>
+                            <option value="AR">Argentina (AR)</option>
+                            <option value="BO">Bolivia (BO)</option>
+                            <option value="BR">Brasil (BR)</option>
+                            <option value="CL">Chile (CL)</option>
+                            <option value="CO">Colombia (CO)</option>
+                            <option value="CR">Costa Rica (CR)</option>
+                            <option value="CU">Cuba (CU)</option>
+                            <option value="DO">Rep. Dominicana (DO)</option>
+                            <option value="EC">Ecuador (EC)</option>
+                            <option value="SV">El Salvador (SV)</option>
+                            <option value="ES">España (ES)</option>
+                            <option value="GT">Guatemala (GT)</option>
+                            <option value="HT">Haití (HT)</option>
+                            <option value="HN">Honduras (HN)</option>
+                            <option value="MX">México (MX)</option>
+                            <option value="NI">Nicaragua (NI)</option>
+                            <option value="PA">Panamá (PA)</option>
+                            <option value="PY">Paraguay (PY)</option>
+                            <option value="PE">Perú (PE)</option>
+                            <option value="US">Estados Unidos (US)</option>
+                            <option value="UY">Uruguay (UY)</option>
+                            <option value="VE">Venezuela (VE)</option>
+                        </select>
+                        <button type="button" class="button" id="dc_api_fetch_btn">Buscar en API</button>
+                        <p class="description">Resultados directos de DingConnect (caché de 10 minutos por país).</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="dc_api_results">Paquetes encontrados</label></th>
+                    <td>
+                        <select id="dc_api_results" size="10" class="large-text"></select>
+                        <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API».</p>
+                        <p>
+                            <label>
+                                <input type="checkbox" id="dc_api_auto_active" checked>
+                                Publicar bundle inmediatamente (activo)
+                            </label>
+                        </p>
+                        <p>
+                            <button type="button" class="button button-primary" id="dc_api_create_btn" disabled>Crear bundle desde API</button>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            <script>
+            (function () {
+                var apiNonce     = <?php echo wp_json_encode($csv_nonce); ?>;
+                var apiCountryEl = document.getElementById('dc_api_country_iso');
+                var apiFetchBtn  = document.getElementById('dc_api_fetch_btn');
+                var apiResultsEl = document.getElementById('dc_api_results');
+                var apiHelpEl    = document.getElementById('dc_api_help');
+                var apiActiveEl  = document.getElementById('dc_api_auto_active');
+                var apiCreateBtn = document.getElementById('dc_api_create_btn');
+                var apiSelected  = null;
+
+                function apiOptionLabel(item) {
+                    var parts = [item.operator, item.receive || item.label];
+                    if (item.send_value && item.send_currency_iso) {
+                        parts.push(item.send_value + ' ' + item.send_currency_iso);
+                    }
+                    if (item.validity) {
+                        parts.push(item.validity);
+                    }
+                    return parts.filter(Boolean).join(' — ');
+                }
+
+                function renderApiResults(items) {
+                    apiResultsEl.innerHTML = '';
+                    apiSelected = null;
+                    apiCreateBtn.disabled = true;
+
+                    if (!items || items.length === 0) {
+                        apiHelpEl.textContent = 'No se encontraron paquetes para este país en la API.';
+                        return;
+                    }
+
+                    items.forEach(function (item) {
+                        var opt = document.createElement('option');
+                        opt.value = item.sku_code;
+                        opt.textContent = apiOptionLabel(item);
+                        opt.dataset.item = JSON.stringify(item);
+                        apiResultsEl.appendChild(opt);
+                    });
+
+                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s). Selecciona uno para crear el bundle.';
+                }
+
+                apiFetchBtn.addEventListener('click', function () {
+                    var iso = apiCountryEl.value;
+                    if (!iso) {
+                        apiHelpEl.textContent = 'Selecciona un país antes de buscar.';
+                        return;
+                    }
+
+                    apiFetchBtn.disabled = true;
+                    apiHelpEl.textContent = 'Consultando la API de DingConnect...';
+                    apiResultsEl.innerHTML = '';
+                    apiSelected = null;
+                    apiCreateBtn.disabled = true;
+
+                    var url = ajaxurl + '?action=dc_fetch_api_products&nonce=' + encodeURIComponent(apiNonce) + '&country_iso=' + encodeURIComponent(iso);
+
+                    fetch(url, { credentials: 'same-origin' })
+                        .then(function (res) { return res.json(); })
+                        .then(function (data) {
+                            apiFetchBtn.disabled = false;
+                            if (data.success) {
+                                renderApiResults(data.data.items);
+                            } else {
+                                apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo conectar a la API.');
+                            }
+                        })
+                        .catch(function () {
+                            apiFetchBtn.disabled = false;
+                            apiHelpEl.textContent = 'Error de red al consultar la API.';
+                        });
+                });
+
+                apiResultsEl.addEventListener('change', function () {
+                    var opt = apiResultsEl.options[apiResultsEl.selectedIndex];
+                    if (!opt) {
+                        apiSelected = null;
+                        apiCreateBtn.disabled = true;
+                        return;
+                    }
+                    try {
+                        apiSelected = JSON.parse(opt.dataset.item);
+                        apiCreateBtn.disabled = false;
+                    } catch (e) {
+                        apiSelected = null;
+                        apiCreateBtn.disabled = true;
+                    }
+                });
+
+                apiCreateBtn.addEventListener('click', function () {
+                    if (!apiSelected) { return; }
+
+                    apiCreateBtn.disabled = true;
+                    apiHelpEl.textContent = 'Creando bundle...';
+
+                    var body = new URLSearchParams({
+                        action: 'dc_create_bundle_from_csv',
+                        nonce: apiNonce,
+                        country_iso: apiSelected.country_iso,
+                        sku_code: apiSelected.sku_code,
+                        operator: apiSelected.operator,
+                        receive: apiSelected.receive || apiSelected.label,
+                        send_value: apiSelected.send_value,
+                        send_currency_iso: apiSelected.send_currency_iso,
+                        is_active: apiActiveEl.checked ? '1' : '0',
+                    });
+
+                    fetch(ajaxurl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: body.toString(),
+                    })
+                        .then(function (res) { return res.json(); })
+                        .then(function (data) {
+                            apiCreateBtn.disabled = false;
+                            if (data.success) {
+                                var bundleLabel = data.data.bundle && data.data.bundle.label ? data.data.bundle.label : apiSelected.label;
+                                apiHelpEl.textContent = 'Bundle «' + bundleLabel + '» creado correctamente.';
+                                var opts = apiResultsEl.options;
+                                for (var i = opts.length - 1; i >= 0; i--) {
+                                    if (opts[i].value === apiSelected.sku_code) {
+                                        apiResultsEl.remove(i);
+                                        break;
+                                    }
+                                }
+                                apiSelected = null;
+                            } else {
+                                apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo crear el bundle.');
+                            }
+                        })
+                        .catch(function () {
+                            apiCreateBtn.disabled = false;
+                            apiHelpEl.textContent = 'Error de red al crear el bundle.';
+                        });
+                });
+            })();
+            </script>
 
             <h2>Añadir bundle curado</h2>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -2036,6 +2379,8 @@ class DC_Recargas_Admin {
                     dc_dl_provider_name: ['dc_provider_name', 'dc_edit_provider_name']
                 };
 
+                var comboboxRegistry = [];
+
                 function addToDatalist(datalistId, value) {
                     if (!value || !value.trim()) return;
                     value = value.trim();
@@ -2048,17 +2393,169 @@ class DC_Recargas_Admin {
                     var opt = document.createElement('option');
                     opt.value = value;
                     dl.appendChild(opt);
+
+                    // Refresh open combobox menus that depend on this datalist.
+                    comboboxRegistry.forEach(function (combo) {
+                        if (combo.datalistId === datalistId && combo.wrap.classList.contains('is-open')) {
+                            renderMenu(combo, combo.input.value || '');
+                        }
+                    });
+                }
+
+                function getOptions(datalistId) {
+                    var dl = document.getElementById(datalistId);
+                    if (!dl) {
+                        return [];
+                    }
+
+                    var options = [];
+                    var seen = {};
+                    dl.querySelectorAll('option').forEach(function (opt) {
+                        var v = (opt.value || '').trim();
+                        if (!v) {
+                            return;
+                        }
+                        var key = v.toLowerCase();
+                        if (!seen[key]) {
+                            seen[key] = true;
+                            options.push(v);
+                        }
+                    });
+
+                    return options;
+                }
+
+                function openCombo(combo) {
+                    combo.wrap.classList.add('is-open');
+                    renderMenu(combo, combo.input.value || '');
+                }
+
+                function closeCombo(combo) {
+                    combo.wrap.classList.remove('is-open');
+                }
+
+                function closeAllCombos(except) {
+                    comboboxRegistry.forEach(function (combo) {
+                        if (combo !== except) {
+                            closeCombo(combo);
+                        }
+                    });
+                }
+
+                function renderMenu(combo, filterValue) {
+                    var term = (filterValue || '').trim().toLowerCase();
+                    var all = getOptions(combo.datalistId);
+                    var filtered = all.filter(function (item) {
+                        return !term || item.toLowerCase().indexOf(term) !== -1;
+                    });
+
+                    combo.menu.innerHTML = '';
+                    if (!filtered.length) {
+                        combo.wrap.classList.remove('is-open');
+                        return;
+                    }
+
+                    filtered.forEach(function (value) {
+                        var item = document.createElement('div');
+                        item.className = 'dc-combo-option';
+                        item.textContent = value;
+                        item.addEventListener('mousedown', function (ev) {
+                            ev.preventDefault();
+                            combo.input.value = value;
+                            combo.input.dispatchEvent(new Event('change', { bubbles: true }));
+                            closeCombo(combo);
+                        });
+                        combo.menu.appendChild(item);
+                    });
+                }
+
+                function initCombobox(inputId, datalistId) {
+                    var input = document.getElementById(inputId);
+                    if (!input) {
+                        return;
+                    }
+
+                    // Disable native datalist/autocomplete popup to avoid double dropdowns.
+                    input.removeAttribute('list');
+                    input.setAttribute('autocomplete', 'off');
+
+                    if (input.closest('.dc-combo-wrap')) {
+                        return;
+                    }
+
+                    var wrap = document.createElement('div');
+                    wrap.className = 'dc-combo-wrap';
+                    if (input.classList.contains('small-text')) {
+                        wrap.classList.add('dc-combo-wrap--small');
+                    }
+
+                    var menu = document.createElement('div');
+                    menu.className = 'dc-combo-menu';
+
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'dc-combo-toggle';
+                    btn.setAttribute('aria-label', 'Mostrar opciones');
+                    btn.innerHTML = '&#9662;';
+
+                    input.parentNode.insertBefore(wrap, input);
+                    wrap.appendChild(input);
+                    wrap.appendChild(btn);
+                    wrap.appendChild(menu);
+
+                    var combo = {
+                        input: input,
+                        menu: menu,
+                        wrap: wrap,
+                        datalistId: datalistId
+                    };
+                    comboboxRegistry.push(combo);
+
+                    input.addEventListener('focus', function () {
+                        closeAllCombos(combo);
+                        openCombo(combo);
+                    });
+
+                    input.addEventListener('click', function () {
+                        closeAllCombos(combo);
+                        openCombo(combo);
+                    });
+
+                    input.addEventListener('input', function () {
+                        closeAllCombos(combo);
+                        openCombo(combo);
+                    });
+
+                    btn.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        if (wrap.classList.contains('is-open')) {
+                            closeCombo(combo);
+                        } else {
+                            closeAllCombos(combo);
+                            openCombo(combo);
+                            input.focus();
+                        }
+                    });
                 }
 
                 Object.keys(datalistMap).forEach(function (dlId) {
                     datalistMap[dlId].forEach(function (inputId) {
                         var el = document.getElementById(inputId);
                         if (el) {
+                            initCombobox(inputId, dlId);
+
                             el.addEventListener('change', function () {
                                 addToDatalist(dlId, el.value);
                             });
                         }
                     });
+                });
+
+                document.addEventListener('click', function (ev) {
+                    var insideAnyCombo = ev.target.closest('.dc-combo-wrap');
+                    if (!insideAnyCombo) {
+                        closeAllCombos(null);
+                    }
                 });
             })();
         </script>
