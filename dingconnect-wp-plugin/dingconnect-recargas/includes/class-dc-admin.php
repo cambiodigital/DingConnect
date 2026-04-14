@@ -747,6 +747,14 @@ class DC_Recargas_Admin {
             </form>
 
             <hr>
+            <h2>Balance del agente (DingConnect)</h2>
+            <p>Consulta el saldo disponible del API Key configurado sin salir de WordPress.</p>
+            <p>
+                <button type="button" class="button button-secondary" id="dc_check_balance_btn">Consultar balance ahora</button>
+            </p>
+            <div id="dc_balance_result" style="display:none;background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:12px;max-width:900px;"></div>
+
+            <hr>
             <h2>Uso en frontend</h2>
             <p>Crea una página y coloca el shortcode:</p>
             <p><code>[dingconnect_recargas]</code></p>
@@ -1436,6 +1444,66 @@ class DC_Recargas_Admin {
                 var editProviderEl = document.getElementById('dc_edit_provider_name');
                 var editDescriptionEl = document.getElementById('dc_edit_description');
                 var editIsActiveEl = document.getElementById('dc_edit_is_active');
+                var checkBalanceBtn = document.getElementById('dc_check_balance_btn');
+                var balanceResultEl = document.getElementById('dc_balance_result');
+
+                function escHtml(str) {
+                    if (str === null || str === undefined) {
+                        return '';
+                    }
+
+                    return String(str)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                }
+
+                async function checkBalance() {
+                    if (!checkBalanceBtn || !balanceResultEl) {
+                        return;
+                    }
+
+                    var endpoint = '<?php echo esc_js(rest_url('dingconnect/v1/balance')); ?>';
+                    var restNonce = '<?php echo esc_js(wp_create_nonce('wp_rest')); ?>';
+
+                    checkBalanceBtn.disabled = true;
+                    checkBalanceBtn.textContent = 'Consultando...';
+                    balanceResultEl.style.display = 'block';
+                    balanceResultEl.innerHTML = '<p style="margin:0;color:#334155;">Consultando DingConnect...</p>';
+
+                    try {
+                        var response = await fetch(endpoint, {
+                            method: 'GET',
+                            headers: {
+                                'X-WP-Nonce': restNonce,
+                            },
+                            credentials: 'same-origin',
+                        });
+
+                        var data = await response.json();
+                        if (!response.ok || !data || !data.ok) {
+                            var message = (data && data.message) ? data.message : 'No se pudo consultar el balance.';
+                            var details = (data && data.error) ? JSON.stringify(data.error, null, 2) : '';
+                            balanceResultEl.innerHTML = '<p style="margin:0 0 8px;color:#b91c1c;"><strong>' + escHtml(message) + '</strong></p>'
+                                + (details ? '<pre style="margin:0;white-space:pre-wrap;word-break:break-word;">' + escHtml(details) + '</pre>' : '');
+                            return;
+                        }
+
+                        var pretty = JSON.stringify(data.result || {}, null, 2);
+                        balanceResultEl.innerHTML = '<p style="margin:0 0 8px;color:#0f4aa3;"><strong>Balance obtenido correctamente.</strong></p>'
+                            + '<pre style="margin:0;white-space:pre-wrap;word-break:break-word;">' + escHtml(pretty) + '</pre>';
+                    } catch (err) {
+                        balanceResultEl.innerHTML = '<p style="margin:0;color:#b91c1c;"><strong>' + escHtml(err && err.message ? err.message : 'Error inesperado al consultar balance.') + '</strong></p>';
+                    } finally {
+                        checkBalanceBtn.disabled = false;
+                        checkBalanceBtn.textContent = 'Consultar balance ahora';
+                    }
+                }
+
+                if (checkBalanceBtn) {
+                    checkBalanceBtn.addEventListener('click', checkBalance);
+                }
 
                 function setActiveTab(tabId, updateUrl) {
                     tabButtons.forEach(function (btn) {

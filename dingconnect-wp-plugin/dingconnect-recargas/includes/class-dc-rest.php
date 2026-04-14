@@ -23,6 +23,12 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
         ]);
 
+        register_rest_route('dingconnect/v1', '/balance', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'balance'],
+            'permission_callback' => [$this, 'can_manage_options'],
+        ]);
+
         register_rest_route('dingconnect/v1', '/bundles', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'bundles'],
@@ -66,6 +72,28 @@ class DC_Recargas_REST {
             'configured' => $this->api->is_configured(),
             'validate_only' => !empty($options['validate_only']),
             'allow_real_recharge' => !empty($options['allow_real_recharge']),
+        ]);
+    }
+
+    public function balance() {
+        $response = $this->api->get_balance();
+        if (is_wp_error($response)) {
+            $error_data = $response->get_error_data();
+            $status_code = 500;
+            if (is_array($error_data) && isset($error_data['status']) && is_numeric($error_data['status'])) {
+                $status_code = (int) $error_data['status'];
+            }
+
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => $response->get_error_message(),
+                'error' => $error_data,
+            ], $status_code);
+        }
+
+        return rest_ensure_response([
+            'ok' => true,
+            'result' => $response,
         ]);
     }
 
@@ -255,6 +283,10 @@ class DC_Recargas_REST {
 
         set_transient($key, $count + 1, MINUTE_IN_SECONDS);
         return true;
+    }
+
+    public function can_manage_options() {
+        return current_user_can('manage_options');
     }
 
     private function filter_bundles_by_country($country_iso) {

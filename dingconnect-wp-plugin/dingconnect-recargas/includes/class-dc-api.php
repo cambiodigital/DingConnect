@@ -60,6 +60,10 @@ class DC_Recargas_API {
         return $this->request('GET', 'GetProductDescriptions', $params);
     }
 
+    public function get_balance() {
+        return $this->request('GET', 'GetBalance');
+    }
+
     public function send_transfer($payload) {
         $options = $this->get_options();
         $validate_only = !empty($options['validate_only']);
@@ -179,11 +183,35 @@ class DC_Recargas_API {
         $data = json_decode($raw_body, true);
 
         if ($status < 200 || $status >= 300) {
+            $friendly_message = 'DingConnect respondió con error HTTP.';
+            $error_code = '';
+
+            if (is_array($data) && !empty($data['ErrorCodes']) && is_array($data['ErrorCodes'])) {
+                $first_error = $data['ErrorCodes'][0] ?? [];
+                $error_code = sanitize_text_field($first_error['Code'] ?? '');
+
+                switch ($error_code) {
+                    case 'InsufficientBalance':
+                        $friendly_message = 'Saldo insuficiente en DingConnect. Recarga balance del agente para continuar.';
+                        break;
+                    case 'AccountNumberInvalid':
+                        $friendly_message = 'El número de destino no es válido para este producto.';
+                        break;
+                    case 'RateLimited':
+                        $friendly_message = 'DingConnect limitó temporalmente la operación. Intenta de nuevo en unos segundos.';
+                        break;
+                    case 'RechargeNotAllowed':
+                        $friendly_message = 'La recarga no está permitida para esta cuenta o producto.';
+                        break;
+                }
+            }
+
             return new WP_Error(
                 'dc_http_error',
-                'DingConnect respondió con error HTTP.',
+                $friendly_message,
                 [
                     'status' => $status,
+                    'ding_error_code' => $error_code,
                     'body' => $data ?: $raw_body,
                 ]
             );

@@ -89,6 +89,8 @@ Namespace actual: `dingconnect/v1`
 11. Sincronización frontend-admin mejorada: la deduplicación de búsquedas por país+número en el frontend ahora usa expiración (TTL de 10 segundos), permitiendo que bundles y operadores añadidos en admin aparezcan sin recargar la página completa.
 12. Frontend público más resiliente: el script del shortcode ahora resuelve elementos dentro del contenedor del formulario y valida nodos críticos para evitar errores por `innerHTML` en elementos nulos cuando hay markup incompleto o plantillas desactualizadas.
 13. Recargas directas más compatibles en producción: el backend REST del plugin normaliza `AccountNumber` en formato numérico puro (sin `+`) para cumplir validaciones regex de DingConnect y retorna el status HTTP real de errores de API al cliente.
+14. Diagnóstico operativo más claro: el backend API del plugin interpreta códigos de negocio de DingConnect (`InsufficientBalance`, `AccountNumberInvalid`, `RateLimited`, `RechargeNotAllowed`) y devuelve mensajes orientados a soporte sin perder el detalle técnico original.
+15. Verificación interna de saldo disponible: el plugin expone `GET /wp-json/dingconnect/v1/balance` con permisos de administrador y lo integra en el panel de credenciales mediante un botón de consulta directa.
 
 ## Hallazgos clave para futuras IA
 
