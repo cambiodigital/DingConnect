@@ -86,13 +86,16 @@ Una iniciativa se considera lista cuando cumple:
 20. Mejora UX en pestaña Credenciales: el balance se actualiza automáticamente al entrar a la pestaña (con control de frecuencia) y se presenta como tarjeta amigable con monto, moneda y estado en lugar de JSON.
 21. Mejora UX en selección de operador del frontend: los operadores se muestran en una grilla uniforme con tarjetas de tamaño consistente para mantener alineación visual y espacio equivalente por operador.
 22. Mejora UX en administración de bundles: campos País ISO, Nombre comercial, Moneda y Operador ahora usan combobox consistente (alta y edición) con apertura inmediata al clic, opciones alineadas debajo del input, filtrado al escribir y alta libre de nuevos valores compartidos entre formularios.
+23. Respuesta de balance robusta en admin: el endpoint interno `/balance` normaliza variaciones de payload de DingConnect para mostrar siempre saldo, moneda y código de resultado en la tarjeta de credenciales.
+24. Diagnóstico extendido de recargas fallidas: errores `ProviderError` agregan contexto (`ding_error_context`) y trazas de operación (`transfer_ref`, `distributor_ref`, `processing_state`) para investigación de soporte.
+25. Gestión masiva de bundles en admin: la tabla de bundles guardados ahora permite seleccionar uno o varios registros (incluye "seleccionar todos") y eliminarlos en bloque con confirmación.
 
 ## Backlog actualizado por impacto
 
 1. Prioridad P2 - Administración de bundles más completa.
    - Estado: parcialmente completado.
-   - Completado: importación desde CSV filtrado, catálogo inicial multi-país, edición de bundles en modal inline y activación/desactivación por registro.
-   - Pendiente: flujo de actualización masiva.
+   - Completado: importación desde CSV filtrado, catálogo inicial multi-país, edición de bundles en modal inline, activación/desactivación por registro y eliminación masiva por selección.
+   - Pendiente: flujo de actualización masiva de campos (bulk edit).
 2. Prioridad P1 - Flujo WooCommerce y post-pago.
    - Estado: parcialmente completado.
    - Completado: add-to-cart, checkout obligatorio, creación de producto base, ejecución de transferencia al confirmar pedido y notas en orden.

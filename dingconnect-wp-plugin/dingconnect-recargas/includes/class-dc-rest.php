@@ -91,9 +91,12 @@ class DC_Recargas_REST {
             ], $status_code);
         }
 
+        $normalized_balance = $this->normalize_balance_response($response);
+
         return rest_ensure_response([
             'ok' => true,
-            'result' => $response,
+            'result' => $normalized_balance,
+            'raw' => $response,
         ]);
     }
 
@@ -491,5 +494,55 @@ class DC_Recargas_REST {
         }
 
         return array_values($merged);
+    }
+
+    private function normalize_balance_response($response) {
+        $raw = is_array($response) ? $response : [];
+        $candidate = $raw;
+
+        if (isset($raw['Result'])) {
+            if (is_array($raw['Result']) && isset($raw['Result'][0]) && is_array($raw['Result'][0])) {
+                $candidate = array_merge($candidate, $raw['Result'][0]);
+            } elseif (is_array($raw['Result'])) {
+                $candidate = array_merge($candidate, $raw['Result']);
+            }
+        }
+
+        if ((!isset($candidate['Balance']) || '' === (string) $candidate['Balance']) && isset($raw['Items']) && is_array($raw['Items']) && isset($raw['Items'][0]) && is_array($raw['Items'][0])) {
+            $candidate = array_merge($candidate, $raw['Items'][0]);
+        }
+
+        $balance = isset($candidate['Balance']) ? (float) $candidate['Balance'] : 0.0;
+        $currency_iso = sanitize_text_field((string) ($candidate['CurrencyIso'] ?? 'USD'));
+        $result_code = isset($candidate['ResultCode']) && '' !== (string) $candidate['ResultCode']
+            ? (int) $candidate['ResultCode']
+            : null;
+
+        return [
+            'Balance' => $balance,
+            'CurrencyIso' => '' !== $currency_iso ? $currency_iso : 'USD',
+            'ResultCode' => $result_code,
+            'RawShape' => $this->detect_balance_shape($raw),
+        ];
+    }
+
+    private function detect_balance_shape($raw) {
+        if (isset($raw['Balance'])) {
+            return 'top_level';
+        }
+
+        if (isset($raw['Result']) && is_array($raw['Result']) && isset($raw['Result'][0]) && is_array($raw['Result'][0])) {
+            return 'result_array';
+        }
+
+        if (isset($raw['Result']) && is_array($raw['Result'])) {
+            return 'result_object';
+        }
+
+        if (isset($raw['Items']) && is_array($raw['Items']) && isset($raw['Items'][0]) && is_array($raw['Items'][0])) {
+            return 'items_array';
+        }
+
+        return 'unknown';
     }
 }

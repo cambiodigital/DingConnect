@@ -249,10 +249,19 @@ class DC_Recargas_API {
         if ($status < 200 || $status >= 300) {
             $friendly_message = 'DingConnect respondió con error HTTP.';
             $error_code = '';
+            $error_context = '';
+
+            $transfer_record = (is_array($data) && isset($data['TransferRecord']) && is_array($data['TransferRecord']))
+                ? $data['TransferRecord']
+                : [];
+            $transfer_ref = sanitize_text_field($transfer_record['TransferId']['TransferRef'] ?? '');
+            $distributor_ref = sanitize_text_field($transfer_record['TransferId']['DistributorRef'] ?? '');
+            $processing_state = sanitize_text_field($transfer_record['ProcessingState'] ?? '');
 
             if (is_array($data) && !empty($data['ErrorCodes']) && is_array($data['ErrorCodes'])) {
                 $first_error = $data['ErrorCodes'][0] ?? [];
                 $error_code = sanitize_text_field($first_error['Code'] ?? '');
+                $error_context = sanitize_text_field($first_error['Context'] ?? '');
 
                 switch ($error_code) {
                     case 'InsufficientBalance':
@@ -267,6 +276,13 @@ class DC_Recargas_API {
                     case 'RechargeNotAllowed':
                         $friendly_message = 'La recarga no está permitida para esta cuenta o producto.';
                         break;
+                    case 'ProviderError':
+                        if ('ProviderUnknownError' === $error_context) {
+                            $friendly_message = 'El proveedor rechazó temporalmente la recarga. Intenta nuevamente en unos minutos o prueba otro SKU.';
+                        } else {
+                            $friendly_message = 'El proveedor rechazó la operación para este producto.';
+                        }
+                        break;
                 }
             }
 
@@ -276,6 +292,10 @@ class DC_Recargas_API {
                 [
                     'status' => $status,
                     'ding_error_code' => $error_code,
+                    'ding_error_context' => $error_context,
+                    'transfer_ref' => $transfer_ref,
+                    'distributor_ref' => $distributor_ref,
+                    'processing_state' => $processing_state,
                     'body' => $data ?: $raw_body,
                 ]
             );

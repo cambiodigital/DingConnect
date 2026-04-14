@@ -481,18 +481,24 @@
 
     /* -- Result display -- */
     function showFriendlyResult(result) {
+        // DingConnect SendTransfer puede devolver TransferRecord (objeto) o Items/Result (array)
+        var record = result.TransferRecord || {};
+        var transferId = record.TransferId || {};
         var items = result.Items || result.Result || [];
-        var item = items[0] || {};
+        var item = items[0] || record;
+        var transferRef = transferId.TransferRef || transferId.DistributorRef
+            || result.TransferRef || result.DistributorRef || 'N/A';
+        var status = item.Status || '';
         var html = '<div class="dc-result-card">'
             + '<div class="dc-result-header">'
-            + '<span class="dc-result-icon">' + (item.Status === 'Approved' ? '?' : '?') + '</span>'
-            + '<strong>' + (item.Status === 'Approved' ? 'Recarga procesada' : 'Recarga en validación') + '</strong>'
+            + '<span class="dc-result-icon">' + (status === 'Approved' ? '✓' : '⏳') + '</span>'
+            + '<strong>' + (status === 'Approved' ? 'Recarga procesada' : 'Recarga en validación') + '</strong>'
             + '</div><div class="dc-result-body">'
-            + '<div class="dc-result-row"><span>Referencia</span><span>' + escapeHtml(String(result.TransferRef || result.DistributorRef || 'N/A')) + '</span></div>'
-            + '<div class="dc-result-row"><span>Estado</span><span>' + escapeHtml(String(item.Status || 'Pendiente')) + '</span></div>'
+            + '<div class="dc-result-row"><span>Referencia</span><span>' + escapeHtml(String(transferRef)) + '</span></div>'
+            + '<div class="dc-result-row"><span>Estado</span><span>' + escapeHtml(String(status || item.ProcessingState || 'Pendiente')) + '</span></div>'
             + '<div class="dc-result-row"><span>Número</span><span>' + escapeHtml(String(item.AccountNumber || 'N/A')) + '</span></div>';
         if (item.ReceiveValue) {
-            html += '<div class="dc-result-row"><span>Recibe</span><span>' + escapeHtml(item.ReceiveCurrencyIso + ' ' + Number(item.ReceiveValue).toFixed(2)) + '</span></div>';
+            html += '<div class="dc-result-row"><span>Recibe</span><span>' + escapeHtml(String(item.ReceiveCurrencyIso || '') + ' ' + Number(item.ReceiveValue).toFixed(2)) + '</span></div>';
         }
         html += '</div></div>';
         resultEl.innerHTML = html;

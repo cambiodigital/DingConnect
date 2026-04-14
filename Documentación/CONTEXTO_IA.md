@@ -95,6 +95,9 @@ Namespace actual: `dingconnect/v1`
 16. Experiencia de balance mejorada en admin: al activar la pestaña Credenciales se consulta el balance automáticamente y se muestra en tarjeta legible (monto, moneda y estado), evitando salida JSON cruda para operación diaria.
 17. Mejora visual en frontend público: la selección de operador ahora usa una grilla uniforme con tarjetas del mismo espacio y altura, para una lectura más organizada y consistente entre operadores.
 18. Mejora UX en panel admin de bundles: los campos País ISO, Nombre comercial, Moneda y Operador quedaron unificados con combobox de apertura inmediata al clic, lista posicionada bajo el input, filtrado por texto y sincronización de nuevas opciones entre formulario de alta y modal de edición.
+19. Resiliencia del balance administrativo: el endpoint `/balance` normaliza múltiples formatos de respuesta de DingConnect (top-level, `Result` o `Items`) para exponer siempre `Balance`, `CurrencyIso` y `ResultCode` al panel.
+20. Diagnóstico operativo ampliado en transferencias: los errores `ProviderError` ahora incluyen contexto (`ding_error_context`) y referencias de la operación (`transfer_ref`, `distributor_ref`, `processing_state`) para soporte y trazabilidad.
+21. Operación de bundles más ágil en admin: los bundles guardados ya pueden eliminarse de forma masiva mediante checkboxes por fila y selección global en la tabla.
 
 ## Hallazgos clave para futuras IA
 

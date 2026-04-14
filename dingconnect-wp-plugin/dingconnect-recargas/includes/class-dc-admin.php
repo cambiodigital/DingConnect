@@ -20,6 +20,7 @@ class DC_Recargas_Admin {
         add_action('admin_post_dc_update_bundle', [$this, 'handle_update_bundle']);
         add_action('admin_post_dc_toggle_bundle', [$this, 'handle_toggle_bundle']);
         add_action('admin_post_dc_delete_bundle', [$this, 'handle_delete_bundle']);
+        add_action('admin_post_dc_bulk_delete_bundles', [$this, 'handle_bulk_delete_bundles']);
         add_action('admin_post_dc_import_country_presets', [$this, 'handle_import_country_presets']);
         add_action('wp_ajax_dc_search_csv_products', [$this, 'ajax_search_csv_products']);
         add_action('wp_ajax_dc_create_bundle_from_csv', [$this, 'ajax_create_bundle_from_csv']);
@@ -211,6 +212,55 @@ class DC_Recargas_Admin {
         wp_safe_redirect(add_query_arg([
             'page' => 'dc-recargas',
             'dc_msg' => 'bundle_deleted',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_bulk_delete_bundles() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_bulk_delete_bundles');
+
+        $raw_ids = wp_unslash($_POST['bundle_ids'] ?? []);
+        $ids = [];
+
+        if (is_array($raw_ids)) {
+            foreach ($raw_ids as $id) {
+                $clean_id = sanitize_text_field((string) $id);
+                if ($clean_id !== '') {
+                    $ids[] = $clean_id;
+                }
+            }
+        }
+
+        $ids = array_values(array_unique($ids));
+
+        if (empty($ids)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'bundle_bulk_empty',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $bundles = get_option('dc_recargas_bundles', []);
+        $total_before = count($bundles);
+
+        $bundles = array_values(array_filter($bundles, function ($bundle) use ($ids) {
+            $bundle_id = (string) ($bundle['id'] ?? '');
+            return !in_array($bundle_id, $ids, true);
+        }));
+
+        $deleted_count = $total_before - count($bundles);
+
+        update_option('dc_recargas_bundles', $bundles);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_msg' => 'bundle_bulk_deleted',
+            'dc_count' => $deleted_count,
         ], admin_url('admin.php')));
         exit;
     }
@@ -500,7 +550,7 @@ class DC_Recargas_Admin {
             $active_tab = !empty($editing_bundle) ? 'tab_saved' : 'tab_catalog';
         }
 
-        if (in_array($msg, ['bundle_added', 'bundle_updated', 'bundle_toggled', 'bundle_deleted'], true)) {
+        if (in_array($msg, ['bundle_added', 'bundle_updated', 'bundle_toggled', 'bundle_deleted', 'bundle_bulk_deleted', 'bundle_bulk_empty'], true)) {
             $active_tab = 'tab_saved';
         }
         ?>
@@ -1348,9 +1398,20 @@ class DC_Recargas_Admin {
             <h2>Bundles guardados</h2>
             <p>Estos bundles aparecen como respaldo o catálogo inicial en el formulario frontal.</p>
 
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="dc_bulk_delete_bundles_form">
+                <input type="hidden" name="action" value="dc_bulk_delete_bundles">
+                <?php wp_nonce_field('dc_bulk_delete_bundles'); ?>
+                <p>
+                    <button type="submit" class="button button-secondary" id="dc_bulk_delete_btn">Eliminar seleccionados</button>
+                    <span class="description">Puedes seleccionar uno o varios bundles desde la tabla.</span>
+                </p>
+
             <table class="widefat striped">
                 <thead>
                     <tr>
+                        <th class="check-column">
+                            <input type="checkbox" id="dc_bundles_select_all" aria-label="Seleccionar todos los bundles">
+                        </th>
                         <th>País</th>
                         <th>Nombre</th>
                         <th>SKU</th>
@@ -1364,11 +1425,14 @@ class DC_Recargas_Admin {
                 <tbody>
                 <?php if (empty($bundles)) : ?>
                     <tr>
-                        <td colspan="8">Aún no has agregado bundles.</td>
+                        <td colspan="9">Aún no has agregado bundles.</td>
                     </tr>
                 <?php else : ?>
                     <?php foreach ($bundles as $bundle) : ?>
                         <tr>
+                            <td class="check-column">
+                                <input type="checkbox" class="dc-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle['id'] ?? ''); ?>" aria-label="Seleccionar bundle <?php echo esc_attr($bundle['label'] ?? ''); ?>">
+                            </td>
                             <td><?php echo esc_html($bundle['country_iso'] ?? ''); ?></td>
                             <td><?php echo esc_html($bundle['label'] ?? ''); ?></td>
                             <td><?php echo esc_html($bundle['sku_code'] ?? ''); ?></td>
@@ -1405,6 +1469,7 @@ class DC_Recargas_Admin {
                 <?php endif; ?>
                 </tbody>
             </table>
+            </form>
 
             <div id="dc-edit-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-edit-modal-title" <?php echo empty($editing_bundle) ? 'hidden' : ''; ?>>
                 <div class="dc-edit-modal__backdrop" data-dc-edit-close></div>
@@ -1918,6 +1983,9 @@ class DC_Recargas_Admin {
                 var editFormEl = document.getElementById('dc_edit_bundle_form');
                 var editButtons = document.querySelectorAll('.dc-edit-bundle-btn');
                 var editCloseEls = document.querySelectorAll('[data-dc-edit-close]');
+                var selectAllBundlesEl = document.getElementById('dc_bundles_select_all');
+                var bulkDeleteFormEl = document.getElementById('dc_bulk_delete_bundles_form');
+                var bundleCheckboxEls = document.querySelectorAll('.dc-bundle-checkbox');
                 var initialEditingBundle = <?php echo wp_json_encode($editing_bundle ? $editing_bundle : null); ?>;
                 var editIdEl = document.getElementById('dc_edit_bundle_id');
                 var editCountryIsoEl = document.getElementById('dc_edit_country_iso');
@@ -1932,6 +2000,56 @@ class DC_Recargas_Admin {
                 var balanceResultEl = document.getElementById('dc_balance_result');
                 var lastBalanceAutoAt = 0;
                 var BALANCE_AUTO_REFRESH_MS = 30000;
+
+                function getSelectedBundleCount() {
+                    var count = 0;
+                    bundleCheckboxEls.forEach(function (checkboxEl) {
+                        if (checkboxEl.checked) {
+                            count++;
+                        }
+                    });
+                    return count;
+                }
+
+                function syncSelectAllState() {
+                    if (!selectAllBundlesEl || bundleCheckboxEls.length === 0) {
+                        return;
+                    }
+
+                    var selectedCount = getSelectedBundleCount();
+                    selectAllBundlesEl.checked = selectedCount > 0 && selectedCount === bundleCheckboxEls.length;
+                    selectAllBundlesEl.indeterminate = selectedCount > 0 && selectedCount < bundleCheckboxEls.length;
+                }
+
+                if (selectAllBundlesEl && bundleCheckboxEls.length > 0) {
+                    selectAllBundlesEl.addEventListener('change', function () {
+                        bundleCheckboxEls.forEach(function (checkboxEl) {
+                            checkboxEl.checked = selectAllBundlesEl.checked;
+                        });
+                        syncSelectAllState();
+                    });
+
+                    bundleCheckboxEls.forEach(function (checkboxEl) {
+                        checkboxEl.addEventListener('change', syncSelectAllState);
+                    });
+
+                    syncSelectAllState();
+                }
+
+                if (bulkDeleteFormEl) {
+                    bulkDeleteFormEl.addEventListener('submit', function (event) {
+                        var selectedCount = getSelectedBundleCount();
+                        if (selectedCount === 0) {
+                            event.preventDefault();
+                            window.alert('Selecciona al menos un bundle para eliminar.');
+                            return;
+                        }
+
+                        if (!window.confirm('¿Eliminar ' + selectedCount + ' bundle(s) seleccionados?')) {
+                            event.preventDefault();
+                        }
+                    });
+                }
 
                 function escHtml(str) {
                     if (str === null || str === undefined) {
@@ -1970,18 +2088,28 @@ class DC_Recargas_Admin {
                         var data = await response.json();
                         if (!response.ok || !data || !data.ok) {
                             var message = (data && data.message) ? data.message : 'No se pudo consultar el balance.';
+                            var dingCode = data && data.error && data.error.ding_error_code ? String(data.error.ding_error_code) : '';
+                            var dingContext = data && data.error && data.error.ding_error_context ? String(data.error.ding_error_context) : '';
+                            if (dingCode) {
+                                message += ' [' + dingCode + (dingContext ? ' / ' + dingContext : '') + ']';
+                            }
                             balanceResultEl.innerHTML = '<p class="dc-balance-panel__error">' + escHtml(message) + '</p>';
                             return;
                         }
 
                         var result = data.result || {};
-                        var balance = Number(result.Balance || 0);
-                        var currencyIso = String(result.CurrencyIso || 'EUR');
-                        var resultCode = Number(result.ResultCode || 0);
+                        var balance = Number(result.Balance);
+                        if (!isFinite(balance)) {
+                            balance = 0;
+                        }
+
+                        var currencyIso = String(result.CurrencyIso || 'USD');
+                        var hasResultCode = result.ResultCode !== undefined && result.ResultCode !== null && String(result.ResultCode) !== '';
+                        var resultCode = hasResultCode ? Number(result.ResultCode) : null;
                         var statusClass = balance > 0 ? 'is-ok' : 'is-warn';
                         var statusText = balance > 0 ? 'Saldo disponible' : 'Saldo en cero';
 
-                        if (resultCode !== 1) {
+                        if (hasResultCode && resultCode !== 1) {
                             statusClass = 'is-error';
                             statusText = 'Respuesta con incidencia';
                         }
@@ -1999,7 +2127,7 @@ class DC_Recargas_Admin {
                             + '  </div>'
                             + '  <span class="dc-balance-panel__status ' + statusClass + '">' + escHtml(statusText) + '</span>'
                             + '</div>'
-                            + '<p class="dc-balance-panel__meta">Actualizado: ' + hh + ':' + mm + ':' + ss + ' · Código de resultado: ' + escHtml(String(resultCode)) + '</p>';
+                            + '<p class="dc-balance-panel__meta">Actualizado: ' + hh + ':' + mm + ':' + ss + ' · Código de resultado: ' + escHtml(hasResultCode ? String(resultCode) : 'N/D') + ' · Forma de respuesta: ' + escHtml(String(result.RawShape || 'unknown')) + '</p>';
 
                         lastBalanceAutoAt = Date.now();
                     } catch (err) {
@@ -2614,6 +2742,8 @@ class DC_Recargas_Admin {
             'bundle_updated' => ['success', 'Bundle actualizado correctamente.'],
             'bundle_toggled' => ['success', $toggle_text],
             'bundle_deleted' => ['success', 'Bundle eliminado correctamente.'],
+            'bundle_bulk_deleted' => ['success', sprintf('Bundles eliminados correctamente: %d.', $count)],
+            'bundle_bulk_empty' => ['error', 'Selecciona al menos un bundle para eliminar.'],
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un bundle.'],
             'bundle_duplicate' => ['error', 'Ya existe otro bundle con el mismo país y SKU.'],
             'bundle_not_found' => ['error', 'No se encontró el bundle solicitado.'],
