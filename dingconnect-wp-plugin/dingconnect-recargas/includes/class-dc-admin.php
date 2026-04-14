@@ -413,6 +413,16 @@ class DC_Recargas_Admin {
         $csv_nonce = wp_create_nonce('dc_csv_search');
         $active_tab = 'tab_setup';
 
+        // Extract unique values from existing bundles for datalist dropdowns.
+        $dl_country_iso     = array_values(array_unique(array_filter(array_column($bundles, 'country_iso'))));
+        $dl_label           = array_values(array_unique(array_filter(array_column($bundles, 'label'))));
+        $dl_send_currency   = array_values(array_unique(array_filter(array_column($bundles, 'send_currency_iso'))));
+        $dl_provider_name   = array_values(array_unique(array_filter(array_column($bundles, 'provider_name'))));
+        sort($dl_country_iso);
+        sort($dl_label);
+        sort($dl_send_currency);
+        sort($dl_provider_name);
+
         $requested_tab = sanitize_key($_GET['dc_tab'] ?? '');
         if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_logs'], true)) {
             $active_tab = $requested_tab;
@@ -664,6 +674,38 @@ class DC_Recargas_Admin {
                     gap: 8px;
                 }
 
+                /* Keep datalist-enhanced fields visually aligned with the admin UI. */
+                .dc-combo-input {
+                    border: 1px solid #c9d6ea;
+                    border-radius: 8px;
+                    min-height: 34px;
+                    padding: 6px 10px;
+                    background-color: #fff;
+                }
+
+                .dc-combo-input.small-text {
+                    width: 120px;
+                }
+
+                .dc-combo-input.regular-text {
+                    width: min(420px, 100%);
+                    max-width: 100%;
+                }
+
+                .dc-combo-input:focus {
+                    border-color: #3b82f6;
+                    box-shadow: 0 0 0 1px #3b82f6;
+                    outline: 0;
+                }
+
+                .dc-edit-modal .form-table td .dc-combo-input.regular-text {
+                    width: min(100%, 480px);
+                }
+
+                datalist {
+                    display: none;
+                }
+
                 .dc-balance-panel {
                     display: none;
                     margin-top: 10px;
@@ -913,11 +955,11 @@ class DC_Recargas_Admin {
                 <table class="form-table" role="presentation">
                     <tr>
                         <th scope="row"><label for="dc_country_iso">País ISO</label></th>
-                        <td><input required type="text" id="dc_country_iso" name="country_iso" class="small-text" placeholder="CU" value=""></td>
+                        <td><input required type="text" id="dc_country_iso" name="country_iso" class="small-text dc-combo-input" placeholder="CU" value="" list="dc_dl_country_iso"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_label">Nombre comercial</label></th>
-                        <td><input required type="text" id="dc_label" name="label" class="regular-text" placeholder="Cubacel 500 CUP" value=""></td>
+                        <td><input required type="text" id="dc_label" name="label" class="regular-text dc-combo-input" placeholder="Cubacel 500 CUP" value="" list="dc_dl_label"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_sku_code">SKU Code</label></th>
@@ -929,11 +971,11 @@ class DC_Recargas_Admin {
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_send_currency_iso">Moneda</label></th>
-                        <td><input type="text" id="dc_send_currency_iso" name="send_currency_iso" class="small-text" value="USD"></td>
+                        <td><input type="text" id="dc_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="USD" list="dc_dl_send_currency"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_provider_name">Operador</label></th>
-                        <td><input type="text" id="dc_provider_name" name="provider_name" class="regular-text" placeholder="Cubacel" value=""></td>
+                        <td><input type="text" id="dc_provider_name" name="provider_name" class="regular-text dc-combo-input" placeholder="Cubacel" value="" list="dc_dl_provider_name"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_description">Beneficios recibidos</label></th>
@@ -1040,11 +1082,11 @@ class DC_Recargas_Admin {
                         <table class="form-table" role="presentation">
                             <tr>
                                 <th scope="row"><label for="dc_edit_country_iso">País ISO</label></th>
-                                <td><input required type="text" id="dc_edit_country_iso" name="country_iso" class="small-text" placeholder="CU" value="<?php echo esc_attr($editing_bundle['country_iso'] ?? ''); ?>"></td>
+                                <td><input required type="text" id="dc_edit_country_iso" name="country_iso" class="small-text dc-combo-input" placeholder="CU" value="<?php echo esc_attr($editing_bundle['country_iso'] ?? ''); ?>" list="dc_dl_country_iso"></td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_label">Nombre comercial</label></th>
-                                <td><input required type="text" id="dc_edit_label" name="label" class="regular-text" placeholder="Cubacel 500 CUP" value="<?php echo esc_attr($editing_bundle['label'] ?? ''); ?>"></td>
+                                <td><input required type="text" id="dc_edit_label" name="label" class="regular-text dc-combo-input" placeholder="Cubacel 500 CUP" value="<?php echo esc_attr($editing_bundle['label'] ?? ''); ?>" list="dc_dl_label"></td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_sku_code">SKU Code</label></th>
@@ -1056,11 +1098,11 @@ class DC_Recargas_Admin {
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_send_currency_iso">Moneda</label></th>
-                                <td><input type="text" id="dc_edit_send_currency_iso" name="send_currency_iso" class="small-text" value="<?php echo esc_attr($editing_bundle['send_currency_iso'] ?? 'USD'); ?>"></td>
+                                <td><input type="text" id="dc_edit_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="<?php echo esc_attr($editing_bundle['send_currency_iso'] ?? 'USD'); ?>" list="dc_dl_send_currency"></td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_provider_name">Operador</label></th>
-                                <td><input type="text" id="dc_edit_provider_name" name="provider_name" class="regular-text" placeholder="Cubacel" value="<?php echo esc_attr($editing_bundle['provider_name'] ?? ''); ?>"></td>
+                                <td><input type="text" id="dc_edit_provider_name" name="provider_name" class="regular-text dc-combo-input" placeholder="Cubacel" value="<?php echo esc_attr($editing_bundle['provider_name'] ?? ''); ?>" list="dc_dl_provider_name"></td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_description">Beneficios recibidos</label></th>
@@ -1493,6 +1535,29 @@ class DC_Recargas_Admin {
             </div>
 
         </div>
+
+        <?php // Shared datalists for combobox fields — populated from existing bundles. ?>
+        <datalist id="dc_dl_country_iso">
+            <?php foreach ($dl_country_iso as $v) : ?>
+                <option value="<?php echo esc_attr($v); ?>">
+            <?php endforeach; ?>
+        </datalist>
+        <datalist id="dc_dl_label">
+            <?php foreach ($dl_label as $v) : ?>
+                <option value="<?php echo esc_attr($v); ?>">
+            <?php endforeach; ?>
+        </datalist>
+        <datalist id="dc_dl_send_currency">
+            <?php foreach ($dl_send_currency as $v) : ?>
+                <option value="<?php echo esc_attr($v); ?>">
+            <?php endforeach; ?>
+        </datalist>
+        <datalist id="dc_dl_provider_name">
+            <?php foreach ($dl_provider_name as $v) : ?>
+                <option value="<?php echo esc_attr($v); ?>">
+            <?php endforeach; ?>
+        </datalist>
+
         <script>
             (function () {
                 var searchBtn = document.getElementById('dc_csv_search_btn');
@@ -1959,6 +2024,42 @@ class DC_Recargas_Admin {
                 }
 
                 loadInitialResults();
+            })();
+
+            // -- Datalist sync: ensure new values typed in any field are added
+            // -- to the shared datalist so other bundles see them immediately.
+            (function () {
+                var datalistMap = {
+                    dc_dl_country_iso: ['dc_country_iso', 'dc_edit_country_iso'],
+                    dc_dl_label: ['dc_label', 'dc_edit_label'],
+                    dc_dl_send_currency: ['dc_send_currency_iso', 'dc_edit_send_currency_iso'],
+                    dc_dl_provider_name: ['dc_provider_name', 'dc_edit_provider_name']
+                };
+
+                function addToDatalist(datalistId, value) {
+                    if (!value || !value.trim()) return;
+                    value = value.trim();
+                    var dl = document.getElementById(datalistId);
+                    if (!dl) return;
+                    var opts = dl.querySelectorAll('option');
+                    for (var i = 0; i < opts.length; i++) {
+                        if (opts[i].value === value) return; // already exists
+                    }
+                    var opt = document.createElement('option');
+                    opt.value = value;
+                    dl.appendChild(opt);
+                }
+
+                Object.keys(datalistMap).forEach(function (dlId) {
+                    datalistMap[dlId].forEach(function (inputId) {
+                        var el = document.getElementById(inputId);
+                        if (el) {
+                            el.addEventListener('change', function () {
+                                addToDatalist(dlId, el.value);
+                            });
+                        }
+                    });
+                });
             })();
         </script>
         <?php

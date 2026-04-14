@@ -84,6 +84,7 @@ Una iniciativa se considera lista cuando cumple:
 19. Corrección de catálogo multioperador: el endpoint `/products` del plugin ahora consulta productos por país cuando existe `country_iso`, normaliza precios y campos clave al contrato del frontend y completa `ProviderName` a partir de `ProviderCode`, evitando que operadores válidos queden ocultos en países como Colombia.
 19. Operación administrativa reforzada: se agregó endpoint interno `GET /wp-json/dingconnect/v1/balance` (solo administradores) y botón "Consultar balance ahora" en la pestaña de credenciales para validar saldo del agente desde WordPress.
 20. Mejora UX en pestaña Credenciales: el balance se actualiza automáticamente al entrar a la pestaña (con control de frecuencia) y se presenta como tarjeta amigable con monto, moneda y estado en lugar de JSON.
+21. Mejora UX en selección de operador del frontend: los operadores se muestran en una grilla uniforme con tarjetas de tamaño consistente para mantener alineación visual y espacio equivalente por operador.
 
 ## Backlog actualizado por impacto
 

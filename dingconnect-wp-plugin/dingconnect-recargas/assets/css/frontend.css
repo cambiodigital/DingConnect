@@ -248,18 +248,21 @@
 }
 
 .dc-provider-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
 }
 
 .dc-provider-btn {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 16px;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 60px;
+    gap: 8px;
+    padding: 10px 12px;
     border: 1.5px solid #e2e8f0;
-    border-radius: 999px;
+    border-radius: 12px;
     background: #ffffff;
     cursor: pointer;
     font-size: 13px;
@@ -285,7 +288,13 @@
 }
 
 .dc-provider-btn-name {
-    /* provider name */
+    flex: 1;
+    text-align: left;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .dc-provider-btn-count {
@@ -307,6 +316,12 @@
 .dc-provider-btn.active .dc-provider-btn-count {
     background: #bfdbfe;
     color: #1d4ed8;
+}
+
+@media (min-width: 640px) {
+    .dc-provider-buttons {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
 
 .dc-provider-filter[hidden] {
