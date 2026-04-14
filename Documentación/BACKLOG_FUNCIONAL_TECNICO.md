@@ -79,6 +79,7 @@ Una iniciativa se considera lista cuando cumple:
 14. Mejora UX en bundles guardados: la acción Editar ahora abre un modal inline sobre la tabla, sin salto de pantalla, para actualizar el bundle de forma rápida y contextual.
 15. Corrección de sincronización frontend-admin: el caché de búsqueda por país+número en el frontend ahora expira (TTL 10 segundos) para refrescar operadores y bundles nuevos sin recargar toda la página.
 16. Corrección de robustez en frontend público: el script del shortcode ahora valida nodos requeridos y maneja markup parcial sin lanzar errores de JavaScript como `Cannot set properties of null (setting 'innerHTML')` durante la búsqueda automática de paquetes.
+17. Corrección productiva en recargas: el backend REST ahora normaliza `AccountNumber` a solo dígitos (sin símbolo `+`) para cumplir validación regex de DingConnect en `SendTransfer`, y propaga el código HTTP real del error para diagnóstico operativo.
 
 ## Backlog actualizado por impacto
 

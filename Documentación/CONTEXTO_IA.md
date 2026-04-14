@@ -88,6 +88,7 @@ Namespace actual: `dingconnect/v1`
 10. Edición de bundles guardados optimizada: el botón Editar abre un modal inline en la pestaña de bundles guardados, evitando navegación o recarga visual entre pantallas para cambios rápidos.
 11. Sincronización frontend-admin mejorada: la deduplicación de búsquedas por país+número en el frontend ahora usa expiración (TTL de 10 segundos), permitiendo que bundles y operadores añadidos en admin aparezcan sin recargar la página completa.
 12. Frontend público más resiliente: el script del shortcode ahora resuelve elementos dentro del contenedor del formulario y valida nodos críticos para evitar errores por `innerHTML` en elementos nulos cuando hay markup incompleto o plantillas desactualizadas.
+13. Recargas directas más compatibles en producción: el backend REST del plugin normaliza `AccountNumber` en formato numérico puro (sin `+`) para cumplir validaciones regex de DingConnect y retorna el status HTTP real de errores de API al cliente.
 
 ## Hallazgos clave para futuras IA
 

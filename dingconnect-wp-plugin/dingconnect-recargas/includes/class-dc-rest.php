@@ -163,11 +163,17 @@ class DC_Recargas_REST {
         );
 
         if (is_wp_error($response)) {
+            $error_data = $response->get_error_data();
+            $status_code = 500;
+            if (is_array($error_data) && isset($error_data['status']) && is_numeric($error_data['status'])) {
+                $status_code = (int) $error_data['status'];
+            }
+
             return new WP_REST_Response([
                 'ok' => false,
                 'message' => $response->get_error_message(),
-                'error' => $response->get_error_data(),
-            ], 500);
+                'error' => $error_data,
+            ], $status_code);
         }
 
         return rest_ensure_response([
@@ -234,12 +240,8 @@ class DC_Recargas_REST {
     }
 
     public function sanitize_phone($phone) {
-        $raw = preg_replace('/[^\d+]/', '', (string) $phone);
-        if (strpos($raw, '+') !== 0) {
-            $raw = '+' . ltrim($raw, '+');
-        }
-
-        return $raw;
+        // DingConnect valida AccountNumber por regex y rechaza simbolos como '+'.
+        return preg_replace('/\D+/', '', (string) $phone);
     }
 
     private function check_rate_limit($action, $limit_per_minute = 10) {
