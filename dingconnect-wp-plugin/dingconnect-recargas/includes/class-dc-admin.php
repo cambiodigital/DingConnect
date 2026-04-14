@@ -24,6 +24,8 @@ class DC_Recargas_Admin {
         add_action('wp_ajax_dc_search_csv_products', [$this, 'ajax_search_csv_products']);
         add_action('wp_ajax_dc_create_bundle_from_csv', [$this, 'ajax_create_bundle_from_csv']);
         add_action('admin_post_dc_upload_csv', [$this, 'handle_upload_csv']);
+        add_action('wp_ajax_dc_get_transfer_logs', [$this, 'ajax_get_transfer_logs']);
+        add_action('admin_post_dc_clear_logs', [$this, 'handle_clear_logs']);
     }
 
     public function register_menu() {
@@ -412,7 +414,7 @@ class DC_Recargas_Admin {
         $active_tab = 'tab_setup';
 
         $requested_tab = sanitize_key($_GET['dc_tab'] ?? '');
-        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved'], true)) {
+        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_logs'], true)) {
             $active_tab = $requested_tab;
         }
 
@@ -680,6 +682,7 @@ class DC_Recargas_Admin {
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_setup">Credenciales</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_catalog">Catálogo y alta</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_saved">Bundles guardados</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_logs">Registros</button>
                 </h2>
 
                 <section id="dc-tab-setup" class="dc-tab-panel" data-dc-tab-panel="tab_setup">
@@ -1000,6 +1003,409 @@ class DC_Recargas_Admin {
             </div>
 
                 </section>
+
+                <section id="dc-tab-logs" class="dc-tab-panel" data-dc-tab-panel="tab_logs">
+                    <h2>Registros y diagnóstico</h2>
+                    <p>Historial de intentos de recarga, pagos exitosos, errores y respuestas de la API. Los números de teléfono se almacenan enmascarados por privacidad.</p>
+
+                    <?php
+                    $logs_nonce = wp_create_nonce('dc_get_logs');
+                    $log_stats = $this->get_transfer_log_stats();
+                    ?>
+
+                    <div class="dc-logs-summary">
+                        <div class="dc-logs-stat">
+                            <strong><?php echo (int) $log_stats['total']; ?></strong>
+                            <span>Total registros</span>
+                        </div>
+                        <div class="dc-logs-stat dc-logs-stat--success">
+                            <strong><?php echo (int) $log_stats['success']; ?></strong>
+                            <span>Exitosos</span>
+                        </div>
+                        <div class="dc-logs-stat dc-logs-stat--error">
+                            <strong><?php echo (int) $log_stats['error']; ?></strong>
+                            <span>Errores</span>
+                        </div>
+                        <div class="dc-logs-stat dc-logs-stat--validate">
+                            <strong><?php echo (int) $log_stats['validate']; ?></strong>
+                            <span>Simulados</span>
+                        </div>
+                    </div>
+
+                    <div class="dc-logs-toolbar">
+                        <input type="text" id="dc-logs-search" class="regular-text" placeholder="Buscar por teléfono o SKU...">
+                        <select id="dc-logs-status">
+                            <option value="">Todos los estados</option>
+                            <option value="TransferSuccessful">Exitosos</option>
+                            <option value="validate">Simulados (validate)</option>
+                            <option value="error">Errores</option>
+                            <option value="unknown">Desconocido</option>
+                        </select>
+                        <input type="date" id="dc-logs-date-from" title="Desde">
+                        <input type="date" id="dc-logs-date-to" title="Hasta">
+                        <button type="button" class="button" id="dc-logs-search-btn">Filtrar</button>
+                        <button type="button" class="button" id="dc-logs-reset-btn">Limpiar filtros</button>
+                    </div>
+
+                    <div id="dc-logs-result">
+                        <p class="dc-logs-loading">Cargando registros...</p>
+                    </div>
+
+                    <div class="dc-logs-footer">
+                        <div id="dc-logs-pagination"></div>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('¿Eliminar todos los registros de transferencias? Esta acción no se puede deshacer.');">
+                            <input type="hidden" name="action" value="dc_clear_logs">
+                            <?php wp_nonce_field('dc_clear_logs'); ?>
+                            <button type="submit" class="button dc-logs-clear-btn">Borrar todos los registros</button>
+                        </form>
+                    </div>
+
+                    <style>
+                        .dc-logs-summary {
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 12px;
+                            margin-bottom: 18px;
+                        }
+
+                        .dc-logs-stat {
+                            background: #f8fafc;
+                            border: 1px solid #e2e8f0;
+                            border-radius: 10px;
+                            padding: 12px 18px;
+                            min-width: 110px;
+                            text-align: center;
+                        }
+
+                        .dc-logs-stat strong {
+                            display: block;
+                            font-size: 28px;
+                            line-height: 1.1;
+                            color: #0f172a;
+                        }
+
+                        .dc-logs-stat span {
+                            font-size: 12px;
+                            color: #64748b;
+                            text-transform: uppercase;
+                            letter-spacing: 0.04em;
+                        }
+
+                        .dc-logs-stat--success { border-color: #86efac; background: #f0fdf4; }
+                        .dc-logs-stat--success strong { color: #15803d; }
+                        .dc-logs-stat--error { border-color: #fca5a5; background: #fef2f2; }
+                        .dc-logs-stat--error strong { color: #dc2626; }
+                        .dc-logs-stat--validate { border-color: #fde68a; background: #fffbeb; }
+                        .dc-logs-stat--validate strong { color: #b45309; }
+
+                        .dc-logs-toolbar {
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 8px;
+                            align-items: center;
+                            margin-bottom: 14px;
+                        }
+
+                        .dc-logs-toolbar input[type="text"],
+                        .dc-logs-toolbar input[type="date"],
+                        .dc-logs-toolbar select {
+                            border: 1px solid #c9d6ea;
+                            border-radius: 8px;
+                            padding: 5px 10px;
+                            font-size: 13px;
+                        }
+
+                        .dc-logs-toolbar input[type="text"] {
+                            min-width: 200px;
+                        }
+
+                        #dc-logs-result table {
+                            width: 100%;
+                            border-collapse: collapse;
+                        }
+
+                        #dc-logs-result th,
+                        #dc-logs-result td {
+                            text-align: left;
+                            padding: 8px 10px;
+                            font-size: 13px;
+                            border-bottom: 1px solid #e9eef5;
+                            vertical-align: top;
+                        }
+
+                        #dc-logs-result th {
+                            background: #f1f5f9;
+                            font-weight: 600;
+                            color: #334155;
+                        }
+
+                        #dc-logs-result tr:hover td {
+                            background: #f8faff;
+                        }
+
+                        .dc-log-badge {
+                            display: inline-block;
+                            padding: 2px 8px;
+                            border-radius: 999px;
+                            font-size: 11px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            letter-spacing: 0.04em;
+                        }
+
+                        .dc-log-badge--success { background: #dcfce7; color: #15803d; }
+                        .dc-log-badge--error { background: #fee2e2; color: #dc2626; }
+                        .dc-log-badge--validate { background: #fef9c3; color: #b45309; }
+                        .dc-log-badge--unknown { background: #f1f5f9; color: #64748b; }
+
+                        .dc-logs-expand-btn {
+                            background: none;
+                            border: none;
+                            color: #0f4aa3;
+                            cursor: pointer;
+                            font-size: 12px;
+                            padding: 0;
+                            text-decoration: underline;
+                        }
+
+                        .dc-logs-raw {
+                            display: none;
+                            margin-top: 6px;
+                            background: #0f172a;
+                            color: #e2e8f0;
+                            border-radius: 8px;
+                            padding: 10px;
+                            font-size: 11px;
+                            font-family: monospace;
+                            white-space: pre-wrap;
+                            word-break: break-all;
+                            max-height: 260px;
+                            overflow: auto;
+                        }
+
+                        .dc-logs-loading {
+                            color: #64748b;
+                            font-style: italic;
+                            padding: 20px 0;
+                        }
+
+                        .dc-logs-footer {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            flex-wrap: wrap;
+                            gap: 12px;
+                            margin-top: 16px;
+                        }
+
+                        #dc-logs-pagination {
+                            display: flex;
+                            gap: 6px;
+                            flex-wrap: wrap;
+                        }
+
+                        #dc-logs-pagination button {
+                            min-width: 34px;
+                        }
+
+                        #dc-logs-pagination button.is-current {
+                            background: #0f4aa3;
+                            border-color: #0f4aa3;
+                            color: #fff;
+                        }
+
+                        .dc-logs-clear-btn {
+                            color: #dc2626 !important;
+                            border-color: #fca5a5 !important;
+                        }
+
+                        .dc-logs-clear-btn:hover {
+                            background: #fef2f2 !important;
+                        }
+
+                        @media (max-width: 782px) {
+                            .dc-logs-toolbar {
+                                flex-direction: column;
+                                align-items: stretch;
+                            }
+
+                            .dc-logs-toolbar input[type="text"] {
+                                min-width: 0;
+                            }
+                        }
+                    </style>
+
+                    <script>
+                    (function () {
+                        var searchEl    = document.getElementById('dc-logs-search');
+                        var statusEl    = document.getElementById('dc-logs-status');
+                        var dateFromEl  = document.getElementById('dc-logs-date-from');
+                        var dateToEl    = document.getElementById('dc-logs-date-to');
+                        var searchBtn   = document.getElementById('dc-logs-search-btn');
+                        var resetBtn    = document.getElementById('dc-logs-reset-btn');
+                        var resultEl    = document.getElementById('dc-logs-result');
+                        var paginEl     = document.getElementById('dc-logs-pagination');
+                        var logsNonce   = '<?php echo esc_js($logs_nonce); ?>';
+                        var currentPage = 1;
+
+                        function badgeClass(status) {
+                            if (!status) return 'dc-log-badge--unknown';
+                            var s = status.toLowerCase();
+                            if (s === 'transfersuccessful') return 'dc-log-badge--success';
+                            if (s === 'error') return 'dc-log-badge--error';
+                            if (s.indexOf('validate') !== -1) return 'dc-log-badge--validate';
+                            return 'dc-log-badge--unknown';
+                        }
+
+                        function renderTable(logs) {
+                            if (!logs || !logs.length) {
+                                resultEl.innerHTML = '<p style="color:#64748b;padding:20px 0;">No se encontraron registros con los filtros aplicados.</p>';
+                                return;
+                            }
+
+                            var html = '<table><thead><tr>'
+                                + '<th>Fecha</th>'
+                                + '<th>Teléfono</th>'
+                                + '<th>SKU</th>'
+                                + '<th>Monto</th>'
+                                + '<th>Estado</th>'
+                                + '<th>Ref. distribuidor</th>'
+                                + '<th>Ref. transferencia</th>'
+                                + '<th>Respuesta</th>'
+                                + '</tr></thead><tbody>';
+
+                            logs.forEach(function (log, i) {
+                                var badge = '<span class="dc-log-badge ' + badgeClass(log.status) + '">' + esc(log.status || 'unknown') + '</span>';
+                                var rawId = 'dc-log-raw-' + i;
+                                html += '<tr>'
+                                    + '<td>' + esc(log.date) + '</td>'
+                                    + '<td>' + esc(log.account_number) + '</td>'
+                                    + '<td>' + esc(log.sku_code) + '</td>'
+                                    + '<td>' + esc(log.send_value) + ' ' + esc(log.currency) + '</td>'
+                                    + '<td>' + badge + '</td>'
+                                    + '<td style="font-size:11px;word-break:break-all;">' + esc(log.distributor_ref) + '</td>'
+                                    + '<td style="font-size:11px;word-break:break-all;">' + esc(log.transfer_ref) + '</td>'
+                                    + '<td>'
+                                        + '<button type="button" class="dc-logs-expand-btn" data-target="' + rawId + '">Ver respuesta</button>'
+                                        + '<pre id="' + rawId + '" class="dc-logs-raw">' + esc(log.raw_response) + '</pre>'
+                                    + '</td>'
+                                    + '</tr>';
+                            });
+
+                            html += '</tbody></table>';
+                            resultEl.innerHTML = html;
+
+                            resultEl.querySelectorAll('.dc-logs-expand-btn').forEach(function (btn) {
+                                btn.addEventListener('click', function () {
+                                    var pre = document.getElementById(btn.getAttribute('data-target'));
+                                    if (!pre) return;
+                                    var open = pre.style.display === 'block';
+                                    pre.style.display = open ? 'none' : 'block';
+                                    btn.textContent = open ? 'Ver respuesta' : 'Ocultar';
+                                });
+                            });
+                        }
+
+                        function renderPagination(page, totalPages) {
+                            paginEl.innerHTML = '';
+                            if (totalPages <= 1) return;
+
+                            for (var p = 1; p <= totalPages; p++) {
+                                (function (pg) {
+                                    var btn = document.createElement('button');
+                                    btn.type = 'button';
+                                    btn.className = 'button' + (pg === page ? ' is-current' : '');
+                                    btn.textContent = pg;
+                                    btn.addEventListener('click', function () {
+                                        currentPage = pg;
+                                        load();
+                                    });
+                                    paginEl.appendChild(btn);
+                                })(p);
+                            }
+                        }
+
+                        function esc(str) {
+                            if (str === null || str === undefined) return '';
+                            return String(str)
+                                .replace(/&/g, '&amp;')
+                                .replace(/</g, '&lt;')
+                                .replace(/>/g, '&gt;')
+                                .replace(/"/g, '&quot;');
+                        }
+
+                        async function load() {
+                            resultEl.innerHTML = '<p class="dc-logs-loading">Cargando registros...</p>';
+                            paginEl.innerHTML = '';
+
+                            try {
+                                var params = new URLSearchParams({
+                                    action: 'dc_get_transfer_logs',
+                                    nonce: logsNonce,
+                                    search: searchEl ? searchEl.value : '',
+                                    status: statusEl ? statusEl.value : '',
+                                    date_from: dateFromEl ? dateFromEl.value : '',
+                                    date_to: dateToEl ? dateToEl.value : '',
+                                    paged: currentPage,
+                                });
+
+                                var resp = await fetch(ajaxurl + '?' + params.toString());
+                                var data = await resp.json();
+
+                                if (!data || !data.success) {
+                                    throw new Error((data && data.data && data.data.message) || 'Error al cargar registros.');
+                                }
+
+                                renderTable(data.data.logs);
+                                renderPagination(data.data.page, data.data.total_pages);
+                            } catch (err) {
+                                resultEl.innerHTML = '<p style="color:#dc2626;">' + esc(err.message || 'Error inesperado.') + '</p>';
+                            }
+                        }
+
+                        if (searchBtn) {
+                            searchBtn.addEventListener('click', function () {
+                                currentPage = 1;
+                                load();
+                            });
+                        }
+
+                        if (resetBtn) {
+                            resetBtn.addEventListener('click', function () {
+                                if (searchEl) searchEl.value = '';
+                                if (statusEl) statusEl.value = '';
+                                if (dateFromEl) dateFromEl.value = '';
+                                if (dateToEl) dateToEl.value = '';
+                                currentPage = 1;
+                                load();
+                            });
+                        }
+
+                        if (searchEl) {
+                            searchEl.addEventListener('keydown', function (e) {
+                                if (e.key === 'Enter') { currentPage = 1; load(); }
+                            });
+                        }
+
+                        // Auto-load when the tab becomes active.
+                        var logsLoaded = false;
+                        document.addEventListener('dc:tab-activated', function (e) {
+                            if (e.detail === 'tab_logs' && !logsLoaded) {
+                                logsLoaded = true;
+                                load();
+                            }
+                        });
+
+                        // Also load if already the active tab on page load.
+                        document.addEventListener('DOMContentLoaded', function () {
+                            if (document.querySelector('[data-dc-tab-panel="tab_logs"].is-active')) {
+                                logsLoaded = true;
+                                load();
+                            }
+                        });
+                    })();
+                    </script>
+                </section>
             </div>
 
         </div>
@@ -1053,6 +1459,8 @@ class DC_Recargas_Admin {
                         url.searchParams.set('dc_tab', tabId);
                         window.history.replaceState({}, '', url.toString());
                     }
+
+                    document.dispatchEvent(new CustomEvent('dc:tab-activated', { detail: tabId }));
                 }
 
                 function updateEditParam(bundleId) {
@@ -1812,5 +2220,185 @@ class DC_Recargas_Admin {
         }
 
         return is_array($bundles[$index]) ? $bundles[$index] : null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Logs tab — AJAX handlers
+    // -------------------------------------------------------------------------
+
+    /**
+     * Returns aggregate counts per status for the stats summary cards.
+     *
+     * @return array{total:int, success:int, error:int, validate:int}
+     */
+    private function get_transfer_log_stats(): array {
+        $counts = [
+            'total'    => 0,
+            'success'  => 0,
+            'error'    => 0,
+            'validate' => 0,
+        ];
+
+        $raw = wp_count_posts('dc_transfer_log');
+        $counts['total'] = (int) ($raw->publish ?? 0);
+
+        // Aggregate by status meta. Running three small queries is fast enough
+        // for the number of log entries expected in this plugin.
+        foreach (['TransferSuccessful' => 'success', 'error' => 'error', 'validate' => 'validate'] as $status => $key) {
+            $q = new WP_Query([
+                'post_type'      => 'dc_transfer_log',
+                'post_status'    => 'publish',
+                'posts_per_page' => -1,
+                'fields'         => 'ids',
+                'no_found_rows'  => false,
+                'meta_query'     => [
+                    [
+                        'key'     => '_dc_status',
+                        'value'   => $status,
+                        'compare' => '=',
+                    ],
+                ],
+            ]);
+            $counts[$key] = (int) $q->found_posts;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * AJAX handler: wp_ajax_dc_get_transfer_logs
+     * Accepts GET params: nonce, search, status, date_from, date_to, paged.
+     * Returns JSON with paginated log items and metadata.
+     */
+    public function ajax_get_transfer_logs(): void {
+        check_ajax_referer('dc_get_logs', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Sin permiso.'], 403);
+        }
+
+        $per_page = 20;
+        $paged    = max(1, (int) ($_GET['paged'] ?? 1));
+        $search   = sanitize_text_field($_GET['search'] ?? '');
+        $status   = sanitize_text_field($_GET['status'] ?? '');
+        $date_from = sanitize_text_field($_GET['date_from'] ?? '');
+        $date_to   = sanitize_text_field($_GET['date_to'] ?? '');
+
+        $args = [
+            'post_type'      => 'dc_transfer_log',
+            'post_status'    => 'publish',
+            'posts_per_page' => $per_page,
+            'paged'          => $paged,
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+        ];
+
+        // Status filter.
+        $status_clause = [];
+        if ($status !== '') {
+            $status_clause = [
+                'key'     => '_dc_status',
+                'value'   => $status,
+                'compare' => '=',
+            ];
+        }
+
+        // Search: match against account_number, sku_code, distributor_ref, or transfer_ref.
+        // Wrapped in a nested OR clause so the status filter (AND) still applies.
+        if ($search !== '') {
+            $search_clause = [
+                'relation' => 'OR',
+            ];
+            foreach (['_dc_account_number', '_dc_sku_code', '_dc_distributor_ref', '_dc_transfer_ref'] as $meta_key) {
+                $search_clause[] = [
+                    'key'     => $meta_key,
+                    'value'   => $search,
+                    'compare' => 'LIKE',
+                ];
+            }
+
+            if ($status_clause) {
+                $args['meta_query'] = [
+                    'relation' => 'AND',
+                    $status_clause,
+                    $search_clause,
+                ];
+            } else {
+                $args['meta_query'] = $search_clause;
+            }
+        } elseif ($status_clause) {
+            $args['meta_query'] = [$status_clause];
+        }
+
+        // Date range filter.
+        if ($date_from !== '' || $date_to !== '') {
+            $date_query = ['inclusive' => true];
+            if ($date_from !== '') {
+                $date_query['after'] = $date_from . ' 00:00:00';
+            }
+            if ($date_to !== '') {
+                $date_query['before'] = $date_to . ' 23:59:59';
+            }
+            $args['date_query'] = [$date_query];
+        }
+
+        $query = new WP_Query($args);
+        $logs  = [];
+
+        foreach ($query->posts as $post) {
+            $raw = get_post_meta($post->ID, '_dc_raw_response', true);
+            // Pretty-print the stored JSON for readability in the UI.
+            $decoded = json_decode($raw, true);
+            $pretty  = $decoded !== null ? json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : (string) $raw;
+
+            $logs[] = [
+                'id'              => $post->ID,
+                'date'            => get_the_date('d/m/Y H:i:s', $post),
+                'account_number'  => (string) get_post_meta($post->ID, '_dc_account_number', true),
+                'sku_code'        => (string) get_post_meta($post->ID, '_dc_sku_code', true),
+                'send_value'      => (string) get_post_meta($post->ID, '_dc_send_value', true),
+                'currency'        => (string) get_post_meta($post->ID, '_dc_currency', true),
+                'distributor_ref' => (string) get_post_meta($post->ID, '_dc_distributor_ref', true),
+                'transfer_ref'    => (string) get_post_meta($post->ID, '_dc_transfer_ref', true),
+                'status'          => (string) get_post_meta($post->ID, '_dc_status', true),
+                'raw_response'    => $pretty,
+            ];
+        }
+
+        wp_send_json_success([
+            'logs'        => $logs,
+            'total'       => (int) $query->found_posts,
+            'total_pages' => (int) $query->max_num_pages,
+            'page'        => $paged,
+        ]);
+    }
+
+    /**
+     * admin-post handler: admin_post_dc_clear_logs
+     * Permanently deletes all dc_transfer_log posts.
+     */
+    public function handle_clear_logs(): void {
+        check_admin_referer('dc_clear_logs');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Sin permiso.', 'dingconnect-recargas'), 403);
+        }
+
+        $all = get_posts([
+            'post_type'      => 'dc_transfer_log',
+            'post_status'    => 'any',
+            'posts_per_page' => -1,
+            'fields'         => 'ids',
+        ]);
+
+        foreach ($all as $post_id) {
+            wp_delete_post((int) $post_id, true);
+        }
+
+        wp_redirect(add_query_arg([
+            'page'   => 'dingconnect-recargas',
+            'dc_tab' => 'tab_logs',
+        ], admin_url('admin.php')));
+        exit;
     }
 }

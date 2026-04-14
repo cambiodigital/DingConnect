@@ -149,7 +149,15 @@
         if (!state.country) return '';
         var local = String(phoneEl.value || '').replace(/\D/g, '');
         if (!local || local.length < 5) return '';
-        return '+' + state.country.dial + local;
+        
+        // Si el usuario ingresó el número completo con el código de país, quitarlo
+        // Ej: usuario escribe "573001234567" pero debe ser solo "73001234567" para Cuba (53)
+        var dial = String(state.country.dial);
+        if (local.startsWith(dial)) {
+            local = local.substring(dial.length);
+        }
+        
+        return '+' + dial + local;
     }
 
     function scheduleAutoSearch() {
