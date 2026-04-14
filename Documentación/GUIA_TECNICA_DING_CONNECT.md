@@ -350,3 +350,95 @@ Desde abril de 2026, el plugin incorpora dos capacidades para acelerar operació
 - Evitar duplicados de SKU por país.
 - Priorizar productos con descripción y vigencia claras.
 - Reimportar catálogo cuando DingConnect publique nuevos SKUs o retire productos.
+
+## 17. Empaquetado ZIP para actualizar plugin en WordPress
+
+Para actualizar el plugin por carga manual en WordPress, el ZIP debe contener una carpeta raíz llamada `dingconnect-recargas` y, dentro de ella, el archivo principal `dingconnect-recargas.php`.
+
+### Comando recomendado (PowerShell)
+
+```powershell
+Set-Location 'x:\Proyectos\DingConnect'
+$source = 'x:\Proyectos\DingConnect\dingconnect-wp-plugin\dingconnect-recargas'
+$dest = 'x:\Proyectos\DingConnect\dingconnect-recargas-wp-update.zip'
+Compress-Archive -Path $source -DestinationPath $dest -Force
+```
+
+### Validación rápida
+
+Antes de subir el ZIP, validar que contiene esta ruta:
+
+- `dingconnect-recargas/dingconnect-recargas.php`
+
+Si no está esa ruta, WordPress puede mostrar errores como "El archivo del plugin no existe" o no reconocer correctamente el paquete de actualización.
+
+### Variante con carpeta contenedora (compatibilidad)
+
+Si la instalación de WordPress fue creada originalmente con una carpeta contenedora adicional, usar este formato alternativo:
+
+- `dingconnect-wp-plugin/dingconnect-recargas/dingconnect-recargas.php`
+
+Comando de referencia:
+
+```powershell
+Set-Location 'x:\Proyectos\DingConnect'
+$buildRoot = 'x:\Proyectos\DingConnect\_zip_build'
+$src = 'x:\Proyectos\DingConnect\dingconnect-wp-plugin\dingconnect-recargas'
+New-Item -ItemType Directory -Path "$buildRoot\dingconnect-wp-plugin" -Force | Out-Null
+Copy-Item -Path $src -Destination "$buildRoot\dingconnect-wp-plugin\dingconnect-recargas" -Recurse -Force
+Compress-Archive -Path "$buildRoot\dingconnect-wp-plugin" -DestinationPath 'x:\Proyectos\DingConnect\dingconnect-recargas-wp-update-wrapper.zip' -Force
+```
+
+Usar este paquete solo si el plugin activo en WordPress depende de esa estructura de carpetas.
+
+### Variante exacta por URL de activación
+
+Si la URL de activación contiene un path como:
+
+- `plugin=dingconnect-recargas-wp-update/dingconnect-recargas/dingconnect-recargas.php`
+
+entonces el ZIP debe respetar exactamente esa estructura interna:
+
+- `dingconnect-recargas-wp-update/dingconnect-recargas/dingconnect-recargas.php`
+
+Archivo de salida recomendado para este caso:
+
+- `x:\Proyectos\DingConnect\dingconnect-recargas-wp-update-exact.zip`
+
+## 18. Troubleshooting WordPress: "El archivo del plugin no existe" y error 500 al activar
+
+Si en cada intento la URL de activación agrega un nivel más de carpetas (por ejemplo `.../dingconnect-recargas-wp-update-exact2/...`), se está subiendo el plugin con raíces anidadas y WordPress termina activando rutas incorrectas.
+
+Además, un error `500` al activar suele indicar conflicto por copias duplicadas del mismo plugin (mismas clases PHP cargadas desde carpetas distintas).
+
+### Procedimiento recomendado
+
+1. Eliminar del servidor todas las carpetas antiguas del plugin bajo `wp-content/plugins/` (por ejemplo `dingconnect-recargas*`).
+2. Subir solo un paquete limpio con estructura canónica:
+  - `dingconnect-recargas/dingconnect-recargas.php`
+3. Activar únicamente esa instalación.
+
+### Paquete canónico del workspace
+
+- `x:\Proyectos\DingConnect\dingconnect-recargas-clean.zip`
+
+### Solución definitiva recomendada (anti-anidación)
+
+Cuando WordPress empieza a concatenar carpetas en `plugin=...`, empaquetar así:
+
+1. Nombre del ZIP: `dingconnect-recargas.zip`.
+2. Contenido del ZIP: archivos del plugin en la raíz (sin carpeta contenedora).
+3. Resultado esperado en activación: `plugin=dingconnect-recargas/dingconnect-recargas.php`.
+
+Ruta de salida recomendada:
+
+- `x:\Proyectos\DingConnect\dingconnect-recargas.zip`
+
+### Hallazgo técnico (14-04-2026)
+
+Se detectó fatal de activación por `require_once` de `includes/class-dc-api.php` cuando la estructura instalada en el servidor no coincide con la esperada.
+
+Mitigación aplicada en el plugin:
+
+1. Fallback de carga para detectar subcarpeta anidada con `glob("*/includes/class-dc-api.php")`.
+2. Si no se encuentran archivos requeridos, mostrar aviso en admin y evitar fatal en activación.

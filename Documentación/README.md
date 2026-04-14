@@ -29,6 +29,17 @@ Esta carpeta concentra el contexto técnico y funcional del proyecto para facili
 - `../dingconnect-wp-plugin/dingconnect-recargas/`: plugin WordPress actual (admin, REST y frontend).
 - `../Products-with-sku.csv`: catálogo exportado desde DingConnect con columna `SkuCode`.
 
+## Estado actual del plugin WordPress
+
+En abril de 2026, el plugin ya contempla:
+
+- Formulario público por shortcode.
+- Catálogo curado y creación de bundles desde CSV.
+- Endpoints REST propios bajo `dingconnect/v1`.
+- Modo directo de transferencia.
+- Integración opcional con WooCommerce para carrito y checkout.
+- Logs internos de transferencias y controles básicos de rate limiting.
+
 ## Fuentes oficiales
 
 - API Guide: <https://www.dingconnect.com/Api/Description>

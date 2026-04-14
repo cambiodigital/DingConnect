@@ -1,8 +1,10 @@
 # Handoff — Estado actual del proyecto Cubakilos / DingConnect
 
-> **Propósito de este archivo:** Permitir que cualquier IA o desarrollador continúe el trabajo desde donde quedó, sin perder contexto. Última actualización: 13 de abril de 2026.
+> **Propósito de este archivo:** Permitir que cualquier IA o desarrollador continúe el trabajo desde donde quedó, sin perder contexto. Última actualización: 14 de abril de 2026.
 
 > **Nota de organización (14 de abril de 2026):** La ruta de lectura recomendada para nuevas sesiones está en `Documentación/CONTEXTO_IA.md` y `Documentación/BACKLOG_FUNCIONAL_TECNICO.md`. Este handoff se conserva como histórico.
+
+> **Actualización operativa (14 de abril de 2026):** El foco vigente ya no es solo el prototipo `recargas.html`. El plugin WordPress incorpora integración opcional con WooCommerce, endpoint `add-to-cart`, logs de transferencias, caché de productos y rate limiting básico. La documentación operativa principal quedó actualizada en `dingconnect-wp-plugin/dingconnect-recargas/MANUAL-USUARIO.md`, `README-INSTALACION.md` y en `Documentación/`.
 
 ---
 

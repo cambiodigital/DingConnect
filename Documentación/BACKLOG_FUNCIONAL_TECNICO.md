@@ -65,10 +65,77 @@ Una iniciativa se considera lista cuando cumple:
 2. Buscador sobre `Products-with-sku.csv` integrado en admin con selector de resultados para autocompletar alta de bundles.
 3. Prevención de duplicados al importar presets por clave `country_iso + sku_code`.
 4. Creación automática de bundle desde resultado CSV seleccionado (publicación inmediata opcional).
+5. Integración opcional con WooCommerce para anadir al carrito, checkout obligatorio y despacho al confirmar el pago.
+6. Registro interno de transferencias y normalización backend de respuestas `Items`/`Result`.
+7. Rate limiting básico por IP en endpoints operativos del plugin.
+8. Reorganización de la interfaz del panel admin en pestañas: sección 1 junto con uso en frontend (6) en pestaña propia, secciones 2-3-4 en pestaña operativa y sección 5 en pestaña especial para bundles guardados.
+9. Gestión operativa de bundles guardados en admin con edición, activación/desactivación y eliminación.
+8. Mejora UX en buscador CSV del panel admin: carga automática inicial de 10 resultados de países principales (CO, ES, MX, CU) y mensaje explícito en resultados cuando no hay CSV cargado.
+9. Mejora UX en buscador CSV del panel admin: selector de país dinámico con todos los países detectados en el CSV cargado y búsqueda automática al escribir o cambiar país, sin depender del botón Buscar.
+10. Mejora UX en frontend público de recargas: auto-búsqueda de paquetes al escribir el número móvil o cambiar el país, con debounce y sin necesidad de pulsar el botón Buscar paquetes.
+11. Optimización del frontend público: deduplicación de consultas para no repetir llamadas al endpoint cuando país y número no cambiaron o ya hay una consulta idéntica en curso.
+12. Actualización de release y branding del plugin: versión 1.2.0, créditos visibles de Cambiodigital.net y personalización para cubakilos.com en cabecera del plugin, panel admin, frontend y manuales del plugin.
 
 ## Backlog actualizado por impacto
 
 1. Prioridad P2 - Administración de bundles más completa.
    - Estado: parcialmente completado.
-   - Completado: importación desde CSV filtrado y catálogo inicial multi-país.
-   - Pendiente: edición de bundles existentes y flujo de actualización masiva.
+   - Completado: importación desde CSV filtrado, catálogo inicial multi-país, edición de bundles y activación/desactivación por registro.
+   - Pendiente: flujo de actualización masiva.
+2. Prioridad P1 - Flujo WooCommerce y post-pago.
+   - Estado: parcialmente completado.
+   - Completado: add-to-cart, checkout obligatorio, creación de producto base, ejecución de transferencia al confirmar pedido y notas en orden.
+   - Pendiente: validación completa con pasarela real, manejo fino de estados de pedido y reconciliación con `ListTransferRecords`.
+3. Prioridad P2 - Observabilidad operativa.
+   - Estado: parcialmente completado.
+   - Completado: logs internos de transferencias.
+   - Pendiente: filtros, búsqueda y panel de soporte sobre logs.
+
+## Nota operativa de despliegue (14-04-2026)
+
+Para actualización manual del plugin en WordPress, el ZIP debe construirse desde la carpeta padre `dingconnect-wp-plugin` apuntando a la carpeta `dingconnect-recargas` como origen, de forma que el paquete resultante contenga:
+
+- `dingconnect-recargas/dingconnect-recargas.php`
+
+Referencia de salida recomendada:
+
+- `x:\Proyectos\DingConnect\dingconnect-recargas-wp-update.zip`
+
+Alternativa de compatibilidad (si WordPress espera carpeta contenedora previa):
+
+- `x:\Proyectos\DingConnect\dingconnect-recargas-wp-update-wrapper.zip`
+- Estructura interna esperada: `dingconnect-wp-plugin/dingconnect-recargas/dingconnect-recargas.php`
+
+Variante exacta detectada por URL de activación:
+
+- `x:\Proyectos\DingConnect\dingconnect-recargas-wp-update-exact.zip`
+- Estructura interna esperada: `dingconnect-recargas-wp-update/dingconnect-recargas/dingconnect-recargas.php`
+
+Regla de estabilización tras error 500 en activación:
+
+- Limpiar copias anidadas en `wp-content/plugins/` y reinstalar solo paquete canónico.
+- Paquete canónico del repositorio: `x:\Proyectos\DingConnect\dingconnect-recargas-clean.zip`.
+
+Regla definitiva de empaquetado para evitar anidación continua:
+
+- Usar `dingconnect-recargas.zip` con archivos del plugin en raíz del ZIP (sin carpeta padre).
+- Esperar activación en ruta `dingconnect-recargas/dingconnect-recargas.php`.
+
+Corrección aplicada de resiliencia en activación (14-04-2026):
+
+- Se agregó fallback en cargador principal del plugin para localizar `includes/class-dc-api.php` en estructuras anidadas.
+- Si faltan dependencias, el plugin muestra aviso administrativo y evita fatal de PHP durante activación.
+
+Corrección aplicada de salida inesperada en activación (14-04-2026):
+
+- Se identificó como causa raíz la presencia de BOM UTF-8 en `dingconnect-recargas.php`, `includes/class-dc-api.php`, `includes/class-dc-frontend.php` y `includes/class-dc-rest.php`.
+- Se regrabaron esos archivos en UTF-8 sin BOM para eliminar los 12 bytes de salida inesperada detectados por WordPress al activar el plugin.
+- Regla de mantenimiento: cualquier edición futura de archivos PHP del plugin debe conservar codificación UTF-8 sin BOM.
+
+Corrección aplicada de resiliencia ante copias duplicadas (14-04-2026):
+
+- El bootstrap del plugin ahora detecta si ya existe otra copia cargada desde una ruta distinta y evita continuar con una inicialización ambigua.
+- En ese caso se muestra un aviso administrativo para limpiar carpetas duplicadas en `wp-content/plugins` antes de activar la nueva copia.
+- Regla de despliegue: usar ZIP canónico `dingconnect-recargas.zip` con archivos del plugin en la raíz del paquete para minimizar anidaciones como `carpeta-extra/dingconnect-recargas/`.
+- Se reemplazó la búsqueda limitada con `glob()` y la destructuring array por una búsqueda iterativa simple: primero en carpeta actual, luego un nivel arriba, luego dentro de subcarpetas inmediatas.
+- El bootstrap ahora busca `includes/class-dc-api.php` tolerando ambas variantes de separador: forward slash (Unix) y backslash (Windows), usando `DIRECTORY_SEPARATOR` de PHP para máxima compatibilidad.

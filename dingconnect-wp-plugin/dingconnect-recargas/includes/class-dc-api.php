@@ -4,6 +4,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (class_exists('DC_Recargas_API')) {
+    return;
+}
+
 class DC_Recargas_API {
     public function get_options() {
         $defaults = [
@@ -22,10 +26,22 @@ class DC_Recargas_API {
     }
 
     public function get_products($account_number, $take = 50) {
-        return $this->request('GET', 'GetProducts', [
+        $cache_key = 'dc_products_' . md5($account_number . '_' . $take);
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $result = $this->request('GET', 'GetProducts', [
             'AccountNumber' => $account_number,
             'Take' => (int) $take,
         ]);
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        }
+
+        return $result;
     }
 
     public function get_promotions($country_iso, $take = 10) {
@@ -66,6 +82,63 @@ class DC_Recargas_API {
 
     public function new_ref() {
         return 'WP-' . gmdate('YmdHis') . '-' . strtoupper(wp_generate_password(6, false, false));
+    }
+
+    public static function register_transfer_log_cpt() {
+        register_post_type('dc_transfer_log', [
+            'labels' => [
+                'name' => 'Transfer Logs',
+                'singular_name' => 'Transfer Log',
+            ],
+            'public' => false,
+            'show_ui' => true,
+            'show_in_menu' => 'dingconnect-recargas',
+            'supports' => ['title'],
+            'capability_type' => 'post',
+            'capabilities' => [
+                'create_posts' => 'do_not_allow',
+            ],
+            'map_meta_cap' => true,
+        ]);
+    }
+
+    public function log_transfer($account_number, $sku_code, $send_value, $currency, $distributor_ref, $response) {
+        $status = 'unknown';
+        $transfer_ref = '';
+
+        if (is_wp_error($response)) {
+            $status = 'error';
+        } elseif (is_array($response)) {
+            $items = $response['Items'] ?? $response['Result'] ?? [];
+            if (!empty($items[0]['Status'])) {
+                $status = sanitize_text_field($items[0]['Status']);
+            }
+            $transfer_ref = sanitize_text_field($response['TransferRef'] ?? '');
+        }
+
+        // Mask phone for privacy: +573001234567 -> +5730***4567
+        $masked = strlen($account_number) > 7
+            ? substr($account_number, 0, 4) . '***' . substr($account_number, -4)
+            : $account_number;
+
+        $post_id = wp_insert_post([
+            'post_type' => 'dc_transfer_log',
+            'post_title' => $masked . ' — ' . $sku_code . ' — ' . $status,
+            'post_status' => 'publish',
+        ]);
+
+        if ($post_id && !is_wp_error($post_id)) {
+            update_post_meta($post_id, '_dc_account_number', $masked);
+            update_post_meta($post_id, '_dc_sku_code', $sku_code);
+            update_post_meta($post_id, '_dc_send_value', $send_value);
+            update_post_meta($post_id, '_dc_currency', $currency);
+            update_post_meta($post_id, '_dc_distributor_ref', $distributor_ref);
+            update_post_meta($post_id, '_dc_transfer_ref', $transfer_ref);
+            update_post_meta($post_id, '_dc_status', $status);
+            update_post_meta($post_id, '_dc_raw_response', wp_json_encode($response));
+        }
+
+        return $post_id;
     }
 
     private function request($method, $path, $query = [], $body = null) {
@@ -114,6 +187,11 @@ class DC_Recargas_API {
                     'body' => $data ?: $raw_body,
                 ]
             );
+        }
+
+        // Normalize DingConnect response: Items -> Result
+        if (is_array($data) && isset($data['Items']) && !isset($data['Result'])) {
+            $data['Result'] = $data['Items'];
         }
 
         return is_array($data) ? $data : ['raw' => $raw_body];

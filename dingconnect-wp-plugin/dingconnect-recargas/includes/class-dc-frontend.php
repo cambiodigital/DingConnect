@@ -4,6 +4,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+if (class_exists('DC_Recargas_Frontend')) {
+    return;
+}
+
 class DC_Recargas_Frontend {
     public function __construct() {
         add_shortcode('dingconnect_recargas', [$this, 'render_shortcode']);
@@ -28,7 +32,11 @@ class DC_Recargas_Frontend {
 
         wp_localize_script('dc-recargas-frontend', 'DC_RECARGAS_DATA', [
             'restBase' => esc_url_raw(rest_url('dingconnect/v1')),
+            'nonce' => wp_create_nonce('wp_rest'),
             'countries' => $this->countries(),
+            'woocommerce_active' => class_exists('WooCommerce'),
+            'cartUrl' => class_exists('WooCommerce') ? wc_get_cart_url() : '',
+            'checkoutUrl' => class_exists('WooCommerce') ? wc_get_checkout_url() : '',
             'texts' => [
                 'loading' => 'Consultando paquetes...',
                 'search' => 'Buscar paquetes',
@@ -47,6 +55,7 @@ class DC_Recargas_Frontend {
             <div class="dc-card">
                 <h2>Recargas Internacionales</h2>
                 <p class="dc-subtitle">Selecciona país, número móvil y bundle para procesar tu recarga.</p>
+                <p class="dc-credit">Hecho por Cambiodigital.net, personalizado para cubakilos.com.</p>
 
                 <div class="dc-grid">
                     <div class="dc-field">
@@ -56,7 +65,7 @@ class DC_Recargas_Frontend {
 
                     <div class="dc-field">
                         <label for="dc-phone">Número móvil</label>
-                        <input id="dc-phone" type="tel" maxlength="15" placeholder="Número sin prefijo">
+                        <input id="dc-phone" type="tel" inputmode="numeric" maxlength="15" placeholder="Número sin prefijo" autocomplete="tel-national">
                     </div>
 
                     <div class="dc-field dc-field-full">
@@ -76,7 +85,7 @@ class DC_Recargas_Frontend {
                 </div>
 
                 <div id="dc-feedback" class="dc-feedback" aria-live="polite"></div>
-                <pre id="dc-result" class="dc-result" hidden></pre>
+                <div id="dc-result" class="dc-result" hidden></div>
             </div>
         </div>
         <?php
