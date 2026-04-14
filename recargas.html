@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recargas Internacionales — Cubakilos</title>
+    <style>
+        /* ══════════════════════════════════════
+           BASE & CUSTOM PROPERTIES
+        ══════════════════════════════════════ */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --primary:    #1e40af;
+            --primary-dk: #1e3a8a;
+            --primary-lt: #3b82f6;
+            --accent:     #f59e0b;
+            --accent-dk:  #d97706;
+            --success:    #10b981;
+            --error:      #ef4444;
+            --text:       #1f2937;
+            --text-soft:  #6b7280;
+            --border:     #e5e7eb;
+            --bg:         #f3f4f6;
+            --white:      #ffffff;
+            --shadow:     0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+            --shadow-md:  0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+            --shadow-lg:  0 10px 15px rgba(0,0,0,.1), 0 4px 6px rgba(0,0,0,.05);
+            --radius:     8px;
+            --radius-lg:  12px;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        /* ══════════════════════════════════════
+           HEADER
+        ══════════════════════════════════════ */
+        .site-header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,.25);
+            position: sticky;
+            top: 0;
+            z-index: 200;
+        }
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+        .logo span { color: var(--accent); }
+        .nav-links { display: flex; gap: 28px; list-style: none; }
+        .nav-links a {
+            color: rgba(255,255,255,.82);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color .2s;
+        }
+        .nav-links a:hover, .nav-links a.active { color: white; }
+        .nav-links a.active {
+            border-bottom: 2px solid var(--accent);
+            padding-bottom: 2px;
+        }
+
+        /* ══════════════════════════════════════
+           HERO
+        ══════════════════════════════════════ */
+        .hero {
+            background: linear-gradient(140deg, #1e3a8a 0%, #1d4ed8 55%, #2563eb 100%);
+            color: white;
+            padding: 56px 24px 80px;
+            text-align: center;
+        }
+        .hero h1 { font-size: 40px; font-weight: 800; margin-bottom: 12px; }
+        .hero p {
+            font-size: 17px;
+            opacity: .85;
+            max-width: 540px;
+            margin: 0 auto 44px;
+        }
+
+        /* ══════════════════════════════════════
+           FORM CARD  (overlaps hero bottom)
+        ══════════════════════════════════════ */
+        .form-card-wrapper {
+            max-width: 640px;
+            margin: -44px auto 0;
+            padding: 0 20px;
+            position: relative;
+            z-index: 10;
+        }
+        .form-card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            padding: 32px;
+        }
+        .form-card h2 {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 22px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* Phone input group */
+        .label-field {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-soft);
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 8px;
+        }
+        .field-group { margin-bottom: 20px; }
+
+        .phone-row {
+            display: flex;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: border-color .2s;
+        }
+        .phone-row:focus-within { border-color: var(--primary-lt); }
+
+        #countrySelect {
+            background: #f3f4f6;
+            border: none;
+            border-right: 1px solid var(--border);
+            padding: 13px 10px 13px 14px;
+            font-size: 14px;
+            cursor: pointer;
+            outline: none;
+            color: var(--text);
+            flex-shrink: 0;
+            max-width: 200px;
+        }
+        #phoneNumber {
+            flex: 1;
+            border: none;
+            padding: 13px 16px;
+            font-size: 16px;
+            outline: none;
+            color: var(--text);
+            background: var(--white);
+        }
+        #phoneNumber::placeholder { color: #9ca3af; }
+
+        .search-btn {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent);
+            color: var(--white);
+            border: none;
+            border-radius: var(--radius);
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .2s, transform .15s;
+            letter-spacing: .3px;
+        }
+        .search-btn:hover { background: var(--accent-dk); }
+        .search-btn:active { transform: scale(.98); }
+        .search-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+
+        /* API mode badge */
+        .mode-row { text-align: center; margin-top: 14px; }
+        .api-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 99px;
+        }
+        .api-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+        .api-badge.connecting { background: #f3f4f6; color: #6b7280; }
+        .api-badge.live       { background: #d1fae5; color: #064e3b; }
+        .api-badge.demo       { background: #fef3c7; color: #78350f; }
+
+        /* ══════════════════════════════════════
+           MAIN CONTENT AREA
+        ══════════════════════════════════════ */
+        .main-content {
+            max-width: 1200px;
+            margin: 40px auto 60px;
+            padding: 0 24px;
+        }
+
+        /* Loading spinner */
+        .loading-wrap {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .spinner {
+            width: 48px; height: 48px;
+            border: 4px solid #e5e7eb;
+            border-top-color: var(--primary-lt);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-wrap p { color: var(--text-soft); font-size: 15px; }
+
+        /* Operator bar */
+        .operator-bar {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 20px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .operator-left { display: flex; align-items: center; gap: 12px; }
+        .op-flag { font-size: 30px; line-height: 1; }
+        .op-name { font-size: 16px; font-weight: 700; }
+        .op-sub  { font-size: 13px; color: var(--text-soft); }
+        .op-badge {
+            background: var(--primary);
+            color: white;
+            padding: 5px 14px;
+            border-radius: 99px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        /* Promotions */
+        .promos-wrap {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .promo-banner {
+            background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%);
+            color: white;
+            border-radius: var(--radius);
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .promo-banner .icon { font-size: 22px; flex-shrink: 0; }
+        .promo-banner h4 { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+        .promo-banner p  { font-size: 13px; opacity: .9; }
+
+        /* Products section */
+        .products-wrap { display: none; }
+        .section-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .section-title { font-size: 22px; font-weight: 700; }
+
+        .filter-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-tab {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 99px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            background: var(--white);
+            color: var(--text-soft);
+            transition: all .2s;
+        }
+        .filter-tab:hover, .filter-tab.active {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+            gap: 20px;
+        }
+
+        /* ══════════════════════════════════════
+           PRODUCT CARD
+        ══════════════════════════════════════ */
+        .product-card {
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: transform .2s, box-shadow .2s;
+        }
+        .product-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* Card header gradient */
+        .card-top {
+            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+            padding: 20px;
+            color: white;
+            position: relative;
+        }
+        .card-top.is-promo {
+            background: linear-gradient(135deg, #92400e 0%, #f59e0b 100%);
+        }
+        .promo-chip {
+            position: absolute;
+            top: 12px; right: 12px;
+            background: rgba(255,255,255,.25);
+            color: white;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 99px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .card-provider {
+            font-size: 11px;
+            opacity: .7;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 6px;
+        }
+        .card-send-value {
+            font-size: 34px;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .card-send-label {
+            font-size: 11px;
+            opacity: .75;
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+        }
+        .card-receive {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            font-size: 15px;
+            opacity: .92;
+        }
+        .card-receive .arrow { font-size: 16px; }
+        .card-receive .recv-val { font-weight: 800; font-size: 18px; }
+
+        /* Range header */
+        .card-range-label {
+            font-size: 19px;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+        .card-range-sub {
+            font-size: 13px;
+            opacity: .8;
+            margin-top: 4px;
+        }
+
+        /* Card body */
+        .card-body {
+            padding: 16px 20px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .benefit-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text);
+        }
+        .benefit-row .ico { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+
+        .validity-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 99px;
+        }
+
+        /* Range input inside card */
+        .range-input-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .range-input-row input {
+            flex: 1;
+            padding: 9px 12px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 16px;
+            font-weight: 700;
+            outline: none;
+            transition: border-color .2s;
+        }
+        .range-input-row input:focus { border-color: var(--primary-lt); }
+        .range-currency { font-weight: 700; color: var(--text-soft); font-size: 14px; }
+        .estimate-btn {
+            padding: 9px 14px;
+            background: #eff6ff;
+            color: var(--primary);
+            border: none;
+            border-radius: var(--radius);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .2s;
+        }
+        .estimate-btn:hover { background: #dbeafe; }
+        .range-result {
+            font-size: 12px;
+            color: var(--text-soft);
+            min-height: 18px;
+        }
+
+        /* Card footer */
+        .card-footer {
+            padding: 14px 20px;
+            border-top: 1px solid var(--border);
+        }
+        .recharge-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .2s, transform .15s;
+        }
+        .recharge-btn:hover { background: var(--primary-dk); }
+        .recharge-btn:active { transform: scale(.98); }
+        .recharge-btn.promo { background: var(--accent); }
+        .recharge-btn.promo:hover { background: var(--accent-dk); }
+
+        /* Empty state */
+        .empty-wrap {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .empty-wrap .ico { font-size: 52px; margin-bottom: 12px; }
+        .empty-wrap h3 { font-size: 18px; margin-bottom: 8px; }
+        .empty-wrap p { color: var(--text-soft); font-size: 14px; }
+
+        /* ══════════════════════════════════════
+           MODALS
+        ══════════════════════════════════════ */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.52);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        .overlay.open { display: flex; }
+
+        .modal {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 20px 60px rgba(0,0,0,.3);
+            max-width: 480px;
+            width: 100%;
+            animation: slideUp .22s ease;
+            overflow: hidden;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-head {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-head h3 { font-size: 17px; font-weight: 700; }
+        .btn-close {
+            width: 30px; height: 30px;
+            border: none;
+            background: #f3f4f6;
+            border-radius: 50%;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-body { padding: 24px; }
+        .modal-foot {
+            padding: 14px 24px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* Summary rows */
+        .sum-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 14px;
+        }
+        .sum-row:last-child { border-bottom: none; }
+        .sum-label { color: var(--text-soft); }
+        .sum-value { font-weight: 600; text-align: right; }
+        .sum-value.big { color: var(--primary); font-size: 19px; font-weight: 800; }
+
+        .simulate-note {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            color: #78350f;
+            border-radius: var(--radius);
+            padding: 11px 14px;
+            font-size: 13px;
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+            margin-top: 16px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        .btn-ghost   { background: #f3f4f6; color: var(--text); }
+        .btn-ghost:hover { background: #e5e7eb; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dk); }
+
+        /* Result modal */
+        .result-icon { font-size: 54px; text-align: center; margin-bottom: 10px; }
+        .result-title {
+            font-size: 20px;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .result-title.ok  { color: var(--success); }
+        .result-title.err { color: var(--error); }
+
+        .json-block {
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: var(--radius);
+            padding: 14px;
+            font-family: 'Cascadia Mono', 'Fira Code', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            overflow-x: auto;
+            max-height: 260px;
+            overflow-y: auto;
+            margin-top: 14px;
+        }
+        .jk { color: #93c5fd; }
+        .js { color: #86efac; }
+        .jn { color: #fcd34d; }
+        .jb { color: #f9a8d4; }
+
+        /* ══════════════════════════════════════
+           RESPONSIVE
+        ══════════════════════════════════════ */
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 28px; }
+            .hero p  { font-size: 15px; }
+            .form-card { padding: 20px; }
+            .nav-links { display: none; }
+            .products-grid { grid-template-columns: 1fr; }
+            #countrySelect { max-width: 140px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+<header class="site-header">
+    <div class="header-inner">
+        <div class="logo">CUBA<span>KILOS</span></div>
+        <ul class="nav-links">
+            <li><a href="#">Tienda</a></li>
+            <li><a href="#" class="active">Recargas</a></li>
+            <li><a href="#">Mi cuenta</a></li>
+            <li><a href="#">Ayuda</a></li>
+        </ul>
+    </div>
+</header>
+
+<!-- ══ HERO ══ -->
+<section class="hero">
+    <h1>Recargas Internacionales</h1>
+    <p>Envía saldo móvil a familiares y amigos en más de 160 países. Al instante, con las mejores ofertas.</p>
+</section>
+
+<!-- ══ FORM CARD ══ -->
+<div class="form-card-wrapper">
+    <div class="form-card">
+        <h2>🌍 ¿A qué número quieres recargar?</h2>
+
+        <form id="searchForm" novalidate>
+            <div class="field-group">
+                <label class="label-field" for="phoneNumber">Número de destino</label>
+                <div class="phone-row">
+                    <select id="countrySelect" aria-label="País de destino"></select>
+                    <input
+                        type="tel"
+                        id="phoneNumber"
+                        placeholder="Número sin código de país"
+                        maxlength="15"
+                        autocomplete="tel-national"
+                        inputmode="numeric"
+                    >
+                </div>
+            </div>
+
+            <button type="submit" class="search-btn" id="searchBtn">
+                🔍 Buscar paquetes disponibles
+            </button>
+        </form>
+
+        <div class="mode-row">
+            <span class="api-badge connecting" id="apiBadge">
+                <span class="dot"></span>
+                <span id="apiText">Listo para consultar</span>
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- ══ MAIN CONTENT ══ -->
+<main class="main-content">
+
+    <!-- Loading -->
+    <div class="loading-wrap" id="loadingWrap">
+        <div class="spinner"></div>
+        <p>Consultando operadores y paquetes disponibles…</p>
+    </div>
+
+    <!-- Operator bar -->
+    <div class="operator-bar" id="operatorBar">
+        <div class="operator-left">
+            <div class="op-flag" id="opFlag">🌍</div>
+            <div>
+                <div class="op-name" id="opName">—</div>
+                <div class="op-sub"  id="opSub">—</div>
+            </div>
+        </div>
+        <div class="op-badge" id="opBadge">0 paquetes</div>
+    </div>
+
+    <!-- Promotions -->
+    <div class="promos-wrap" id="promosWrap"></div>
+
+    <!-- Products -->
+    <div class="products-wrap" id="productsWrap">
+        <div class="section-top">
+            <h2 class="section-title" id="sectionTitle">Paquetes disponibles</h2>
+            <div class="filter-tabs" id="filterTabs"></div>
+        </div>
+        <div class="products-grid" id="productsGrid"></div>
+    </div>
+
+    <!-- Empty -->
+    <div class="empty-wrap" id="emptyWrap">
+        <div class="ico">📭</div>
+        <h3>Sin paquetes disponibles</h3>
+        <p>No encontramos productos para este número. Verifica que sea correcto o prueba con otro país.</p>
+    </div>
+
+</main>
+
+<!-- ══ CONFIRM MODAL ══ -->
+<div class="overlay" id="confirmOverlay">
+    <div class="modal">
+        <div class="modal-head">
+            <h3>Confirmar recarga</h3>
+            <button class="btn-close" onclick="closeModal('confirmOverlay')">✕</button>
+        </div>
+        <div class="modal-body">
+            <div id="confirmBody"></div>
+            <div class="simulate-note" id="operationModeNote">
+                ⚠️ <span><strong>Modo simulación</strong> — Se usa <code>ValidateOnly: true</code>. No se enviará saldo real ni se cobrará dinero.</span>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="btn btn-ghost" onclick="closeModal('confirmOverlay')">Cancelar</button>
+            <button class="btn btn-primary" id="confirmBtn" onclick="executeTransfer()">✅ Confirmar simulación</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ RESULT MODAL ══ -->
+<div class="overlay" id="resultOverlay">
+    <div class="modal">
+        <div class="modal-head">
+            <h3>Resultado de la operación</h3>
+            <button class="btn-close" onclick="closeModal('resultOverlay')">✕</button>
+        </div>
+        <div class="modal-body" id="resultBody"></div>
+        <div class="modal-foot">
+            <button class="btn btn-primary" onclick="closeModal('resultOverlay')">Aceptar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   CONFIGURACIÓN
+   NOTA: En producción (plugin WordPress), estas llamadas se hacen
+   desde PHP en el servidor. Aquí el browser las intenta directamente
+   y hace fallback a modo demo si hay error CORS.
+══════════════════════════════════════════════════════════════════ */
+const CONFIG = {
+    apiBase : 'https://www.dingconnect.com/api/V1',
+    apiKey  : '6lLhhXvn1lC5fZXCW6UWjv', // ⚠️ Mover a servidor en producción
+    demoMode: false, // Se activa automáticamente si hay CORS
+    validateOnly: false, // false = recarga real, true = simulación
+    useWpProxy: true,
+    wpProxyBase: '/wp-json/cubakilos/v1'
+};
+
+// Catálogo curado para la web: permite priorizar paquetes por país/operador.
+const PRODUCT_POLICY = {
+    CO: {
+        allowedProviders: ['Wom Colombia', 'WOM', 'Wom', 'Claro Colombia Bundles', 'Claro Colombia']
+    }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   PAÍSES DE DESTINO (dial = código sin +)
+══════════════════════════════════════════════════════════════════ */
+const COUNTRIES = [
+    { iso: 'CU', name: 'Cuba',                   dial: '53',  flag: '🇨🇺' },
+    { iso: 'DO', name: 'República Dominicana',    dial: '1',   flag: '🇩🇴' },
+    { iso: 'MX', name: 'México',                  dial: '52',  flag: '🇲🇽' },
+    { iso: 'CO', name: 'Colombia',                dial: '57',  flag: '🇨🇴' },
+    { iso: 'VE', name: 'Venezuela',               dial: '58',  flag: '🇻🇪' },
+    { iso: 'HT', name: 'Haití',                   dial: '509', flag: '🇭🇹' },
+    { iso: 'HN', name: 'Honduras',                dial: '504', flag: '🇭🇳' },
+    { iso: 'GT', name: 'Guatemala',               dial: '502', flag: '🇬🇹' },
+    { iso: 'SV', name: 'El Salvador',             dial: '503', flag: '🇸🇻' },
+    { iso: 'NI', name: 'Nicaragua',               dial: '505', flag: '🇳🇮' },
+    { iso: 'BO', name: 'Bolivia',                 dial: '591', flag: '🇧🇴' },
+    { iso: 'PE', name: 'Perú',                    dial: '51',  flag: '🇵🇪' },
+    { iso: 'EC', name: 'Ecuador',                 dial: '593', flag: '🇪🇨' },
+    { iso: 'PY', name: 'Paraguay',                dial: '595', flag: '🇵🇾' },
+    { iso: 'AR', name: 'Argentina',               dial: '54',  flag: '🇦🇷' },
+    { iso: 'BR', name: 'Brasil',                  dial: '55',  flag: '🇧🇷' },
+    { iso: 'PH', name: 'Filipinas',               dial: '63',  flag: '🇵🇭' },
+    { iso: 'IN', name: 'India',                   dial: '91',  flag: '🇮🇳' },
+    { iso: 'BD', name: 'Bangladés',               dial: '880', flag: '🇧🇩' },
+    { iso: 'PK', name: 'Pakistán',                dial: '92',  flag: '🇵🇰' },
+    { iso: 'NG', name: 'Nigeria',                 dial: '234', flag: '🇳🇬' },
+    { iso: 'GH', name: 'Ghana',                   dial: '233', flag: '🇬🇭' },
+    { iso: 'KE', name: 'Kenia',                   dial: '254', flag: '🇰🇪' },
+    { iso: 'SN', name: 'Senegal',                 dial: '221', flag: '🇸🇳' },
+    { iso: 'ET', name: 'Etiopía',                 dial: '251', flag: '🇪🇹' },
+    { iso: 'MA', name: 'Marruecos',               dial: '212', flag: '🇲🇦' },
+];
+
+/* ══════════════════════════════════════════════════════════════════
+   DATOS DEMO  (fallback automático ante CORS o sin conexión)
+   Estructura espeja los campos reales de DingConnect
+══════════════════════════════════════════════════════════════════ */
+const DEMO = {
+    CU: {
+        opName : 'Cubacel (ETECSA)',
+        opSub  : 'Operador único de Cuba — datos simulados',
+        products: [
+            {
+                SkuCode: 'DEMO_CU_500CUP',
+                ProviderName   : 'Cubacel',
+                SendValue      : 9.50,  SendCurrencyIso: 'USD',
+                ReceiveValue   : 500,   ReceiveCurrencyIso: 'CUP',
+                DefaultDisplayText: 'Saldo Principal + Internet Ilimitado 24h × 10 días',
+                ValidityPeriodISO : 'P330D',
+                IsPromotion: true, IsRange: false
+            },
+            {
+                SkuCode: 'DEMO_CU_1000CUP',
+                ProviderName   : 'Cubacel',
+                SendValue      : 18.00, SendCurrencyIso: 'USD',
+                ReceiveValue   : 1000,  ReceiveCurrencyIso: 'CUP',
+                DefaultDisplayText: 'Saldo Principal',
+                ValidityPeriodISO : 'P330D',
+                IsPromotion: false, IsRange: false
+            },
+            {
+                SkuCode: 'DEMO_CU_1250CUP',
+                ProviderName   : 'Cubacel',
+                SendValue      : 22.00, SendCurrencyIso: 'USD',
+                ReceiveValue   : 1250,  ReceiveCurrencyIso: 'CUP',
+                DefaultDisplayText: 'Saldo Principal + Bono de datos extra',
+                ValidityPeriodISO : 'P330D',
+                IsPromotion: true, IsRange: false
+            }
+        ],
+        promos: [
+            { Title: '🎉 Bono Internet Ilimitado', Description: 'Recargas de 500 CUP o más: Internet Ilimitado 24 h × 10 días. Válido hasta el 30 de abril de 2026.' }
+        ]
+    },
+    MX: {
+        opName : 'Telcel / AT&T México',
+        opSub  : 'Múltiples operadores detectados — datos simulados',
+        products: [
+            {
+                SkuCode: 'DEMO_MX_10',
+                ProviderName   : 'Telcel',
+                SendValue      : 10.00, SendCurrencyIso: 'USD',
+                ReceiveValue   : 170,   ReceiveCurrencyIso: 'MXN',
+                DefaultDisplayText: '2 GB datos + llamadas ilimitadas',
+                ValidityPeriodISO : 'P30D',
+                IsPromotion: false, IsRange: false
+            },
+            {
+                SkuCode: 'DEMO_MX_20',
+                ProviderName   : 'Telcel',
+                SendValue      : 20.00, SendCurrencyIso: 'USD',
+                ReceiveValue   : 340,   ReceiveCurrencyIso: 'MXN',
+                DefaultDisplayText: '5 GB datos + llamadas y SMS ilimitados',
+                ValidityPeriodISO : 'P30D',
+                IsPromotion: true, IsRange: false
+            },
+            {
+                SkuCode: 'DEMO_MX_RANGE',
+                ProviderName   : 'AT&T',
+                SendValue      : null,  SendCurrencyIso: 'USD',
+                ReceiveValue   : null,  ReceiveCurrencyIso: 'MXN',
+                MinSendValue   : 5, MaxSendValue: 100,
+                DefaultDisplayText: 'Saldo libre (monto personalizable)',
+                ValidityPeriodISO : null,
+                IsPromotion: false, IsRange: true
+            }
+        ],
+        promos: []
+    },
+    CO: {
+        opName : 'Claro Colombia Bundles / Wom Colombia',
+        opSub  : 'Paquetes priorizados para la web basados en DingConnect — datos simulados',
+        products: [
+            {
+                SkuCode: 'DEMO_CO_WOM_RANGE',
+                ProviderName   : 'Wom Colombia',
+                SendValue      : null,  SendCurrencyIso: 'EUR',
+                ReceiveValue   : null,  ReceiveCurrencyIso: 'COP',
+                MinSendValue   : 2.00,  MaxSendValue: 28.80,
+                DefaultDisplayText: 'Saldo libre WOM Colombia (rango habilitado)',
+                ValidityPeriodISO : null,
+                IsPromotion: false, IsRange: true
+            },
+            {
+                SkuCode: 'DEMO_CO_WOM_5GB',
+                ProviderName   : 'Wom Colombia',
+                SendValue      : 7.90,  SendCurrencyIso: 'EUR',
+                ReceiveValue   : 23864, ReceiveCurrencyIso: 'COP',
+                DefaultDisplayText: 'Paquete WOM datos + minutos',
+                ValidityPeriodISO : 'P30D',
+                IsPromotion: true, IsRange: false
+            },
+            {
+                SkuCode: 'DEMO_CO_CLARO_7_5GB_20D',
+                ProviderName   : 'Claro Colombia Bundles',
+                SendValue      : 7.17,  SendCurrencyIso: 'EUR',
+                ReceiveValue   : null,  ReceiveCurrencyIso: 'COP',
+                DefaultDisplayText: '7.5Gb. Unlimited minutes and SMS. Includes Whatsapp, Facebook and X. Validity 20 days.',
+                ValidityPeriodISO : 'P20D',
+                IsPromotion: false, IsRange: false
+            }
+        ],
+        promos: []
+    },
+    _default: {
+        opName : 'Operador detectado',
+        opSub  : 'Datos de ejemplo — conectar API para resultados reales',
+        products: [
+            {
+                SkuCode: 'DEMO_GEN_5',
+                ProviderName   : 'Operador',
+                SendValue      : 5.00, SendCurrencyIso: 'USD',
+                ReceiveValue   : null, ReceiveCurrencyIso: '',
+                DefaultDisplayText: 'Recarga básica',
+                ValidityPeriodISO : 'P30D',
+                IsPromotion: false, IsRange: false
+            },
+            {
+                SkuCode: 'DEMO_GEN_10',
+                ProviderName   : 'Operador',
+                SendValue      : 10.00, SendCurrencyIso: 'USD',
+                ReceiveValue   : null,  ReceiveCurrencyIso: '',
+                DefaultDisplayText: 'Recarga estándar + datos',
+                ValidityPeriodISO : 'P30D',
+                IsPromotion: true, IsRange: false
+            }
+        ],
+        promos: []
+    }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   ESTADO DE LA APP
+══════════════════════════════════════════════════════════════════ */
+const state = {
+    country        : null,
+    fullPhone      : '',
+    products       : [],
+    descriptions   : {},
+    selectedProduct: null,
+    rangeAmounts   : {}  // SkuCode → valor personalizado
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   HELPERS
+══════════════════════════════════════════════════════════════════ */
+function isoToHuman(iso) {
+    if (!iso) return null;
+    const m = iso.match(/P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)D)?/);
+    if (!m) return iso;
+    const parts = [];
+    if (m[1]) parts.push(`${m[1]} año${+m[1] > 1 ? 's' : ''}`);
+    if (m[2]) parts.push(`${m[2]} mes${+m[2] > 1 ? 'es' : ''}`);
+    if (m[3]) {
+        const d = +m[3];
+        parts.push(d >= 28 ? `${Math.round(d / 30)} mes${Math.round(d / 30) > 1 ? 'es' : ''}` : `${d} día${d > 1 ? 's' : ''}`);
+    }
+    return parts.length ? parts.join(' ') : null;
+}
+
+function newRef() {
+    return 'CK-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function setApiMode(mode /* 'live' | 'demo' | 'connecting' */, text) {
+    const badge = document.getElementById('apiBadge');
+    badge.className = `api-badge ${mode}`;
+    document.getElementById('apiText').textContent = text;
+}
+
+function fmt(n) { return n != null ? n.toLocaleString('es') : '—'; }
+
+function applyProductPolicy(countryIso, products) {
+    const policy = PRODUCT_POLICY[countryIso];
+    if (!policy) return products;
+
+    let filtered = products;
+
+    if (policy.allowedProviders?.length) {
+        const allowed = policy.allowedProviders.map(p => p.toLowerCase());
+        const byProvider = products.filter(p => {
+            const provider = (p.ProviderName || '').toLowerCase();
+            return allowed.some(a => provider.includes(a));
+        });
+
+        // Si el filtro deja vacío, mantenemos listado original para no bloquear venta.
+        if (byProvider.length) filtered = byProvider;
+    }
+
+    return filtered;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   INICIALIZAR SELECTOR DE PAÍSES
+══════════════════════════════════════════════════════════════════ */
+function initCountrySelector() {
+    const sel = document.getElementById('countrySelect');
+    COUNTRIES.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.iso;
+        opt.textContent = `${c.flag} +${c.dial}  ${c.name}`;
+        sel.appendChild(opt);
+    });
+    sel.value = 'CU';
+    state.country = COUNTRIES.find(c => c.iso === 'CU');
+
+    sel.addEventListener('change', () => {
+        state.country = COUNTRIES.find(c => c.iso === sel.value);
+    });
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   LLAMADAS A LA API DE DINGCONNECT
+   En producción estas funciones son reemplazadas por endpoints WP.
+══════════════════════════════════════════════════════════════════ */
+async function apiGet(path, params = {}) {
+    const url = new URL(`${CONFIG.apiBase}/${path}`);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    const res = await fetch(url.toString(), {
+        headers: { 'api_key': CONFIG.apiKey, 'Content-Type': 'application/json' }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+async function apiPost(path, body) {
+    const res = await fetch(`${CONFIG.apiBase}/${path}`, {
+        method : 'POST',
+        headers: { 'api_key': CONFIG.apiKey, 'Content-Type': 'application/json' },
+        body   : JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+async function wpGetProducts(accountNumber) {
+    const url = new URL(`${CONFIG.wpProxyBase}/products`, window.location.origin);
+    url.searchParams.set('accountNumber', accountNumber);
+    const res = await fetch(url.toString(), { headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) throw new Error(`WP products HTTP ${res.status}`);
+    return res.json();
+}
+
+async function wpSendTransfer(payload) {
+    const url = new URL(`${CONFIG.wpProxyBase}/transfer`, window.location.origin);
+    const res = await fetch(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(`WP transfer HTTP ${res.status}`);
+    return res.json();
+}
+
+function canUseWpProxy() {
+    return CONFIG.useWpProxy && ['http:', 'https:'].includes(window.location.protocol);
+}
+
+async function getProducts(accountNumber) {
+    if (canUseWpProxy()) {
+        try { return await wpGetProducts(accountNumber); }
+        catch (err) { console.warn('[WP Proxy] products falló, intentando Ding directo.', err.message); }
+    }
+    return apiGet('GetProducts', { AccountNumber: accountNumber, Take: 50 });
+}
+
+async function getProductDescriptions(skuCodes) {
+    const params = {};
+    skuCodes.forEach((s, i) => { params[`SkuCodes[${i}]`] = s; });
+    return apiGet('GetProductDescriptions', params);
+}
+
+async function getPromotions(countryIso) {
+    return apiGet('GetPromotions', { CountryIso: countryIso, Take: 10 });
+}
+
+async function estimatePrices(skuCode, sendValue) {
+    return apiPost('EstimatePrices', {
+        Items: [{ BatchItemRef: '1', SkuCode: skuCode, SendValue: sendValue, AccountNumber: state.fullPhone }]
+    });
+}
+
+async function sendTransfer(product, sendValue) {
+    const payload = {
+        DistributorRef : newRef(),
+        AccountNumber  : state.fullPhone,
+        SkuCode        : product.SkuCode,
+        SendValue      : sendValue,
+        SendCurrencyIso: product.SendCurrencyIso,
+        ValidateOnly   : CONFIG.validateOnly
+    };
+
+    if (canUseWpProxy()) {
+        try { return await wpSendTransfer(payload); }
+        catch (err) { console.warn('[WP Proxy] transfer falló, intentando Ding directo.', err.message); }
+    }
+
+    return apiPost('SendTransfer', payload);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FLUJO PRINCIPAL — BUSCAR PAQUETES
+══════════════════════════════════════════════════════════════════ */
+document.getElementById('searchForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const country  = state.country;
+    const rawPhone = document.getElementById('phoneNumber').value.trim().replace(/\D/g, '');
+
+    if (!rawPhone || rawPhone.length < 5) {
+        alert('Por favor ingresa un número de teléfono válido.');
+        return;
+    }
+
+    const fullPhone = '+' + country.dial + rawPhone;
+    state.fullPhone = fullPhone;
+
+    showView('loading');
+    setBtnLoading(true);
+
+    try {
+        // ─── Intentar API real ───
+        const [prodRes, promoRes] = await Promise.all([
+            getProducts(fullPhone),
+            getPromotions(country.iso)
+        ]);
+
+        const products = applyProductPolicy(country.iso, prodRes.Result || []);
+
+        // Obtener descripciones enriquecidas (primeros 20 SKUs)
+        let descriptions = {};
+        const skus = products.slice(0, 20).map(p => p.SkuCode);
+        if (skus.length) {
+            try {
+                const descRes = await getProductDescriptions(skus);
+                (descRes.Result || []).forEach(d => { descriptions[d.SkuCode] = d; });
+            } catch (_) { /* opcional */ }
+        }
+
+        if (products.length) {
+            setApiMode('live', '✅ API DingConnect en vivo');
+            CONFIG.demoMode = false;
+            renderResults(products, descriptions, promoRes.Result || [], country, fullPhone);
+        } else {
+            // Si no hay productos para ese número, mostramos catálogo curado para pruebas UX.
+            const demo = DEMO[country.iso] || DEMO._default;
+            const demoProducts = applyProductPolicy(country.iso, demo.products || []);
+            CONFIG.demoMode = true;
+            setApiMode('demo', '⚠️ Sin productos para ese número. Mostrando catálogo configurado.');
+            renderResults(demoProducts, {}, demo.promos, country, fullPhone);
+        }
+
+    } catch (err) {
+        // ─── CORS o error de red → modo demo ───
+        console.warn('[DingConnect] Llamada directa falló (CORS esperado). Activando modo demo.', err.message);
+        console.info('ℹ️  En producción, las llamadas se enrutan a través del servidor PHP de WordPress.');
+        CONFIG.demoMode = true;
+
+        setApiMode('demo', '⚠️ Modo demo (sin proxy WP o CORS en navegador)');
+
+        const demo = DEMO[country.iso] || DEMO._default;
+        const demoProducts = applyProductPolicy(country.iso, demo.products || []);
+        renderResults(demoProducts, {}, demo.promos, country, fullPhone);
+    }
+
+    setBtnLoading(false);
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   RENDER DE RESULTADOS
+══════════════════════════════════════════════════════════════════ */
+function renderResults(products, descriptions, promos, country, phone) {
+    state.products    = products;
+    state.descriptions = descriptions;
+
+    // Operator bar
+    const demo = DEMO[country.iso] || DEMO._default;
+    document.getElementById('opFlag').textContent = country.flag;
+    document.getElementById('opName').textContent = CONFIG.demoMode
+        ? demo.opName
+        : (products[0]?.ProviderName || country.name);
+    document.getElementById('opSub').textContent = CONFIG.demoMode
+        ? demo.opSub
+        : `Número consultado: ${phone}`;
+    document.getElementById('opBadge').textContent = `${products.length} paquetes`;
+
+    // Promotions
+    const promosWrap = document.getElementById('promosWrap');
+    promosWrap.innerHTML = '';
+    promos.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'promo-banner';
+        div.innerHTML = `
+            <div class="icon">🎁</div>
+            <div>
+                <h4>${p.Title || 'Promoción activa'}</h4>
+                <p>${p.Description || p.BenefitDescription || ''}</p>
+            </div>`;
+        promosWrap.appendChild(div);
+    });
+
+    if (!products.length) { showView('empty'); return; }
+
+    // Filter tabs por operador
+    buildFilterTabs(products);
+
+    // Product cards
+    const grid = document.getElementById('productsGrid');
+    grid.innerHTML = '';
+    products.forEach(p => {
+        grid.appendChild(buildCard(p, descriptions[p.SkuCode] || {}));
+    });
+
+    document.getElementById('sectionTitle').textContent = `Paquetes disponibles para ${country.name}`;
+    showView('products');
+}
+
+function buildFilterTabs(products) {
+    const wrap = document.getElementById('filterTabs');
+    wrap.innerHTML = '';
+
+    const providers = [...new Set(products.map(p => p.ProviderName).filter(Boolean))];
+    if (providers.length <= 1) return;
+
+    const allBtn = tabBtn('Todos', true, () => {
+        filterCards(null);
+        wrap.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+        allBtn.classList.add('active');
+    });
+    wrap.appendChild(allBtn);
+
+    providers.slice(0, 6).forEach(prov => {
+        const btn = tabBtn(prov, false, () => {
+            filterCards(prov);
+            wrap.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+        });
+        wrap.appendChild(btn);
+    });
+}
+
+function tabBtn(label, active, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `filter-tab${active ? ' active' : ''}`;
+    btn.textContent = label;
+    btn.addEventListener('click', onClick);
+    return btn;
+}
+
+function filterCards(provider) {
+    document.querySelectorAll('.product-card').forEach(card => {
+        card.style.display = (!provider || card.dataset.provider === provider) ? '' : 'none';
+    });
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   CONSTRUIR TARJETA DE PRODUCTO
+══════════════════════════════════════════════════════════════════ */
+function buildCard(p, desc) {
+    const isRange = p.IsRange || (p.MinSendValue != null);
+    const isPromo = p.IsPromotion;
+    const validity = isoToHuman(p.ValidityPeriodISO);
+
+    const card = document.createElement('div');
+    card.className = 'product-card';
+    card.dataset.provider = p.ProviderName || '';
+    card.dataset.sku = p.SkuCode;
+
+    // ── Header ──
+    let topHtml = `<div class="card-top${isPromo ? ' is-promo' : ''}">`;
+    if (isPromo) topHtml += `<span class="promo-chip">🏷️ Promo</span>`;
+    if (p.ProviderName) topHtml += `<div class="card-provider">${p.ProviderName}</div>`;
+
+    if (isRange) {
+        const cur = p.SendCurrencyIso || 'USD';
+        topHtml += `
+            <div class="card-range-label">Monto libre</div>
+            <div class="card-range-sub">${p.MinSendValue} – ${p.MaxSendValue} ${cur}</div>`;
+    } else {
+        const sendFmt = `${p.SendCurrencyIso} ${p.SendValue?.toFixed(2)}`;
+        topHtml += `
+            <div class="card-send-value">${sendFmt}</div>
+            <div class="card-send-label">Valor enviado</div>`;
+        if (p.ReceiveValue) {
+            topHtml += `
+                <div class="card-receive">
+                    <span class="arrow">→</span>
+                    <span class="recv-val">${fmt(p.ReceiveValue)} ${p.ReceiveCurrencyIso}</span>
+                    <span style="font-size:12px;opacity:.75">recibido</span>
+                </div>`;
+        }
+    }
+    topHtml += `</div>`;
+
+    // ── Body ──
+    let bodyHtml = `<div class="card-body">`;
+
+    if (p.DefaultDisplayText) {
+        bodyHtml += `
+            <div class="benefit-row">
+                <span class="ico">📦</span>
+                <span>${p.DefaultDisplayText}</span>
+            </div>`;
+    }
+
+    // Descripción enriquecida de GetProductDescriptions
+    const markdown = desc.DescriptionMarkDown || desc.Description;
+    if (markdown) {
+        const clean = markdown
+            .replace(/#{1,6}\s/g, '')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .substring(0, 140) + '…';
+        bodyHtml += `
+            <div class="benefit-row">
+                <span class="ico">ℹ️</span>
+                <span style="font-size:12px;color:var(--text-soft)">${clean}</span>
+            </div>`;
+    }
+
+    if (validity) {
+        bodyHtml += `<div><span class="validity-chip">⏱️ Vigencia: ${validity}</span></div>`;
+    }
+
+    // Input de rango (producto con monto personalizable)
+    if (isRange) {
+        const cur = p.SendCurrencyIso || 'USD';
+        bodyHtml += `
+            <div class="range-input-row">
+                <input
+                    type="number"
+                    id="range_${p.SkuCode}"
+                    min="${p.MinSendValue || 1}"
+                    max="${p.MaxSendValue || 9999}"
+                    step="0.01"
+                    placeholder="Monto"
+                    inputmode="decimal"
+                >
+                <span class="range-currency">${cur}</span>
+                <button type="button" class="estimate-btn" onclick="doEstimate('${p.SkuCode}')">
+                    Calcular
+                </button>
+            </div>
+            <div class="range-result" id="rangeResult_${p.SkuCode}">
+                Ingresa entre ${p.MinSendValue} y ${p.MaxSendValue} ${cur}
+            </div>`;
+    }
+
+    bodyHtml += `</div>`;
+
+    // ── Footer ──
+    const footHtml = `
+        <div class="card-footer">
+            <button
+                type="button"
+                class="recharge-btn${isPromo ? ' promo' : ''}"
+                onclick="onSelectProduct('${p.SkuCode}', ${isRange})"
+            >
+                📲 Recargar ahora
+            </button>
+        </div>`;
+
+    card.innerHTML = topHtml + bodyHtml + footHtml;
+    return card;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FLUJO: CALCULAR PRECIO (productos de rango)
+══════════════════════════════════════════════════════════════════ */
+async function doEstimate(skuCode) {
+    const product = state.products.find(p => p.SkuCode === skuCode);
+    const input   = document.getElementById(`range_${skuCode}`);
+    const result  = document.getElementById(`rangeResult_${skuCode}`);
+    const amount  = parseFloat(input?.value);
+
+    if (!amount || amount < (product?.MinSendValue || 0) || amount > (product?.MaxSendValue || Infinity)) {
+        result.textContent = '⚠️ Monto fuera del rango permitido.';
+        return;
+    }
+
+    result.textContent = '⏳ Calculando…';
+
+    try {
+        if (!CONFIG.demoMode) {
+            const res = await estimatePrices(skuCode, amount);
+            const item = res.Items?.[0];
+            result.innerHTML = item
+                ? `✅ Recibirá: <strong>${fmt(item.ReceiveValue)} ${item.ReceiveCurrencyIso}</strong>`
+                : 'No se pudo calcular. Intenta otro monto.';
+        } else {
+            // Estimación demo simplificada
+            await delay(700);
+            const cur = product.ReceiveCurrencyIso || '—';
+            result.innerHTML = `✅ Recibirá aprox: <strong>${fmt(Math.round(amount * 3.5))} ${cur}</strong> <em style="font-size:11px;color:var(--text-soft)">(dato simulado)</em>`;
+        }
+    } catch (_) {
+        result.textContent = '⚠️ Error al consultar la API.';
+    }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FLUJO: SELECCIONAR PRODUCTO → MODAL DE CONFIRMACIÓN
+══════════════════════════════════════════════════════════════════ */
+function onSelectProduct(skuCode, isRange) {
+    const product = state.products.find(p => p.SkuCode === skuCode);
+    if (!product) return;
+
+    if (isRange) {
+        const input  = document.getElementById(`range_${skuCode}`);
+        const amount = parseFloat(input?.value);
+        const min    = product.MinSendValue || 0;
+        const max    = product.MaxSendValue || Infinity;
+        if (!amount || amount < min || amount > max) {
+            alert(`Ingresa un monto válido entre ${min} y ${max} ${product.SendCurrencyIso || 'USD'}`);
+            return;
+        }
+        state.rangeAmounts[skuCode] = amount;
+    }
+
+    state.selectedProduct = product;
+    showConfirmModal(product);
+}
+
+function showConfirmModal(product) {
+    const isRange = product.IsRange || (product.MinSendValue != null);
+    const sendAmt = isRange ? state.rangeAmounts[product.SkuCode] : product.SendValue;
+
+    const rows = [
+        { label: '📍 Número destino', value: state.fullPhone },
+        { label: '🌍 País',           value: `${state.country?.flag} ${state.country?.name}` },
+        product.ProviderName
+            ? { label: '📱 Operador', value: product.ProviderName }
+            : null,
+        { label: '📦 Paquete',        value: product.DefaultDisplayText || product.SkuCode },
+        {
+            label    : '💳 Valor a cobrar',
+            value    : `${product.SendCurrencyIso || 'USD'} ${sendAmt?.toFixed(2)}`,
+            highlight: true
+        },
+        product.ReceiveValue
+            ? { label: '→ Recibirá', value: `${fmt(product.ReceiveValue)} ${product.ReceiveCurrencyIso}` }
+            : null,
+        isoToHuman(product.ValidityPeriodISO)
+            ? { label: '⏱️ Vigencia', value: isoToHuman(product.ValidityPeriodISO) }
+            : null
+    ].filter(Boolean);
+
+    document.getElementById('confirmBody').innerHTML = rows.map(r => `
+        <div class="sum-row">
+            <span class="sum-label">${r.label}</span>
+            <span class="sum-value${r.highlight ? ' big' : ''}">${r.value}</span>
+        </div>`).join('');
+
+    updateOperationModeUI();
+    openModal('confirmOverlay');
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FLUJO: EJECUTAR TRANSFERENCIA
+══════════════════════════════════════════════════════════════════ */
+async function executeTransfer() {
+    const product = state.selectedProduct;
+    const isRange = product.IsRange || (product.MinSendValue != null);
+    const sendAmt = isRange ? state.rangeAmounts[product.SkuCode] : product.SendValue;
+
+    const btn = document.getElementById('confirmBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Procesando…';
+
+    let result;
+
+    try {
+        if (!CONFIG.validateOnly && CONFIG.demoMode) {
+            throw new Error('No se puede ejecutar una recarga real en modo demo. Usa un SKU real obtenido desde GetProducts en modo live.');
+        }
+
+        if (CONFIG.demoMode) {
+            // Respuesta simulada local
+            await delay(1200);
+            result = {
+                ResultCode : 1,
+                ErrorCodes : [],
+                TransferRecord: {
+                    DistributorRef    : newRef(),
+                    AccountNumber     : state.fullPhone,
+                    SkuCode           : product.SkuCode,
+                    SendValue         : sendAmt,
+                    SendCurrencyIso   : product.SendCurrencyIso,
+                    ReceiveValue      : product.ReceiveValue,
+                    ReceiveCurrencyIso: product.ReceiveCurrencyIso,
+                    ProcessingState   : 'Complete',
+                    ValidateOnly      : CONFIG.validateOnly
+                }
+            };
+        } else {
+            result = await sendTransfer(product, sendAmt);
+        }
+    } catch (err) {
+        result = { ResultCode: 0, ErrorCodes: [], Error: err.message };
+    }
+
+    btn.disabled = false;
+    btn.textContent = CONFIG.validateOnly ? '✅ Confirmar simulación' : '💳 Confirmar recarga real';
+
+    closeModal('confirmOverlay');
+    showResultModal(result);
+}
+
+function showResultModal(result) {
+    const ok    = result.ResultCode === 1;
+    const rec   = result.TransferRecord;
+    const validateOnly = rec?.ValidateOnly ?? CONFIG.validateOnly;
+    const modeText = validateOnly ? 'ValidateOnly: true' : 'ValidateOnly: false';
+    const modeTitle = validateOnly ? 'Simulación exitosa' : 'Recarga real enviada';
+
+    const bodyEl = document.getElementById('resultBody');
+    bodyEl.innerHTML = `
+        <div class="result-icon">${ok ? '✅' : '❌'}</div>
+        <div class="result-title ${ok ? 'ok' : 'err'}">${ok ? modeTitle : 'Error en la operación'}</div>
+        ${rec ? `
+        <div>
+            <div class="sum-row">
+                <span class="sum-label">Referencia interna</span>
+                <span class="sum-value" style="font-size:12px;word-break:break-all">${rec.DistributorRef || '—'}</span>
+            </div>
+            <div class="sum-row">
+                <span class="sum-label">Estado</span>
+                <span class="sum-value">${rec.ProcessingState || '—'}</span>
+            </div>
+            <div class="sum-row">
+                <span class="sum-label">Modo</span>
+                <span class="sum-value" style="color:#92400e">${modeText}</span>
+            </div>
+        </div>` : ''}
+        ${result.ErrorCodes?.length ? `
+        <div class="simulate-note" style="background:#fee2e2;border-color:#fca5a5;color:#991b1b">
+            ⚠️ Códigos de error: ${result.ErrorCodes.join(', ')}
+        </div>` : ''}
+        <div>
+            <div style="font-size:12px;color:var(--text-soft);margin-bottom:6px;margin-top:14px;font-weight:700">
+                Respuesta completa de la API:
+            </div>
+            <div class="json-block">${highlightJson(result)}</div>
+        </div>`;
+
+    openModal('resultOverlay');
+}
+
+function highlightJson(obj) {
+    const json = JSON.stringify(obj, null, 2);
+    return json.replace(
+        /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        match => {
+            let cls = 'jn';
+            if (/^"/.test(match))      cls = /:$/.test(match) ? 'jk' : 'js';
+            else if (/true|false/.test(match)) cls = 'jb';
+            return `<span class="${cls}">${match}</span>`;
+        }
+    );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   UI HELPERS
+══════════════════════════════════════════════════════════════════ */
+function showView(name) {
+    const map = {
+        loading : 'loadingWrap',
+        products: 'productsWrap',
+        empty   : 'emptyWrap'
+    };
+
+    ['loadingWrap', 'operatorBar', 'promosWrap', 'productsWrap', 'emptyWrap']
+        .forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+    if (name === 'loading') {
+        document.getElementById('loadingWrap').style.display = 'block';
+    } else if (name === 'products') {
+        const hasPromos = document.getElementById('promosWrap').children.length > 0;
+        document.getElementById('operatorBar').style.display  = 'flex';
+        document.getElementById('promosWrap').style.display   = hasPromos ? 'flex' : 'none';
+        document.getElementById('productsWrap').style.display = 'block';
+    } else if (name === 'empty') {
+        document.getElementById('emptyWrap').style.display = 'block';
+    }
+}
+
+function setBtnLoading(loading) {
+    const btn = document.getElementById('searchBtn');
+    btn.disabled = loading;
+    btn.textContent = loading ? '⏳ Buscando paquetes…' : '🔍 Buscar paquetes disponibles';
+}
+
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function updateOperationModeUI() {
+    const note = document.getElementById('operationModeNote');
+    const confirmBtn = document.getElementById('confirmBtn');
+    if (!note || !confirmBtn) return;
+
+    if (CONFIG.validateOnly) {
+        note.innerHTML = '⚠️ <span><strong>Modo simulación</strong> — Se usa <code>ValidateOnly: true</code>. No se enviará saldo real ni se cobrará dinero.</span>';
+        confirmBtn.textContent = '✅ Confirmar simulación';
+    } else {
+        note.innerHTML = '🚨 <span><strong>Modo recarga real</strong> — Se usa <code>ValidateOnly: false</code>. Si el SKU es válido y hay saldo en cuenta, se ejecutará un cargo real.</span>';
+        confirmBtn.textContent = '💳 Confirmar recarga real';
+    }
+}
+
+// Cerrar modal al hacer clic en el overlay
+document.querySelectorAll('.overlay').forEach(ov => {
+    ov.addEventListener('click', e => { if (e.target === ov) ov.classList.remove('open'); });
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   INICIO
+══════════════════════════════════════════════════════════════════ */
+initCountrySelector();
+setApiMode('connecting', 'Listo para consultar');
+updateOperationModeUI();
+</script>
+</body>
+</html>
