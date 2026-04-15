@@ -21,7 +21,6 @@ class DC_Recargas_Admin {
         add_action('admin_post_dc_toggle_bundle', [$this, 'handle_toggle_bundle']);
         add_action('admin_post_dc_delete_bundle', [$this, 'handle_delete_bundle']);
         add_action('admin_post_dc_bulk_delete_bundles', [$this, 'handle_bulk_delete_bundles']);
-        add_action('admin_post_dc_import_country_presets', [$this, 'handle_import_country_presets']);
         add_action('wp_ajax_dc_search_csv_products', [$this, 'ajax_search_csv_products']);
         add_action('wp_ajax_dc_create_bundle_from_csv', [$this, 'ajax_create_bundle_from_csv']);
         add_action('admin_post_dc_upload_csv', [$this, 'handle_upload_csv']);
@@ -261,43 +260,6 @@ class DC_Recargas_Admin {
             'page' => 'dc-recargas',
             'dc_msg' => 'bundle_bulk_deleted',
             'dc_count' => $deleted_count,
-        ], admin_url('admin.php')));
-        exit;
-    }
-
-    public function handle_import_country_presets() {
-        if (!current_user_can('manage_options')) {
-            wp_die('No tienes permisos para realizar esta acción.');
-        }
-
-        check_admin_referer('dc_import_country_presets');
-
-        $bundles = get_option('dc_recargas_bundles', []);
-        $existing = [];
-
-        foreach ($bundles as $bundle) {
-            $key = strtoupper((string) ($bundle['country_iso'] ?? '')) . '|' . strtoupper((string) ($bundle['sku_code'] ?? ''));
-            $existing[$key] = true;
-        }
-
-        $added = 0;
-        foreach ($this->get_preconfigured_country_bundles() as $preset) {
-            $key = strtoupper((string) $preset['country_iso']) . '|' . strtoupper((string) $preset['sku_code']);
-            if (!isset($existing[$key])) {
-                $bundle = $preset;
-                $bundle['id'] = uniqid('bundle_', true);
-                $bundles[] = $bundle;
-                $existing[$key] = true;
-                $added++;
-            }
-        }
-
-        update_option('dc_recargas_bundles', $bundles);
-
-        wp_safe_redirect(add_query_arg([
-            'page' => 'dc-recargas',
-            'dc_msg' => 'presets_imported',
-            'dc_count' => $added,
         ], admin_url('admin.php')));
         exit;
     }
@@ -546,7 +508,7 @@ class DC_Recargas_Admin {
             $active_tab = 'tab_saved';
         }
 
-        if (in_array($msg, ['presets_imported', 'csv_uploaded', 'csv_upload_error', 'csv_no_file', 'bundle_error', 'bundle_duplicate'], true)) {
+        if (in_array($msg, ['csv_uploaded', 'csv_upload_error', 'csv_no_file', 'bundle_error', 'bundle_duplicate'], true)) {
             $active_tab = !empty($editing_bundle) ? 'tab_saved' : 'tab_catalog';
         }
 
@@ -1081,17 +1043,10 @@ class DC_Recargas_Admin {
 
                 <section id="dc-tab-catalog" class="dc-tab-panel" data-dc-tab-panel="tab_catalog">
 
-            <hr>
+            <h3>Método 1: Buscar en catálogo CSV</h3>
+            <p>Busca en todo el catálogo, selecciona un producto y crea el bundle automáticamente.</p>
 
-            <h2>Bundles preconfigurados por país</h2>
-            <p>Importa en un clic un conjunto base para Colombia, España, México y Cuba usando SKUs del catálogo exportado.</p>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                <input type="hidden" name="action" value="dc_import_country_presets">
-                <?php wp_nonce_field('dc_import_country_presets'); ?>
-                <?php submit_button('Importar bundles sugeridos (CO, ES, MX, CU)', 'secondary', 'submit', false); ?>
-            </form>
-
-            <h2>Catálogo de productos (Products-with-sku.csv)</h2>
+            <h4>Catálogo de productos (Products-with-sku.csv)</h4>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="dc_upload_csv">
                 <?php wp_nonce_field('dc_upload_csv'); ?>
@@ -1112,8 +1067,6 @@ class DC_Recargas_Admin {
                 <?php submit_button($csv_found ? 'Actualizar catálogo' : 'Importar catálogo', 'secondary', 'submit', false); ?>
             </form>
 
-            <h3>Buscar en el catálogo</h3>
-            <p>Busca en todo el catálogo, selecciona un producto y crea el bundle automáticamente.</p>
             <table class="form-table" role="presentation">
                 <tr>
                     <th scope="row"><label for="dc_csv_query">Buscar producto</label></th>
@@ -2747,7 +2700,6 @@ class DC_Recargas_Admin {
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un bundle.'],
             'bundle_duplicate' => ['error', 'Ya existe otro bundle con el mismo país y SKU.'],
             'bundle_not_found' => ['error', 'No se encontró el bundle solicitado.'],
-            'presets_imported' => ['success', sprintf('Importación completada. Bundles nuevos agregados: %d.', $count)],
             'csv_uploaded' => ['success', 'Archivo Products-with-sku.csv importado correctamente. Ya puedes buscar productos.'],
             'csv_upload_error' => ['error', 'No se pudo importar el archivo CSV. Verifica que sea un archivo .csv válido.'],
             'csv_no_file' => ['error', 'No se seleccionó ningún archivo para importar.'],
@@ -2759,131 +2711,6 @@ class DC_Recargas_Admin {
 
         [$class, $text] = $map[$msg];
         echo '<div class="notice notice-' . esc_attr($class) . ' is-dismissible"><p>' . esc_html($text) . '</p></div>';
-    }
-
-    private function get_preconfigured_country_bundles() {
-        return [
-            [
-                'country_iso' => 'CO',
-                'label' => 'Claro Colombia - Recarga libre',
-                'sku_code' => 'CO_CO_TopUp',
-                'send_value' => 2.29,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Claro Colombia',
-                'description' => 'Top-up de rango para Claro Colombia.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'CO',
-                'label' => 'Claro Colombia - 300 MIN 1 día',
-                'sku_code' => 'F4CO50927',
-                'send_value' => 0.78,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Claro Colombia Bundles',
-                'description' => '300 MIN for 1 day',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'CO',
-                'label' => 'Claro Colombia - 2 GB 7 días',
-                'sku_code' => 'F4CO40857',
-                'send_value' => 2.50,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Claro Colombia Bundles',
-                'description' => '2GB data - Unlimited WhatsApp, Facebook & Twitter - 7 days',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'ES',
-                'label' => 'MasMovil España - 10 EUR',
-                'sku_code' => 'ES_AS_TopUp_10.00',
-                'send_value' => 12.96,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'MasMovil Spain',
-                'description' => 'Top-up de 10 EUR.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'ES',
-                'label' => 'Digimobil España - 10 EUR',
-                'sku_code' => 'ES_DS_TopUp_10.00',
-                'send_value' => 12.96,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Digimobil Spain',
-                'description' => 'Top-up de 10 EUR.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'ES',
-                'label' => 'Lebara España - 5 EUR',
-                'sku_code' => 'ES_ES_TopUp_5.00',
-                'send_value' => 6.48,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Lebara Spain',
-                'description' => 'Top-up de 5 EUR.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'MX',
-                'label' => 'Flash Mobile México - MXN 100',
-                'sku_code' => '9IMX4550',
-                'send_value' => 6.27,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Flash Mobile Mexico',
-                'description' => 'Top-up de MXN 100.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'MX',
-                'label' => 'Flash Mobile México - MXN 300',
-                'sku_code' => '9IMX7102',
-                'send_value' => 18.81,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Flash Mobile Mexico',
-                'description' => 'Top-up de MXN 300.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'MX',
-                'label' => 'Valor México - MXN 100',
-                'sku_code' => '3VMX94204',
-                'send_value' => 6.27,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Valor Mexico',
-                'description' => 'Top-up de MXN 100.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'CU',
-                'label' => 'Cubacel Cuba - Recarga libre',
-                'sku_code' => 'CU_CU_TopUp',
-                'send_value' => 5.23,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Cubacel Cuba',
-                'description' => 'Top-up de rango para Cubacel.',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'CU',
-                'label' => 'Cubacel Cuba Bundle - 5GB + 4GB + 75MIN + 80SMS',
-                'sku_code' => 'DFCUCU53685',
-                'send_value' => 20.90,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Cubacel Cuba Bundles',
-                'description' => '5GB Solo 4G - 4GB 2G/3G/4G - 75 MIN - 80 SMS - Valid for 30 Days',
-                'is_active' => 1,
-            ],
-            [
-                'country_iso' => 'CU',
-                'label' => 'Nauta Plus Cuba - Internet ilimitado 15 días',
-                'sku_code' => 'CYCU35796',
-                'send_value' => 8.11,
-                'send_currency_iso' => 'EUR',
-                'provider_name' => 'Nauta Plus Cuba',
-                'description' => 'Unlimited internet 15 days - 50% off',
-                'is_active' => 1,
-            ],
-        ];
     }
 
     private function get_products_csv_path() {
