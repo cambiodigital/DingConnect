@@ -43,11 +43,7 @@ Este plugin permite publicar un formulario de recargas en WordPress, consultar p
 
 ## 5. Gestión del catálogo curado
 
-### 5.1 Importar bundles sugeridos
-
-En `DingConnect`, usa `Importar bundles sugeridos (CO, ES, MX, CU)` para cargar un catálogo inicial sin duplicar combinaciones `pais + SKU`.
-
-### 5.2 Buscar productos en el CSV
+### 5.1 Buscar productos en el CSV
 
 Si el archivo `Products-with-sku.csv` está disponible, el panel permite:
 
@@ -57,7 +53,7 @@ Si el archivo `Products-with-sku.csv` está disponible, el panel permite:
 - Crear un bundle automáticamente desde la selección.
 - Publicarlo de inmediato como activo, si la casilla correspondiente está marcada.
 
-### 5.3 Añadir bundles manualmente
+### 5.2 Añadir bundles manualmente
 
 En `Anadir bundle curado`, completa:
 
@@ -71,7 +67,7 @@ En `Anadir bundle curado`, completa:
 
 Después pulsa `Anadir bundle`.
 
-### 5.4 Gestionar bundles guardados
+### 5.3 Gestionar bundles guardados
 
 En `Bundles guardados` puedes revisar el catálogo activo y eliminar bundles que ya no deban mostrarse. No existe edición directa desde la tabla; si necesitas ajustar un bundle, debes eliminarlo y volver a crearlo.
 

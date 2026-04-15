@@ -330,8 +330,8 @@ Cuando se requiera documentación visual para QA o negocio, conviene adjuntar es
 
 Desde abril de 2026, el plugin incorpora capacidades para acelerar operación y soporte:
 
-1. Importación de bundles preconfigurados para Colombia, España, México y Cuba.
-2. Búsqueda sobre `Products-with-sku.csv` con selector de resultados para autocompletar alta de bundles.
+1. Búsqueda sobre `Products-with-sku.csv` con selector de resultados para autocompletar alta de bundles.
+2. Filtros por país y tipo de paquete/producto en métodos CSV y API dentro del panel de catálogo.
 3. Panel admin modernizado sin numeración en títulos y pestañas, con estilo visual más actual para navegación y operación diaria.
 
 ### Objetivo operativo
@@ -342,8 +342,8 @@ Desde abril de 2026, el plugin incorpora capacidades para acelerar operación y 
 
 ### Recomendación de uso
 
-1. Importar presets como base inicial.
-2. Usar buscador CSV para ampliar catálogo según campañas o necesidades comerciales.
+1. Cargar o actualizar el CSV oficial de DingConnect desde el Método 1.
+2. Usar buscador CSV o API para ampliar catálogo según campañas o necesidades comerciales.
 3. Verificar en frontend y pruebas controladas antes de habilitar recarga real.
 
 ### Buenas prácticas

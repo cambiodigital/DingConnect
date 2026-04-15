@@ -61,6 +61,7 @@
         lastSearchKey: '',
         lastSearchAt: 0,
         inFlightSearchKey: '',
+        dataSource: '', // 'saved' | 'dingconnect' | 'fallback'
     };
 
     /* -- Helpers -- */
@@ -221,14 +222,20 @@
             );
             var items = res.result || [];
             state.bundles = Array.isArray(items) ? items : [];
+            state.dataSource = res.source || 'unknown';
             state.selectedProvider = '';
             populateProviderFilter();
             showProviderStep();
 
+            // Retroalimentación según fuente de datos
             if (!res.ok) {
-                setFeedback('Se mostraron paquetes guardados (DingConnect no respondió).', 'warning');
+                setFeedback('⚠️ Sin conexión a DingConnect. Mostrando catálogo guardado.', 'warning');
             } else if (res.source === 'saved') {
-                setFeedback('Paquetes cargados desde catálogo guardado.', 'info');
+                setFeedback('📋 Paquetes cargados desde catálogo guardado.', 'info');
+            } else if (res.source === 'dingconnect') {
+                setFeedback('🌐 Paquetes cargados desde API DingConnect.', 'success');
+            } else if (res.source === 'fallback') {
+                setFeedback('⚠️ Usando catálogo de respaldo (DingConnect no respondió).', 'warning');
             }
             state.lastSearchKey = searchKey;
             state.lastSearchAt = Date.now();
@@ -331,7 +338,15 @@
 
         var label = document.createElement('div');
         label.className = 'dc-bundles-label';
-        label.textContent = 'Paquetes disponibles (' + state.filteredBundles.length + ')';
+        var sourceBadge = '';
+        if (state.dataSource === 'saved') {
+            sourceBadge = '<span class="dc-source-badge dc-source-saved">📋 Guardado</span>';
+        } else if (state.dataSource === 'dingconnect') {
+            sourceBadge = '<span class="dc-source-badge dc-source-dingconnect">🌐 DingConnect</span>';
+        } else if (state.dataSource === 'fallback') {
+            sourceBadge = '<span class="dc-source-badge dc-source-fallback">⚠️ Respaldo</span>';
+        }
+        label.innerHTML = 'Paquetes disponibles (' + state.filteredBundles.length + ') ' + sourceBadge;
         bundlesEl.appendChild(label);
 
         state.filteredBundles.forEach(function (bundle) {

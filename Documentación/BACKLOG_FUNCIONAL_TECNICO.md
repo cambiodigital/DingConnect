@@ -89,10 +89,6 @@ Una iniciativa se considera lista cuando cumple:
 23. Respuesta de balance robusta en admin: el endpoint interno `/balance` normaliza variaciones de payload de DingConnect para mostrar siempre saldo, moneda y código de resultado en la tarjeta de credenciales.
 24. Diagnóstico extendido de recargas fallidas: errores `ProviderError` agregan contexto (`ding_error_context`) y trazas de operación (`transfer_ref`, `distributor_ref`, `processing_state`) para investigación de soporte.
 25. Gestión masiva de bundles en admin: la tabla de bundles guardados ahora permite seleccionar uno o varios registros (incluye "seleccionar todos") y eliminarlos en bloque con confirmación.
-26. Reorganización UX en alta de bundles: en "Catálogo y alta" ahora se elige primero el origen del bundle (Catálogo CSV, API DingConnect o carga manual), y recién entonces se muestra el formulario de guardado.
-27. Consistencia de autocompletado entre fuentes: al seleccionar un paquete desde API DingConnect se autocompleta el formulario "Guardar bundle curado" igual que en la búsqueda de catálogo CSV.
-28. Estado vacío visible en búsqueda API: cuando no hay paquetes para el país seleccionado, la interfaz muestra mensaje claro en lista y bloque explicativo para guiar al usuario.
-29. Pulido visual del flujo de alta: jerarquía por pasos (Paso 1 origen, Paso 2 guardado), botones más consistentes y adaptación móvil para que el selector de método y resultados se lean mejor en pantallas pequeñas.
 
 ## Backlog actualizado por impacto
 

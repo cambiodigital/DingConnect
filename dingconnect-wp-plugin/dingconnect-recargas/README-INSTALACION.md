@@ -66,9 +66,8 @@ WordPress crea automáticamente la carpeta `dingconnect-recargas/` a partir del 
 
 Puedes combinar tres mecanismos:
 
-1. `Importar bundles sugeridos (CO, ES, MX, CU)` para cargar una base inicial.
-2. Buscar productos en `Products-with-sku.csv` y crear bundles desde selección.
-3. Añadir bundles manualmente si necesitas un catálogo curado propio.
+1. Buscar productos en `Products-with-sku.csv` y crear bundles desde selección.
+2. Añadir bundles manualmente si necesitas un catálogo curado propio.
 
 ## 4) Publicar el formulario
 

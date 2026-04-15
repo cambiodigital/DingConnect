@@ -788,127 +788,6 @@ class DC_Recargas_Admin {
                     gap: 8px;
                 }
 
-                .dc-source-picker {
-                    margin-top: 18px;
-                    padding: 16px;
-                    border: 1px solid #dbe3f0;
-                    border-radius: 12px;
-                    background: linear-gradient(180deg, #f8fafc 0%, #eef5ff 100%);
-                }
-
-                .dc-source-picker h3 {
-                    margin: 0 0 8px;
-                }
-
-                .dc-step-label {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    margin: 0 0 10px;
-                    padding: 4px 10px;
-                    border-radius: 999px;
-                    border: 1px solid #bfd3f5;
-                    background: #ffffff;
-                    color: #0f4aa3;
-                    font-size: 11px;
-                    font-weight: 700;
-                    text-transform: uppercase;
-                    letter-spacing: 0.04em;
-                }
-
-                .dc-source-picker p {
-                    margin: 0 0 12px;
-                    color: #475569;
-                }
-
-                .dc-source-picker__buttons {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: 8px;
-                }
-
-                .dc-source-picker__btn {
-                    border: 1px solid #c9d6ea;
-                    border-radius: 999px;
-                    background: #ffffff;
-                    color: #0f172a;
-                    padding: 8px 14px;
-                    cursor: pointer;
-                    font-weight: 600;
-                    min-height: 36px;
-                    transition: all 0.2s ease;
-                }
-
-                .dc-source-picker__btn:hover {
-                    border-color: #9dbdf2;
-                    background: #f0f6ff;
-                }
-
-                .dc-source-picker__btn.is-active {
-                    background: #0f4aa3;
-                    border-color: #0f4aa3;
-                    color: #ffffff;
-                    box-shadow: 0 0 0 2px rgba(15, 74, 163, 0.16);
-                }
-
-                .dc-source-panel {
-                    margin-top: 16px;
-                    padding: 16px;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 12px;
-                    background: #ffffff;
-                    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
-                }
-
-                .dc-source-panel[hidden] {
-                    display: none;
-                }
-
-                .dc-source-panel h3 {
-                    margin-top: 0;
-                }
-
-                .dc-results-empty {
-                    border: 1px dashed #cbd5e1;
-                    background: #f8fafc;
-                    border-radius: 8px;
-                    padding: 10px;
-                    margin-top: 8px;
-                    color: #475569;
-                    font-size: 13px;
-                }
-
-                .dc-bundle-form-panel {
-                    margin-top: 18px;
-                    border-top: 1px solid #e2e8f0;
-                    padding-top: 18px;
-                }
-
-                .dc-bundle-form-panel h2 {
-                    margin-top: 6px;
-                }
-
-                .dc-bundle-form-panel .description {
-                    color: #475569;
-                }
-
-                .dc-bundle-form-panel[hidden] {
-                    display: none;
-                }
-
-                .dc-source-panel .form-table th {
-                    width: 220px;
-                }
-
-                .dc-source-panel .large-text {
-                    width: 100%;
-                    max-width: 980px;
-                }
-
-                .dc-source-panel .regular-text {
-                    min-width: 240px;
-                }
-
                 /* Keep datalist-enhanced fields visually aligned with the admin UI. */
                 .dc-combo-input {
                     border: 1px solid #c9d6ea;
@@ -1113,35 +992,6 @@ class DC_Recargas_Admin {
                         max-height: calc(100vh - 24px);
                         padding: 18px;
                     }
-
-                    .dc-source-picker,
-                    .dc-source-panel {
-                        padding: 14px;
-                    }
-
-                    .dc-source-picker__buttons {
-                        flex-direction: column;
-                    }
-
-                    .dc-source-picker__btn {
-                        width: 100%;
-                        justify-content: center;
-                        text-align: center;
-                    }
-
-                    .dc-source-panel .form-table th,
-                    .dc-source-panel .form-table td {
-                        display: block;
-                        width: 100%;
-                    }
-
-                    .dc-source-panel .regular-text,
-                    .dc-source-panel .large-text,
-                    .dc-source-panel select {
-                        width: 100%;
-                        max-width: 100%;
-                        min-width: 0;
-                    }
                 }
             </style>
 
@@ -1262,111 +1112,94 @@ class DC_Recargas_Admin {
                 <?php submit_button($csv_found ? 'Actualizar catálogo' : 'Importar catálogo', 'secondary', 'submit', false); ?>
             </form>
 
-            <div class="dc-source-picker">
-                <span class="dc-step-label">Paso 1 · Seleccionar origen</span>
-                <h3>Origen del bundle</h3>
-                <p>Elige primero cómo quieres cargar los datos del bundle. Luego podrás revisar y ajustar el formulario antes de guardarlo.</p>
-                <div class="dc-source-picker__buttons">
-                    <button type="button" class="dc-source-picker__btn" data-dc-source-btn="csv">Catálogo CSV</button>
-                    <button type="button" class="dc-source-picker__btn" data-dc-source-btn="api">API DingConnect</button>
-                    <button type="button" class="dc-source-picker__btn" data-dc-source-btn="manual">Carga manual</button>
-                </div>
-            </div>
+            <h3>Buscar en el catálogo</h3>
+            <p>Busca en todo el catálogo, selecciona un producto y crea el bundle automáticamente.</p>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="dc_csv_query">Buscar producto</label></th>
+                    <td>
+                        <input type="text" id="dc_csv_query" class="regular-text" placeholder="SKU, operador, país, descripción...">
+                        <select id="dc_csv_country" class="regular-text">
+                            <option value="">Todos los países</option>
+                            <?php foreach ($csv_countries as $country_name) : ?>
+                                <option value="<?php echo esc_attr($country_name); ?>"><?php echo esc_html($country_name); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" class="button" id="dc_csv_search_btn">Buscar</button>
+                        <p class="description">Consejo: escribe al menos 3 caracteres para resultados más precisos.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="dc_csv_results">Resultados</label></th>
+                    <td>
+                        <select id="dc_csv_results" size="10" class="large-text"></select>
+                        <p class="description" id="dc_csv_help">Cargando resultados iniciales...</p>
+                        <p>
+                            <label>
+                                <input type="checkbox" id="dc_csv_auto_active" checked>
+                                Publicar bundle inmediatamente (activo)
+                            </label>
+                        </p>
+                        <p>
+                            <button type="button" class="button button-primary" id="dc_csv_create_btn">Crear bundle automáticamente desde selección</button>
+                        </p>
+                    </td>
+                </tr>
+            </table>
 
-            <section id="dc-source-panel-csv" class="dc-source-panel" data-dc-source-panel="csv" hidden>
-                <h3>Método 1: Buscar en catálogo CSV</h3>
-                <p>Busca en todo el catálogo, selecciona un producto y crea o autocompleta el bundle.</p>
-                <table class="form-table" role="presentation">
-                    <tr>
-                        <th scope="row"><label for="dc_csv_query">Buscar producto</label></th>
-                        <td>
-                            <input type="text" id="dc_csv_query" class="regular-text" placeholder="SKU, operador, país, descripción...">
-                            <select id="dc_csv_country" class="regular-text">
-                                <option value="">Todos los países</option>
-                                <?php foreach ($csv_countries as $country_name) : ?>
-                                    <option value="<?php echo esc_attr($country_name); ?>"><?php echo esc_html($country_name); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <button type="button" class="button" id="dc_csv_search_btn">Buscar</button>
-                            <p class="description">Consejo: escribe al menos 3 caracteres para resultados más precisos.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_csv_results">Resultados</label></th>
-                        <td>
-                            <select id="dc_csv_results" size="10" class="large-text"></select>
-                            <p class="description" id="dc_csv_help">Cargando resultados iniciales...</p>
-                            <p>
-                                <label>
-                                    <input type="checkbox" id="dc_csv_auto_active" checked>
-                                    Publicar bundle inmediatamente (activo)
-                                </label>
-                            </p>
-                            <p>
-                                <button type="button" class="button button-primary" id="dc_csv_create_btn">Crear bundle automáticamente desde selección</button>
-                            </p>
-                        </td>
-                    </tr>
-                </table>
-            </section>
-
-            <section id="dc-source-panel-api" class="dc-source-panel" data-dc-source-panel="api" hidden>
-                <h3>Método 2: Buscar paquetes en API DingConnect</h3>
-                <p class="description">Consulta paquetes en tiempo real por país y cárgalos al formulario de bundle.</p>
-                <table class="form-table" role="presentation">
-                    <tr>
-                        <th scope="row"><label for="dc_api_country_iso">País (código ISO)</label></th>
-                        <td>
-                            <select id="dc_api_country_iso" class="regular-text">
-                                <option value="">Selecciona un país...</option>
-                                <option value="AR">Argentina (AR)</option>
-                                <option value="BO">Bolivia (BO)</option>
-                                <option value="BR">Brasil (BR)</option>
-                                <option value="CL">Chile (CL)</option>
-                                <option value="CO">Colombia (CO)</option>
-                                <option value="CR">Costa Rica (CR)</option>
-                                <option value="CU">Cuba (CU)</option>
-                                <option value="DO">Rep. Dominicana (DO)</option>
-                                <option value="EC">Ecuador (EC)</option>
-                                <option value="SV">El Salvador (SV)</option>
-                                <option value="ES">España (ES)</option>
-                                <option value="GT">Guatemala (GT)</option>
-                                <option value="HT">Haití (HT)</option>
-                                <option value="HN">Honduras (HN)</option>
-                                <option value="MX">México (MX)</option>
-                                <option value="NI">Nicaragua (NI)</option>
-                                <option value="PA">Panamá (PA)</option>
-                                <option value="PY">Paraguay (PY)</option>
-                                <option value="PE">Perú (PE)</option>
-                                <option value="US">Estados Unidos (US)</option>
-                                <option value="UY">Uruguay (UY)</option>
-                                <option value="VE">Venezuela (VE)</option>
-                            </select>
-                            <button type="button" class="button" id="dc_api_fetch_btn">Buscar en API</button>
-                            <p class="description">Resultados directos de DingConnect (caché de 10 minutos por país).</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_api_results">Paquetes encontrados</label></th>
-                        <td>
-                            <select id="dc_api_results" size="10" class="large-text"></select>
-                            <p class="description" id="dc_api_help">Selecciona un país y haz clic en Buscar en API.</p>
-                            <div id="dc_api_empty_state" class="dc-results-empty" hidden>
-                                No hay paquetes para mostrar todavía. Elige un país, pulsa Buscar en API y selecciona un paquete para autocompletar el formulario.
-                            </div>
-                            <p>
-                                <label>
-                                    <input type="checkbox" id="dc_api_auto_active" checked>
-                                    Publicar bundle inmediatamente (activo)
-                                </label>
-                            </p>
-                            <p>
-                                <button type="button" class="button button-primary" id="dc_api_create_btn" disabled>Crear bundle desde API</button>
-                            </p>
-                        </td>
-                    </tr>
-                </table>
-            </section>
+            <hr>
+            <h3>Buscar paquetes en la API de DingConnect por país</h3>
+            <p class="description">Consulta los paquetes disponibles directamente desde DingConnect. No necesitas el CSV; los resultados se traen en tiempo real y se guardan en caché por 10 minutos.</p>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="dc_api_country_iso">País (código ISO)</label></th>
+                    <td>
+                        <select id="dc_api_country_iso" class="regular-text">
+                            <option value="">Selecciona un país...</option>
+                            <option value="AR">Argentina (AR)</option>
+                            <option value="BO">Bolivia (BO)</option>
+                            <option value="BR">Brasil (BR)</option>
+                            <option value="CL">Chile (CL)</option>
+                            <option value="CO">Colombia (CO)</option>
+                            <option value="CR">Costa Rica (CR)</option>
+                            <option value="CU">Cuba (CU)</option>
+                            <option value="DO">Rep. Dominicana (DO)</option>
+                            <option value="EC">Ecuador (EC)</option>
+                            <option value="SV">El Salvador (SV)</option>
+                            <option value="ES">España (ES)</option>
+                            <option value="GT">Guatemala (GT)</option>
+                            <option value="HT">Haití (HT)</option>
+                            <option value="HN">Honduras (HN)</option>
+                            <option value="MX">México (MX)</option>
+                            <option value="NI">Nicaragua (NI)</option>
+                            <option value="PA">Panamá (PA)</option>
+                            <option value="PY">Paraguay (PY)</option>
+                            <option value="PE">Perú (PE)</option>
+                            <option value="US">Estados Unidos (US)</option>
+                            <option value="UY">Uruguay (UY)</option>
+                            <option value="VE">Venezuela (VE)</option>
+                        </select>
+                        <button type="button" class="button" id="dc_api_fetch_btn">Buscar en API</button>
+                        <p class="description">Resultados directos de DingConnect (caché de 10 minutos por país).</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="dc_api_results">Paquetes encontrados</label></th>
+                    <td>
+                        <select id="dc_api_results" size="10" class="large-text"></select>
+                        <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API».</p>
+                        <p>
+                            <label>
+                                <input type="checkbox" id="dc_api_auto_active" checked>
+                                Publicar bundle inmediatamente (activo)
+                            </label>
+                        </p>
+                        <p>
+                            <button type="button" class="button button-primary" id="dc_api_create_btn" disabled>Crear bundle desde API</button>
+                        </p>
+                    </td>
+                </tr>
+            </table>
             <script>
             (function () {
                 var apiNonce     = <?php echo wp_json_encode($csv_nonce); ?>;
@@ -1374,7 +1207,6 @@ class DC_Recargas_Admin {
                 var apiFetchBtn  = document.getElementById('dc_api_fetch_btn');
                 var apiResultsEl = document.getElementById('dc_api_results');
                 var apiHelpEl    = document.getElementById('dc_api_help');
-                var apiEmptyEl   = document.getElementById('dc_api_empty_state');
                 var apiActiveEl  = document.getElementById('dc_api_auto_active');
                 var apiCreateBtn = document.getElementById('dc_api_create_btn');
                 var apiSelected  = null;
@@ -1395,21 +1227,8 @@ class DC_Recargas_Admin {
                     apiSelected = null;
                     apiCreateBtn.disabled = true;
 
-                    if (apiEmptyEl) {
-                        apiEmptyEl.hidden = true;
-                    }
-
                     if (!items || items.length === 0) {
-                        var empty = document.createElement('option');
-                        empty.value = '';
-                        empty.disabled = true;
-                        empty.selected = true;
-                        empty.textContent = 'Sin paquetes para este país. Prueba otro país o verifica el código ISO.';
-                        apiResultsEl.appendChild(empty);
                         apiHelpEl.textContent = 'No se encontraron paquetes para este país en la API.';
-                        if (apiEmptyEl) {
-                            apiEmptyEl.hidden = false;
-                        }
                         return;
                     }
 
@@ -1428,9 +1247,6 @@ class DC_Recargas_Admin {
                     var iso = apiCountryEl.value;
                     if (!iso) {
                         apiHelpEl.textContent = 'Selecciona un país antes de buscar.';
-                        if (apiEmptyEl) {
-                            apiEmptyEl.hidden = false;
-                        }
                         return;
                     }
 
@@ -1439,9 +1255,6 @@ class DC_Recargas_Admin {
                     apiResultsEl.innerHTML = '';
                     apiSelected = null;
                     apiCreateBtn.disabled = true;
-                    if (apiEmptyEl) {
-                        apiEmptyEl.hidden = true;
-                    }
 
                     var url = ajaxurl + '?action=dc_fetch_api_products&nonce=' + encodeURIComponent(apiNonce) + '&country_iso=' + encodeURIComponent(iso);
 
@@ -1471,12 +1284,6 @@ class DC_Recargas_Admin {
                     try {
                         apiSelected = JSON.parse(opt.dataset.item);
                         apiCreateBtn.disabled = false;
-                        document.dispatchEvent(new CustomEvent('dc:bundle-source-selected', {
-                            detail: {
-                                source: 'api',
-                                item: apiSelected,
-                            }
-                        }));
                     } catch (e) {
                         apiSelected = null;
                         apiCreateBtn.disabled = true;
@@ -1521,13 +1328,6 @@ class DC_Recargas_Admin {
                                     }
                                 }
                                 apiSelected = null;
-                                apiCreateBtn.disabled = true;
-                                if (!apiResultsEl.options.length) {
-                                    if (apiEmptyEl) {
-                                        apiEmptyEl.hidden = false;
-                                    }
-                                    apiHelpEl.textContent = 'No quedan paquetes pendientes en esta lista. Busca nuevamente o cambia de país.';
-                                }
                             } else {
                                 apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo crear el bundle.');
                             }
@@ -1540,10 +1340,7 @@ class DC_Recargas_Admin {
             })();
             </script>
 
-            <div id="dc_bundle_form_panel" class="dc-bundle-form-panel" hidden>
-            <span class="dc-step-label">Paso 2 · Revisar y guardar</span>
-            <h2>Guardar bundle curado</h2>
-            <p id="dc_bundle_form_source_hint" class="description">Puedes cargar datos desde catálogo CSV, API DingConnect o completar todo manualmente.</p>
+            <h2>Añadir bundle curado</h2>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="dc_add_bundle">
                 <?php wp_nonce_field('dc_add_bundle'); ?>
@@ -1591,9 +1388,8 @@ class DC_Recargas_Admin {
                     </tr>
                 </table>
 
-                <?php submit_button('Guardar bundle'); ?>
+                <?php submit_button('Añadir bundle'); ?>
             </form>
-            </div>
 
                 </section>
 
@@ -2204,11 +2000,6 @@ class DC_Recargas_Admin {
                 var balanceResultEl = document.getElementById('dc_balance_result');
                 var lastBalanceAutoAt = 0;
                 var BALANCE_AUTO_REFRESH_MS = 30000;
-                var sourceBtnEls = document.querySelectorAll('[data-dc-source-btn]');
-                var sourcePanelEls = document.querySelectorAll('[data-dc-source-panel]');
-                var bundleFormPanelEl = document.getElementById('dc_bundle_form_panel');
-                var bundleFormSourceHintEl = document.getElementById('dc_bundle_form_source_hint');
-                var currentSourceMode = '';
 
                 function getSelectedBundleCount() {
                     var count = 0;
@@ -2507,60 +2298,6 @@ class DC_Recargas_Admin {
                     if (descriptionEl) descriptionEl.value = item.receive || '';
                 }
 
-                function setSourceMode(mode) {
-                    currentSourceMode = mode || '';
-
-                    sourceBtnEls.forEach(function (btn) {
-                        var isActive = btn.getAttribute('data-dc-source-btn') === currentSourceMode;
-                        btn.classList.toggle('is-active', isActive);
-                    });
-
-                    sourcePanelEls.forEach(function (panel) {
-                        var panelMode = panel.getAttribute('data-dc-source-panel');
-                        panel.hidden = panelMode !== currentSourceMode;
-                    });
-
-                    if (bundleFormPanelEl) {
-                        bundleFormPanelEl.hidden = !currentSourceMode;
-                    }
-
-                    if (bundleFormSourceHintEl) {
-                        if (currentSourceMode === 'csv') {
-                            bundleFormSourceHintEl.textContent = 'Fuente actual: catálogo CSV. Al seleccionar un resultado, el formulario se autocompleta.';
-                        } else if (currentSourceMode === 'api') {
-                            bundleFormSourceHintEl.textContent = 'Fuente actual: API DingConnect. Al seleccionar un paquete, el formulario se autocompleta.';
-                        } else if (currentSourceMode === 'manual') {
-                            bundleFormSourceHintEl.textContent = 'Fuente actual: carga manual. Completa los campos y guarda el bundle.';
-                        } else {
-                            bundleFormSourceHintEl.textContent = 'Puedes cargar datos desde catálogo CSV, API DingConnect o completar todo manualmente.';
-                        }
-                    }
-                }
-
-                if (sourceBtnEls.length) {
-                    sourceBtnEls.forEach(function (btn) {
-                        btn.addEventListener('click', function () {
-                            setSourceMode(btn.getAttribute('data-dc-source-btn') || '');
-                        });
-                    });
-                }
-
-                document.addEventListener('dc:bundle-source-selected', function (event) {
-                    var detail = event && event.detail ? event.detail : {};
-                    if (!detail.item) {
-                        return;
-                    }
-
-                    fillForm(detail.item);
-
-                    if (detail.source === 'api') {
-                        setSourceMode('api');
-                    }
-                    if (detail.source === 'csv') {
-                        setSourceMode('csv');
-                    }
-                });
-
                 function renderResults(items) {
                     resultsEl.innerHTML = '';
 
@@ -2746,14 +2483,7 @@ class DC_Recargas_Admin {
                     }
 
                     try {
-                        var selectedItem = JSON.parse(selected.dataset.item);
-                        fillForm(selectedItem);
-                        document.dispatchEvent(new CustomEvent('dc:bundle-source-selected', {
-                            detail: {
-                                source: 'csv',
-                                item: selectedItem,
-                            }
-                        }));
+                        fillForm(JSON.parse(selected.dataset.item));
                     } catch (e) {
                         helpEl.textContent = 'No se pudo interpretar el producto seleccionado.';
                     }
@@ -2764,7 +2494,6 @@ class DC_Recargas_Admin {
                     createBtn.addEventListener('click', createBundleFromSelection);
                 }
 
-                setSourceMode('');
                 loadInitialResults();
             })();
 

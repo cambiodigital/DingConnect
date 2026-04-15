@@ -127,6 +127,17 @@ class DC_Recargas_REST {
             ], 400);
         }
 
+        // Catálogo curado: si existen bundles activos para el país, mostrar solo esos.
+        $saved = $this->filter_bundles_by_country($country_iso);
+        if (!empty($saved)) {
+            return rest_ensure_response([
+                'ok' => true,
+                'source' => 'saved',
+                'result' => $saved,
+            ]);
+        }
+
+        // Sin bundles guardados: usar catálogo live de DingConnect.
         $response = !empty($country_iso)
             ? $this->api->get_products_by_country($country_iso, 250)
             : $this->api->get_products($account_number, 250);
@@ -141,25 +152,21 @@ class DC_Recargas_REST {
         }
 
         if (is_wp_error($response)) {
-            $fallback = $this->filter_bundles_by_country($country_iso);
             return new WP_REST_Response([
                 'ok' => false,
                 'source' => 'fallback',
                 'message' => $response->get_error_message(),
                 'error' => $response->get_error_data(),
-                'result' => $fallback,
+                'result' => [],
             ], 200);
         }
 
         $api_items = $this->normalize_products_for_frontend($response['Result'] ?? $response['Items'] ?? [], $country_iso);
-        $saved = $this->filter_bundles_by_country($country_iso);
-
-        $result = $this->merge_products_by_sku($api_items, $saved);
 
         return rest_ensure_response([
             'ok' => true,
-            'source' => empty($api_items) && !empty($saved) ? 'saved' : 'dingconnect',
-            'result' => $result,
+            'source' => 'dingconnect',
+            'result' => $api_items,
         ]);
     }
 
