@@ -89,6 +89,27 @@ Una iniciativa se considera lista cuando cumple:
 23. Respuesta de balance robusta en admin: el endpoint interno `/balance` normaliza variaciones de payload de DingConnect para mostrar siempre saldo, moneda y código de resultado en la tarjeta de credenciales.
 24. Diagnóstico extendido de recargas fallidas: errores `ProviderError` agregan contexto (`ding_error_context`) y trazas de operación (`transfer_ref`, `distributor_ref`, `processing_state`) para investigación de soporte.
 25. Gestión masiva de bundles en admin: la tabla de bundles guardados ahora permite seleccionar uno o varios registros (incluye "seleccionar todos") y eliminarlos en bloque con confirmación.
+26. Fundaciones del wizard v2: se creó `includes/class-dc-wizard.php` con pasos base, validación de transición y estructura de estado inicial para recargas + gift cards.
+27. Estado de wizard persistente: se agregó tabla `dc_wizard_sessions` con creación automática (activación y upgrade) para guardar/recuperar sesiones.
+28. API REST del wizard: nuevos endpoints `wizard/config` y `wizard/session` para configuración pública y recuperación de estado por `session_id`.
+29. Panel admin preparado para wizard: nuevo feature flag (`wizard_enabled`), límite de ofertas por categoría y parámetros de mapeo de teléfono en checkout.
+30. Frontend habilitado para siguiente fase: registro del shortcode `[dingconnect_wizard]` con atributos `entry_mode` y `country` para landings externas.
+31. Motor de ofertas del wizard: clasificación base recargas/gift cards, filtrado por categoría y límite configurable por categoría con orden estable.
+32. Contrato base de confirmación unificado: se incorporó payload canónico para voucher/confirmación con estructura común para recargas y gift cards.
+33. API del wizard ampliada: endpoint `GET /wp-json/dingconnect/v1/wizard/offers` con soporte de `entry_mode`, `country_iso`, `account_number`, `fixed_prefix` y `category`.
+34. Sincronización operativa del wizard: endpoint administrativo `POST /wp-json/dingconnect/v1/wizard/sync-now` que consulta catálogo por país, genera fingerprint y detecta cambios para notificar actualización de landings.
+35. Contrato REST v1 para wizard: respuestas homogéneas con `endpoint`, `contract_version`, `result` y metadatos de seguridad (`backend_only`) para integración frontend estable.
+36. Bloque frontend wizard v2 implementado: nuevo cliente `assets/js/wizard-core.js`, nuevo estilo `assets/css/wizard.css` y shortcodes predefinidos para recargas, gift cards y Cuba con prefijo fijo.
+37. Enforcement payment-first en WooCommerce: transferencias DingConnect bloqueadas hasta estado pagado (`order->is_paid`) y ejecución idempotente por item para evitar duplicados.
+38. Política de reintentos en producción: configuración en admin para intentos automáticos y ventana de espera (`wizard_transfer_retry_attempts`, `wizard_transfer_retry_delay_minutes`) con reintentos programados.
+39. Reconciliación manual operativa: nueva acción de pedido en WooCommerce para reintentar recargas fallidas y registrar auditoría con notas de orden.
+40. Confirmación de voucher unificada en checkout: resumen en pantalla de thank-you y datos de recarga inyectados al correo de WooCommerce.
+41. Bloque de verificación v2 (6.1-6.7) ejecutado en modo evidencia técnica: reporte actualizado con trazabilidad de código para payment-first, idempotencia, retries, reconciliación y shortcodes; quedan bloqueadas las evidencias E2E runtime por falta de entorno WordPress/WooCommerce/gateways y CLI PHP en esta estación.
+42. Infraestructura de staging local agregada para verificación runtime: `staging/docker-compose.yml` + scripts `scripts/staging-up.ps1` y `scripts/run-matrix-6.ps1` para bootstrap WordPress/WooCommerce, activar gateways de prueba (BACS/Cheque/COD) y repetir matriz 6.1-6.7.
+43. Bloqueo operativo identificado para ejecutar staging en esta estación: comando `docker` no disponible en PowerShell, por lo que la ejecución runtime 6.1-6.7 sigue pendiente hasta instalar/activar Docker Desktop.
+44. Cierre documental de fase 6.8 del cambio `dingconnect-recargas-v2`: se actualizó el backlog técnico y la guía técnica con resultados actuales, brechas runtime, riesgos y recomendación `NO-GO` condicional hasta completar evidencia de staging con WooCommerce y pasarelas.
+45. Endurecimiento del wizard v2 contra bypass de pasos: la persistencia de sesión ahora valida reglas por paso (categoría, número, operador y producto) y bloquea saltos no secuenciales en backend para evitar estados inconsistentes por llamadas REST directas.
+46. Detección automática en flujo number-first: en el paso de datos del destinatario el país pasa a ser opcional y el wizard intenta resolverlo automáticamente desde el catálogo obtenido con el número, manteniendo opción de selección manual.
 
 ## Backlog actualizado por impacto
 
@@ -104,6 +125,11 @@ Una iniciativa se considera lista cuando cumple:
    - Estado: parcialmente completado.
    - Completado: logs internos de transferencias.
    - Pendiente: filtros, búsqueda y panel de soporte sobre logs.
+4. Prioridad P1 - Verificación E2E y validación multi-gateway del wizard v2.
+   - Estado: en ejecución (fase de verificación automatizada disponible, pendiente runtime).
+   - Alcance validado para ejecutar: E2E recargas number-first, E2E gift cards country-fixed, enforcement payment-first, idempotencia por item, matriz multi-gateway y reconciliación manual.
+   - Evidencia requerida: notas de pedido, logs internos de transferencia, comprobación de voucher en thank-you/email y resultado por gateway.
+   - Estado actual de entorno: scripts de staging listos; ejecución bloqueada por ausencia de `docker` en la máquina local.
 
 ## Nota operativa de despliegue (14-04-2026)
 

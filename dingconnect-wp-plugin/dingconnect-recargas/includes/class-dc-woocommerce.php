@@ -52,6 +52,13 @@ class DC_Recargas_WooCommerce {
         // Order processing - fire DingConnect transfer on payment
         add_action('woocommerce_order_status_processing', [$this, 'process_recarga_on_payment']);
         add_action('woocommerce_order_status_completed', [$this, 'process_recarga_on_payment']);
+        add_action('dc_recargas_retry_transfer', [$this, 'process_retry_transfer'], 10, 2);
+
+        // Manual reconciliation + voucher rendering
+        add_filter('woocommerce_order_actions', [$this, 'register_manual_reconcile_action']);
+        add_action('woocommerce_order_action_dc_recargas_manual_reconcile', [$this, 'handle_manual_reconcile_action']);
+        add_action('woocommerce_thankyou', [$this, 'render_thankyou_voucher_summary'], 25);
+        add_filter('woocommerce_email_order_meta_fields', [$this, 'inject_voucher_meta_into_email'], 10, 3);
 
         // Admin order display
         add_action('woocommerce_after_order_itemmeta', [$this, 'display_order_item_recarga_meta'], 10, 3);
@@ -292,88 +299,97 @@ class DC_Recargas_WooCommerce {
         $order = wc_get_order($order_id);
         if (!$order) return;
 
-        // Prevent double processing
-        if ($order->get_meta('_dc_recargas_processed')) return;
+        if (!$order->is_paid()) {
+            return;
+        }
 
         $has_recargas = false;
         $all_success  = true;
+        $has_pending_retry = false;
 
         foreach ($order->get_items() as $item_id => $item) {
             if ($item->get_meta('_dc_recarga') !== 'yes') continue;
 
             $has_recargas = true;
 
-            // Skip if this specific item was already processed
-            if ($item->get_meta('_dc_transfer_ref')) continue;
+            if ($this->is_item_already_successful($item)) {
+                continue;
+            }
 
-            $account_number   = $item->get_meta('_dc_account_number');
-            $sku_code         = $item->get_meta('_dc_sku_code');
-            $send_value       = (float) $item->get_meta('_dc_send_value');
-            $send_currency_iso = $item->get_meta('_dc_send_currency_iso');
+            $attempt_result = $this->attempt_transfer_for_item($order, $item, false);
 
-            $distributor_ref = $this->api->new_ref();
+            if (!empty($attempt_result['pending_retry'])) {
+                $has_pending_retry = true;
+            }
 
-            $payload = [
-                'DistributorRef'  => $distributor_ref,
-                'AccountNumber'   => $account_number,
-                'SkuCode'         => $sku_code,
-                'SendValue'       => $send_value,
-                'SendCurrencyIso' => $send_currency_iso,
-                'ValidateOnly'    => false, // REAL transfer - payment already confirmed
-            ];
-
-            $response = $this->api->send_transfer($payload);
-
-            // Log the transfer
-            $this->api->log_transfer($account_number, $sku_code, $send_value, $send_currency_iso, $distributor_ref, $response);
-
-            if (is_wp_error($response)) {
+            if (empty($attempt_result['success'])) {
                 $all_success = false;
-                $item->add_meta_data('_dc_transfer_status', 'error', true);
-                $item->add_meta_data('_dc_transfer_error', $response->get_error_message(), true);
-                $item->save();
-
-                $order->add_order_note(sprintf(
-                    'Recarga FALLIDA para %s (SKU: %s): %s',
-                    $account_number,
-                    $sku_code,
-                    $response->get_error_message()
-                ));
-            } else {
-                $items_data      = $response['Items'] ?? $response['Result'] ?? [];
-                $first_item      = $items_data[0] ?? [];
-                $status           = $first_item['Status'] ?? 'Unknown';
-                $transfer_ref     = $response['TransferRef'] ?? '';
-                $receive_value    = $first_item['ReceiveValue'] ?? '';
-                $receive_currency = $first_item['ReceiveCurrencyIso'] ?? '';
-
-                $item->add_meta_data('_dc_transfer_ref',    $transfer_ref, true);
-                $item->add_meta_data('_dc_transfer_status', $status, true);
-                $item->add_meta_data('_dc_distributor_ref', $distributor_ref, true);
-                $item->save();
-
-                $note = sprintf(
-                    'Recarga EXITOSA para %s (SKU: %s) - Ref: %s - Estado: %s',
-                    $account_number,
-                    $sku_code,
-                    $transfer_ref,
-                    $status
-                );
-                if ($receive_value) {
-                    $note .= sprintf(' - Recibe: %s %s', $receive_currency, $receive_value);
-                }
-                $order->add_order_note($note);
             }
         }
 
         if ($has_recargas) {
-            $order->update_meta_data('_dc_recargas_processed', current_time('mysql'));
-
-            if (!$all_success) {
+            if ($all_success && !$has_pending_retry) {
+                $order->update_meta_data('_dc_recargas_processed', current_time('mysql'));
+                $order->delete_meta_data('_dc_recargas_has_errors');
+            } else {
                 $order->update_meta_data('_dc_recargas_has_errors', 'yes');
-                $order->add_order_note('?? Algunas recargas fallaron. Revisa los detalles de cada item.');
             }
 
+            if ($has_pending_retry) {
+                $order->add_order_note('Hay recargas con reintento programado. Se intentara nuevamente segun configuracion.');
+            } elseif (!$all_success) {
+                $order->add_order_note('Algunas recargas fallaron. Revisa los detalles de cada item o ejecuta reconciliacion manual.');
+            }
+
+            $order->save();
+        }
+    }
+
+    public function process_retry_transfer($order_id, $item_id) {
+        $order = wc_get_order((int) $order_id);
+        if (!$order || !$order->is_paid()) {
+            return;
+        }
+
+        $item = $order->get_item((int) $item_id);
+        if (!$item instanceof WC_Order_Item_Product) {
+            return;
+        }
+
+        if ($item->get_meta('_dc_recarga') !== 'yes' || $this->is_item_already_successful($item)) {
+            return;
+        }
+
+        $this->attempt_transfer_for_item($order, $item, false);
+        $order->save();
+    }
+
+    public function register_manual_reconcile_action($actions) {
+        $actions['dc_recargas_manual_reconcile'] = __('Reintentar recargas DingConnect', 'dingconnect-recargas');
+        return $actions;
+    }
+
+    public function handle_manual_reconcile_action($order) {
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+
+        $processed = 0;
+        foreach ($order->get_items() as $item_id => $item) {
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            if ($this->is_item_already_successful($item)) {
+                continue;
+            }
+
+            $this->attempt_transfer_for_item($order, $item, true);
+            $processed++;
+        }
+
+        if ($processed > 0) {
+            $order->add_order_note(sprintf('Reconciliacion manual ejecutada para %d item(s) DingConnect.', $processed));
             $order->save();
         }
     }
@@ -411,9 +427,229 @@ class DC_Recargas_WooCommerce {
         echo '</div>';
     }
 
+    public function render_thankyou_voucher_summary($order_id) {
+        $order = wc_get_order((int) $order_id);
+        if (!$order) {
+            return;
+        }
+
+        $voucher_rows = $this->collect_order_voucher_rows($order);
+        if (empty($voucher_rows)) {
+            return;
+        }
+
+        echo '<section class="woocommerce-order-details" style="margin-top:22px;">';
+        echo '<h2>Confirmacion de recarga</h2>';
+        echo '<ul class="woocommerce-order-overview woocommerce-thankyou-order-details order_details">';
+        foreach ($voucher_rows as $row) {
+            echo '<li class="woocommerce-order-overview__item">';
+            echo esc_html($row);
+            echo '</li>';
+        }
+        echo '</ul>';
+        echo '</section>';
+    }
+
+    public function inject_voucher_meta_into_email($fields, $sent_to_admin, $order) {
+        if (!$order instanceof WC_Order) {
+            return $fields;
+        }
+
+        $voucher_rows = $this->collect_order_voucher_rows($order);
+        if (empty($voucher_rows)) {
+            return $fields;
+        }
+
+        $fields['dc_recargas_voucher_summary'] = [
+            'label' => __('Resumen de recarga', 'dingconnect-recargas'),
+            'value' => implode(' | ', $voucher_rows),
+        ];
+
+        return $fields;
+    }
+
     /* ---------------------------------------------------------------
      * Helpers
      * ------------------------------------------------------------- */
+
+    private function is_item_already_successful($item) {
+        $status = strtolower((string) $item->get_meta('_dc_transfer_status'));
+        $transfer_ref = (string) $item->get_meta('_dc_transfer_ref');
+
+        if ($transfer_ref !== '') {
+            return true;
+        }
+
+        return in_array($status, ['success', 'completed', 'ok'], true);
+    }
+
+    private function attempt_transfer_for_item($order, $item, $manual = false) {
+        $account_number = (string) $item->get_meta('_dc_account_number');
+        $sku_code = (string) $item->get_meta('_dc_sku_code');
+        $send_value = (float) $item->get_meta('_dc_send_value');
+        $send_currency_iso = (string) $item->get_meta('_dc_send_currency_iso');
+
+        $lock_key = 'dc_transfer_lock_' . md5($order->get_id() . '_' . $item->get_id());
+        if (get_transient($lock_key)) {
+            return ['success' => false, 'pending_retry' => true, 'message' => 'lock'];
+        }
+        set_transient($lock_key, 1, 60);
+
+        $attempt = (int) $item->get_meta('_dc_retry_attempts');
+        $attempt++;
+        $item->update_meta_data('_dc_retry_attempts', $attempt);
+        $item->update_meta_data('_dc_last_attempt_at', current_time('mysql'));
+
+        $distributor_ref = $this->api->new_ref();
+        $payload = [
+            'DistributorRef' => $distributor_ref,
+            'AccountNumber' => $account_number,
+            'SkuCode' => $sku_code,
+            'SendValue' => $send_value,
+            'SendCurrencyIso' => $send_currency_iso,
+            'ValidateOnly' => false,
+        ];
+
+        $response = $this->api->send_transfer($payload);
+        $this->api->log_transfer($account_number, $sku_code, $send_value, $send_currency_iso, $distributor_ref, $response);
+
+        if (is_wp_error($response)) {
+            $item->update_meta_data('_dc_transfer_status', 'error');
+            $item->update_meta_data('_dc_transfer_error', $response->get_error_message());
+            $item->update_meta_data('_dc_distributor_ref', $distributor_ref);
+
+            $retry_budget = $this->get_retry_attempt_limit();
+            $can_schedule_retry = !$manual && $attempt <= $retry_budget;
+
+            if ($can_schedule_retry) {
+                $retry_ts = time() + (60 * $this->get_retry_delay_minutes());
+                $item->update_meta_data('_dc_transfer_status', 'pending_retry');
+                $item->update_meta_data('_dc_next_retry_at', gmdate('Y-m-d H:i:s', $retry_ts));
+                wp_schedule_single_event($retry_ts, 'dc_recargas_retry_transfer', [(int) $order->get_id(), (int) $item->get_id()]);
+            }
+
+            $item->save();
+            $order->add_order_note(sprintf(
+                'Recarga FALLIDA para %s (SKU: %s), intento %d: %s',
+                $account_number,
+                $sku_code,
+                $attempt,
+                $response->get_error_message()
+            ));
+
+            delete_transient($lock_key);
+
+            return [
+                'success' => false,
+                'pending_retry' => $can_schedule_retry,
+                'message' => $response->get_error_message(),
+            ];
+        }
+
+        $items_data = $response['Items'] ?? $response['Result'] ?? [];
+        $first_item = $items_data[0] ?? [];
+        $status = (string) ($first_item['Status'] ?? 'Completed');
+        $transfer_ref = (string) ($response['TransferRef'] ?? ($first_item['TransferRef'] ?? ''));
+        $receive_value = (float) ($first_item['ReceiveValue'] ?? 0);
+        $receive_currency = (string) ($first_item['ReceiveCurrencyIso'] ?? '');
+
+        $item->update_meta_data('_dc_transfer_ref', $transfer_ref);
+        $item->update_meta_data('_dc_transfer_status', strtolower($status));
+        $item->update_meta_data('_dc_distributor_ref', $distributor_ref);
+        $item->delete_meta_data('_dc_transfer_error');
+        $item->delete_meta_data('_dc_next_retry_at');
+        $item->save();
+
+        $voucher_payload = [
+            'transaction_id' => $transfer_ref,
+            'status' => $status,
+            'operator' => (string) $item->get_meta('_dc_provider_name'),
+            'amount_sent' => $send_value,
+            'amount_received' => $receive_value,
+            'beneficiary_phone' => $account_number,
+            'timestamp' => current_time('mysql'),
+            'promotion' => '',
+        ];
+        $item->update_meta_data('_dc_voucher_payload', wp_json_encode($voucher_payload));
+        $item->save();
+
+        $note = sprintf(
+            'Recarga EXITOSA para %s (SKU: %s), intento %d - Ref: %s - Estado: %s',
+            $account_number,
+            $sku_code,
+            $attempt,
+            $transfer_ref,
+            $status
+        );
+
+        if ($receive_value > 0) {
+            $note .= sprintf(' - Recibe: %s %s', $receive_currency, $receive_value);
+        }
+
+        $order->add_order_note($note);
+
+        delete_transient($lock_key);
+
+        return ['success' => true, 'pending_retry' => false];
+    }
+
+    private function get_retry_attempt_limit() {
+        $options = $this->api->get_options();
+        $attempts = (int) ($options['wizard_transfer_retry_attempts'] ?? 2);
+
+        if ($attempts < 0) {
+            $attempts = 0;
+        }
+        if ($attempts > 5) {
+            $attempts = 5;
+        }
+
+        return $attempts;
+    }
+
+    private function get_retry_delay_minutes() {
+        $options = $this->api->get_options();
+        $minutes = (int) ($options['wizard_transfer_retry_delay_minutes'] ?? 15);
+
+        if ($minutes < 1) {
+            $minutes = 1;
+        }
+        if ($minutes > 240) {
+            $minutes = 240;
+        }
+
+        return $minutes;
+    }
+
+    private function collect_order_voucher_rows($order) {
+        $rows = [];
+
+        foreach ($order->get_items() as $item) {
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            $phone = (string) $item->get_meta('_dc_account_number');
+            $status = strtoupper((string) $item->get_meta('_dc_transfer_status'));
+            $ref = (string) $item->get_meta('_dc_transfer_ref');
+            $provider = (string) $item->get_meta('_dc_provider_name');
+            $amount = (float) $item->get_meta('_dc_send_value');
+            $currency = (string) $item->get_meta('_dc_send_currency_iso');
+
+            $rows[] = sprintf(
+                '%s %s | %s | %s | %s %.2f | Ref %s',
+                $provider,
+                $phone,
+                $status !== '' ? $status : 'PENDING',
+                (string) $item->get_meta('_dc_bundle_label'),
+                $currency,
+                $amount,
+                $ref !== '' ? $ref : 'N/A'
+            );
+        }
+
+        return $rows;
+    }
 
     private function sanitize_phone($phone) {
         $raw = preg_replace('/[^\d+]/', '', (string) $phone);

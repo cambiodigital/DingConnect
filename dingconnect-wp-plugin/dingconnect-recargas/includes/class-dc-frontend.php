@@ -9,8 +9,15 @@ if (class_exists('DC_Recargas_Frontend')) {
 }
 
 class DC_Recargas_Frontend {
-    public function __construct() {
+    private $wizard;
+
+    public function __construct($wizard = null) {
+        $this->wizard = $wizard;
         add_shortcode('dingconnect_recargas', [$this, 'render_shortcode']);
+        add_shortcode('dingconnect_wizard', [$this, 'render_wizard_shortcode']);
+        add_shortcode('dingconnect_wizard_recargas', [$this, 'render_wizard_recargas_shortcode']);
+        add_shortcode('dingconnect_wizard_giftcards', [$this, 'render_wizard_giftcards_shortcode']);
+        add_shortcode('dingconnect_wizard_cuba', [$this, 'render_wizard_cuba_shortcode']);
         add_action('wp_enqueue_scripts', [$this, 'register_assets']);
     }
 
@@ -30,6 +37,21 @@ class DC_Recargas_Frontend {
             true
         );
 
+        wp_register_style(
+            'dc-recargas-wizard',
+            DC_RECARGAS_URL . 'assets/css/wizard.css',
+            [],
+            DC_RECARGAS_VERSION
+        );
+
+        wp_register_script(
+            'dc-recargas-wizard',
+            DC_RECARGAS_URL . 'assets/js/wizard-core.js',
+            [],
+            DC_RECARGAS_VERSION,
+            true
+        );
+
         $opts = get_option('dc_recargas_options', []);
 
         wp_localize_script('dc-recargas-frontend', 'DC_RECARGAS_DATA', [
@@ -43,6 +65,22 @@ class DC_Recargas_Frontend {
                 'loading' => 'Consultando paquetes...',
                 'search' => 'Buscar paquetes',
                 'pay' => 'Procesar recarga',
+            ],
+        ]);
+
+        wp_localize_script('dc-recargas-wizard', 'DC_WIZARD_DATA', [
+            'restBase' => esc_url_raw(rest_url('dingconnect/v1')),
+            'nonce' => wp_create_nonce('wp_rest'),
+            'countries' => $this->countries(),
+            'wizardEnabled' => !empty($opts['wizard_enabled']),
+            'maxOffersPerCategory' => (int) ($opts['wizard_max_offers_per_category'] ?? 6),
+            'texts' => [
+                'loading' => 'Consultando ofertas disponibles...',
+                'error' => 'No fue posible cargar las ofertas ahora.',
+                'empty' => 'No encontramos ofertas para los datos seleccionados.',
+                'next' => 'Siguiente',
+                'back' => 'Atrás',
+                'continueCheckout' => 'Continuar al checkout',
             ],
         ]);
     }
@@ -99,13 +137,103 @@ class DC_Recargas_Frontend {
 
                 <div id="dc-feedback" class="dc-feedback" aria-live="polite"></div>
                 <div id="dc-result" class="dc-result" hidden></div>
-
-                <p class="dc-credit">Hecho por Cambiodigital.net · cubakilos.com</p>
             </div>
         </div>
         <?php
 
         return ob_get_clean();
+    }
+
+    public function render_wizard_shortcode($atts = []) {
+        wp_enqueue_style('dc-recargas-wizard');
+        wp_enqueue_script('dc-recargas-wizard');
+
+        $atts = shortcode_atts([
+            'entry_mode' => 'number_first',
+            'country' => '',
+            'category' => '',
+            'fixed_prefix' => '',
+        ], (array) $atts, 'dingconnect_wizard');
+
+        $entry_mode = sanitize_key((string) $atts['entry_mode']);
+        if (!in_array($entry_mode, ['number_first', 'country_fixed'], true)) {
+            $entry_mode = 'number_first';
+        }
+
+        $country_iso = strtoupper(sanitize_text_field((string) $atts['country']));
+        $category = sanitize_key((string) $atts['category']);
+        if (!in_array($category, ['', 'recargas', 'gift_cards'], true)) {
+            $category = '';
+        }
+
+        $fixed_prefix = preg_replace('/\D+/', '', (string) $atts['fixed_prefix']);
+        $wizard_state = $this->wizard instanceof DC_Recargas_Wizard
+            ? $this->wizard->get_initial_state(['country_iso' => $country_iso])
+            : [];
+
+        ob_start();
+        ?>
+        <div class="dc-wizard" data-dc-wizard="1" data-entry-mode="<?php echo esc_attr($entry_mode); ?>" data-country-iso="<?php echo esc_attr($country_iso); ?>" data-category="<?php echo esc_attr($category); ?>" data-fixed-prefix="<?php echo esc_attr($fixed_prefix); ?>">
+            <div class="dc-card">
+                <div class="dc-header">
+                    <h2>Wizard de recargas y gift cards</h2>
+                    <p>Flujo guiado paso a paso para seleccionar producto y continuar al pago.</p>
+                </div>
+
+                <ol class="dc-wizard-steps" aria-label="Pasos del wizard">
+                    <li data-step="category">1. Categoría</li>
+                    <li data-step="country">2. País</li>
+                    <li data-step="operator">3. Operador</li>
+                    <li data-step="product">4. Producto</li>
+                    <li data-step="review">5. Confirmación</li>
+                </ol>
+
+                <div class="dc-wizard-panel" data-dc-wizard-state="<?php echo esc_attr(wp_json_encode($wizard_state)); ?>"></div>
+
+                <div class="dc-wizard-actions">
+                    <button type="button" class="dc-wizard-btn dc-wizard-btn-secondary" data-dc-wizard-back hidden>Atrás</button>
+                    <button type="button" class="dc-wizard-btn dc-wizard-btn-primary" data-dc-wizard-next>Siguiente</button>
+                </div>
+
+                <div class="dc-feedback" data-dc-wizard-feedback aria-live="polite"></div>
+            </div>
+        </div>
+        <?php
+
+        return ob_get_clean();
+    }
+
+    public function render_wizard_recargas_shortcode($atts = []) {
+        $atts = shortcode_atts([
+            'entry_mode' => 'number_first',
+            'country' => '',
+            'fixed_prefix' => '',
+        ], (array) $atts, 'dingconnect_wizard_recargas');
+        $atts['category'] = 'recargas';
+
+        return $this->render_wizard_shortcode($atts);
+    }
+
+    public function render_wizard_giftcards_shortcode($atts = []) {
+        $atts = shortcode_atts([
+            'entry_mode' => 'number_first',
+            'country' => '',
+            'fixed_prefix' => '',
+        ], (array) $atts, 'dingconnect_wizard_giftcards');
+        $atts['category'] = 'gift_cards';
+
+        return $this->render_wizard_shortcode($atts);
+    }
+
+    public function render_wizard_cuba_shortcode($atts = []) {
+        $atts = shortcode_atts([
+            'entry_mode' => 'country_fixed',
+            'country' => 'CU',
+            'category' => 'recargas',
+            'fixed_prefix' => '53',
+        ], (array) $atts, 'dingconnect_wizard_cuba');
+
+        return $this->render_wizard_shortcode($atts);
     }
 
     private function countries() {

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: DingConnect Recargas
  * Description: Plugin para vender recargas y bundles con DingConnect desde WordPress. Hecho por Cambiodigital.net, personalizado para cubakilos.com.
- * Version: 0.9.6
+ * Version: 0.9.91
  * Author: Cambiodigital.net (personalizado para cubakilos.com)
  * Author URI: https://cambiodigital.net
  * Requires at least: 6.0
@@ -53,6 +53,7 @@ add_action('plugins_loaded', function () {
     $base_path = DC_RECARGAS_PATH;
     $files = [
         'includes/class-dc-api.php',
+        'includes/class-dc-wizard.php',
         'includes/class-dc-admin.php',
         'includes/class-dc-rest.php',
         'includes/class-dc-frontend.php',
@@ -86,13 +87,22 @@ add_action('plugins_loaded', function () {
 
     // Inicializar plugin
     $api = new DC_Recargas_API();
+    $wizard = class_exists('DC_Recargas_Wizard') ? new DC_Recargas_Wizard($api) : null;
+
+    if ($wizard instanceof DC_Recargas_Wizard) {
+        $wizard_schema_version = (string) get_option('dc_recargas_wizard_schema_version', '0');
+        if ($wizard_schema_version !== '1') {
+            DC_Recargas_Wizard::maybe_create_sessions_table();
+            update_option('dc_recargas_wizard_schema_version', '1');
+        }
+    }
 
     if (is_admin()) {
         new DC_Recargas_Admin($api);
     }
 
-    new DC_Recargas_REST($api);
-    new DC_Recargas_Frontend();
+    new DC_Recargas_REST($api, $wizard);
+    new DC_Recargas_Frontend($wizard);
 
     if (class_exists('WooCommerce')) {
         if (file_exists(DC_RECARGAS_PATH . 'includes/class-dc-woocommerce.php')) {
@@ -114,6 +124,14 @@ register_activation_hook(DC_RECARGAS_FILE, function () {
         'payment_mode' => 'direct',
         'validate_only' => 1,
         'allow_real_recharge' => 0,
+        'wizard_enabled' => 0,
+        'wizard_max_offers_per_category' => 6,
+        'wizard_default_entry_mode' => 'number_first',
+        'wizard_fixed_prefix' => '',
+        'wizard_checkout_mapping_mode' => 'both',
+        'wizard_checkout_beneficiary_meta_key' => '_dc_beneficiary_phone',
+        'wizard_transfer_retry_attempts' => 2,
+        'wizard_transfer_retry_delay_minutes' => 15,
     ];
 
     if (!get_option('dc_recargas_options')) {
@@ -122,6 +140,11 @@ register_activation_hook(DC_RECARGAS_FILE, function () {
 
     if (!get_option('dc_recargas_bundles')) {
         add_option('dc_recargas_bundles', []);
+    }
+
+    if (class_exists('DC_Recargas_Wizard')) {
+        DC_Recargas_Wizard::maybe_create_sessions_table();
+        update_option('dc_recargas_wizard_schema_version', '1');
     }
 });
 

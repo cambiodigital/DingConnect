@@ -1,0 +1,46 @@
+project: dingconnect
+version: "1.0"
+artifact_store: hybrid
+
+stack:
+  language: PHP 7.4+
+  runtime: WordPress 6.0+
+  frontend: Vanilla JavaScript (ES5 IIFE), CSS3
+  framework: WordPress Plugin (class-based)
+  integrations:
+    - WooCommerce (checkout, cart, order hooks)
+    - DingConnect REST API (mobile top-ups, gift cards)
+  namespace: dingconnect/v1
+
+architecture:
+  pattern: WordPress plugin with class-based components
+  entrypoint: dingconnect-wp-plugin/dingconnect-recargas/dingconnect-recargas.php
+  components:
+    - includes/class-dc-api.php      # HTTP client to DingConnect API
+    - includes/class-dc-rest.php     # Public REST API endpoints
+    - includes/class-dc-admin.php    # Admin panel, bundles, tabs
+    - includes/class-dc-frontend.php # Shortcode, asset loading
+    - includes/class-dc-woocommerce.php # WooCommerce integration
+    - assets/js/frontend.js          # Public UI
+    - assets/css/frontend.css        # Public styles
+
+testing:
+  framework: none
+  runner: none
+  strict_tdd: false
+
+conventions:
+  index_file: AGENTS.md
+  documentation_dir: Documentación/
+  docs:
+    - Documentación/CONTEXTO_IA.md
+    - Documentación/BACKLOG_FUNCIONAL_TECNICO.md
+    - Documentación/GUIA_TECNICA_DING_CONNECT.md
+  update_rule: >
+    Every functional or technical change must update at minimum
+    BACKLOG_FUNCIONAL_TECNICO.md and the affected doc in Documentación/
+
+security:
+  - No DingConnect credentials in public frontend
+  - All production API calls from backend only
+  - validate_only active by default until controlled real tests

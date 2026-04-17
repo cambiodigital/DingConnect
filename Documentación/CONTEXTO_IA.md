@@ -52,6 +52,11 @@ Namespace actual: `dingconnect/v1`
 	- Query esperada: `account_number`, opcional `country_iso`
 - `POST /wp-json/dingconnect/v1/transfer`
 - `POST /wp-json/dingconnect/v1/add-to-cart`
+- `GET /wp-json/dingconnect/v1/wizard/config`
+- `POST /wp-json/dingconnect/v1/wizard/session`
+- `GET /wp-json/dingconnect/v1/wizard/session/{session_id}`
+- `GET /wp-json/dingconnect/v1/wizard/offers`
+- `POST /wp-json/dingconnect/v1/wizard/sync-now`
 
 ## Flujos implementados
 
@@ -98,6 +103,22 @@ Namespace actual: `dingconnect/v1`
 19. Resiliencia del balance administrativo: el endpoint `/balance` normaliza múltiples formatos de respuesta de DingConnect (top-level, `Result` o `Items`) para exponer siempre `Balance`, `CurrencyIso` y `ResultCode` al panel.
 20. Diagnóstico operativo ampliado en transferencias: los errores `ProviderError` ahora incluyen contexto (`ding_error_context`) y referencias de la operación (`transfer_ref`, `distributor_ref`, `processing_state`) para soporte y trazabilidad.
 21. Operación de bundles más ágil en admin: los bundles guardados ya pueden eliminarse de forma masiva mediante checkboxes por fila y selección global en la tabla.
+22. Base del wizard v2 implementada en backend: nueva clase `DC_Recargas_Wizard` con máquina de estados inicial y transición de pasos.
+23. Persistencia de sesiones de wizard en base de datos: tabla dedicada para recuperar estado entre requests con expiración.
+24. Configuración de wizard en admin: flag `wizard_enabled`, máximo de ofertas por categoría y mapeo de teléfono para checkout WooCommerce.
+25. Shortcode base de wizard disponible (`[dingconnect_wizard]`) para iniciar landings externas con modo de entrada configurable.
+26. Endpoint `wizard/offers` operativo con filtros de categoría, modo de entrada (number-first/country-fixed) y prefijo fijo opcional.
+27. Taxonomía inicial del wizard activa en backend: clasificación base recargas vs gift cards, orden determinístico y límite por categoría.
+28. Sincronización manual de catálogo wizard: endpoint `wizard/sync-now` para administradores, con detección de cambios y payload de notificaciones por país.
+29. Contrato REST normalizado para endpoints wizard: respuestas incluyen `endpoint`, `contract_version` y metadatos `backend_only`.
+30. Frontend wizard v2 activo: assets dedicados (`assets/js/wizard-core.js`, `assets/css/wizard.css`) y variantes de shortcode para landings (`dingconnect_wizard_recargas`, `dingconnect_wizard_giftcards`, `dingconnect_wizard_cuba`).
+31. Payment-first reforzado en WooCommerce: `process_recarga_on_payment` ahora exige `order->is_paid()` y aplica idempotencia por item para evitar doble despacho.
+32. Reintentos configurables para fallos transitorios: nuevas opciones `wizard_transfer_retry_attempts` y `wizard_transfer_retry_delay_minutes` con programación de retries vía `wp_schedule_single_event`.
+33. Reconciliación manual disponible en pedido WooCommerce: acción `dc_recargas_manual_reconcile` para reintentar items fallidos y dejar auditoría en notas del pedido.
+34. Voucher de confirmación integrado en WooCommerce: resumen visible en pantalla de thank-you y enriquecimiento de metadatos en email con referencias de transferencia.
+35. Entorno de staging reproducible agregado en repositorio para verificación runtime: `staging/docker-compose.yml`, `staging/scripts/bootstrap-staging.sh`, `scripts/staging-up.ps1` y `scripts/run-matrix-6.ps1`.
+36. Matriz 6.1-6.7 preparada para ejecución automática tipo smoke sobre WordPress/WooCommerce local con gateways de prueba internos (BACS/Cheque/COD).
+37. Bloqueo actual de ejecución en esta estación: binario `docker` no disponible en PowerShell, impidiendo levantar contenedores y recolectar evidencia E2E runtime.
 
 ## Hallazgos clave para futuras IA
 
@@ -109,6 +130,7 @@ Namespace actual: `dingconnect/v1`
 - Si WordPress reporta "12 caracteres de salida inesperados durante la activación", revisar primero la codificación UTF-8 BOM en los archivos PHP del plugin; cuatro archivos con BOM generan exactamente esos 12 bytes de salida antes de enviar cabeceras.
 - Si la URL de activación muestra una ruta anidada como `carpeta-extra/dingconnect-recargas/dingconnect-recargas.php`, tratarlo como síntoma de empaquetado no canónico o de copias duplicadas en `wp-content/plugins`.
 - Si el plugin se activa pero muestra el aviso de archivos requeridos faltantes, puede deberse a que el servidor Unix interpreta literalmente los `\` del ZIP de Windows. El bootstrap ahora tolera ambas variantes: `includes/class-dc-api.php` y `includes\class-dc-api.php`, usando `DIRECTORY_SEPARATOR` para ser agnóstico.
+- Para repetir verificación de fase 6 en local, el flujo operativo recomendado ahora es `./scripts/staging-up.ps1` seguido de `./scripts/run-matrix-6.ps1`; si falla, validar primero disponibilidad de `docker compose` en la terminal activa.
 
 ## Riesgos y brechas actuales
 

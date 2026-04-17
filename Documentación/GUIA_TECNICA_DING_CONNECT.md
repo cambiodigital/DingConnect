@@ -130,6 +130,11 @@ Flujo recomendado:
 5. Se envía `SendTransfer` con `DistributorRef` único.
 6. Si hay demora o corte de red, se espera hasta 90 segundos y luego se consulta `ListTransferRecords`.
 
+### Nota operativa Wizard v2 (abril 2026)
+
+- En `entry_mode=number_first`, el paso de país puede quedar opcional en frontend: el wizard intenta inferir país automáticamente a partir del catálogo devuelto para el número consultado.
+- El backend del wizard ahora aplica validación de estado por paso y bloqueo de saltos no secuenciales al guardar sesión (`category -> country -> operator -> product -> review`, permitiendo retroceso de un paso), para evitar bypass vía llamadas REST directas.
+
 ## 7.2 PIN, vouchers y productos de lectura de recibo
 
 La FAQ indica:
@@ -314,7 +319,27 @@ Orden recomendado para dejar la integración lista para UAT y sign-off:
 5. Documentar capturas, resultados y errores esperados.
 6. Cerrar hardening de seguridad: 2FA, whitelisting, allowed countries y rotación de claves.
 
-## 15. Nota sobre los diagramas de flujo
+## 15. Estado técnico actual: DingConnect Recargas v2 (17-04-2026)
+
+Resumen de verificación consolidada sobre el cambio `dingconnect-recargas-v2`:
+
+- Verificado a nivel de código: flujo wizard para recargas y gift cards, enforcement payment-first, idempotencia por item, política de reintentos y reconciliación manual en WooCommerce.
+- Bloqueado a nivel runtime: no hay evidencia E2E ejecutable en esta estación por falta de entorno activo WordPress/WooCommerce con pasarelas y ausencia de `docker`/CLI PHP.
+- Contrato de confirmación: unificado para ambos tipos de producto (`transaction_id`, `status`, `operator`, `amount_sent`, `amount_received`, `beneficiary_phone`, `timestamp`, `promotion`, `voucher_lines`).
+
+Brechas pendientes para go-live:
+
+1. Ejecutar matriz runtime 6.1-6.7 en staging con pedido real de WooCommerce.
+2. Capturar evidencia por gateway (al menos Stripe, PayPal y una alternativa equivalente disponible).
+3. Validar visual y fallback progresivo en al menos un tema externo de landing.
+4. Confirmar trazabilidad completa en notas de pedido, logs internos y contenido de voucher/email.
+
+Recomendación operativa:
+
+- Estado actual: `NO-GO` condicional desde este entorno local.
+- Condición de habilitación: completar evidencia runtime de la matriz fase 6 y mantener `validate_only=true` hasta cierre de validación controlada.
+
+## 16. Nota sobre los diagramas de flujo
 
 El artículo de flujos publicado por Ding está compuesto principalmente por diagramas e imágenes, además de un PDF descargable (`DingConnect Flows.pdf`). Como fuente funcional es útil para validar recorridos de:
 

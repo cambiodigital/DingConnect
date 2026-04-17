@@ -55,12 +55,56 @@ class DC_Recargas_Admin {
             $mode = 'direct';
         }
 
+        $checkout_mapping_mode = sanitize_key((string) ($input['wizard_checkout_mapping_mode'] ?? 'both'));
+        if (!in_array($checkout_mapping_mode, ['both', 'beneficiary_only', 'buyer_only'], true)) {
+            $checkout_mapping_mode = 'both';
+        }
+
+        $wizard_max_offers = (int) ($input['wizard_max_offers_per_category'] ?? 6);
+        if ($wizard_max_offers < 1) {
+            $wizard_max_offers = 1;
+        }
+        if ($wizard_max_offers > 20) {
+            $wizard_max_offers = 20;
+        }
+
+        $wizard_entry_mode = sanitize_key((string) ($input['wizard_default_entry_mode'] ?? 'number_first'));
+        if (!in_array($wizard_entry_mode, ['number_first', 'country_fixed'], true)) {
+            $wizard_entry_mode = 'number_first';
+        }
+
+        $wizard_fixed_prefix = preg_replace('/[^0-9+]/', '', (string) ($input['wizard_fixed_prefix'] ?? ''));
+
+        $retry_attempts = (int) ($input['wizard_transfer_retry_attempts'] ?? 2);
+        if ($retry_attempts < 0) {
+            $retry_attempts = 0;
+        }
+        if ($retry_attempts > 5) {
+            $retry_attempts = 5;
+        }
+
+        $retry_delay_minutes = (int) ($input['wizard_transfer_retry_delay_minutes'] ?? 15);
+        if ($retry_delay_minutes < 1) {
+            $retry_delay_minutes = 1;
+        }
+        if ($retry_delay_minutes > 240) {
+            $retry_delay_minutes = 240;
+        }
+
         return [
             'api_base' => esc_url_raw(trim((string) ($input['api_base'] ?? 'https://www.dingconnect.com/api/V1'))),
             'api_key' => sanitize_text_field((string) ($input['api_key'] ?? '')),
             'payment_mode' => $mode,
             'validate_only' => empty($input['validate_only']) ? 0 : 1,
             'allow_real_recharge' => empty($input['allow_real_recharge']) ? 0 : 1,
+            'wizard_enabled' => empty($input['wizard_enabled']) ? 0 : 1,
+            'wizard_max_offers_per_category' => $wizard_max_offers,
+            'wizard_default_entry_mode' => $wizard_entry_mode,
+            'wizard_fixed_prefix' => $wizard_fixed_prefix,
+            'wizard_checkout_mapping_mode' => $checkout_mapping_mode,
+            'wizard_checkout_beneficiary_meta_key' => sanitize_key((string) ($input['wizard_checkout_beneficiary_meta_key'] ?? '_dc_beneficiary_phone')),
+            'wizard_transfer_retry_attempts' => $retry_attempts,
+            'wizard_transfer_retry_delay_minutes' => $retry_delay_minutes,
         ];
     }
 
@@ -1019,6 +1063,72 @@ class DC_Recargas_Admin {
                                 Permitir usar <code>ValidateOnly: false</code> en el frontend.
                             </label>
                             <p class="description">Deja esta opción desactivada mientras haces pruebas.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Wizard paso a paso</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="dc_recargas_options[wizard_enabled]" value="1" <?php checked(!empty($options['wizard_enabled'])); ?>>
+                                Activar flujo wizard para landings y sesiones recuperables.
+                            </label>
+                            <p class="description">Cuando está desactivado, el shortcode clásico sigue siendo la experiencia principal.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_wizard_max_offers">Máximo de ofertas por categoría</label></th>
+                        <td>
+                            <input type="number" id="dc_wizard_max_offers" name="dc_recargas_options[wizard_max_offers_per_category]" min="1" max="20" step="1" value="<?php echo esc_attr((int) ($options['wizard_max_offers_per_category'] ?? 6)); ?>">
+                            <p class="description">Controla cuántas ofertas se muestran por categoría en el wizard (1-20).</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_wizard_entry_mode">Modo de entrada predeterminado</label></th>
+                        <td>
+                            <select id="dc_wizard_entry_mode" name="dc_recargas_options[wizard_default_entry_mode]">
+                                <option value="number_first" <?php selected(($options['wizard_default_entry_mode'] ?? 'number_first'), 'number_first'); ?>>Número primero (number_first)</option>
+                                <option value="country_fixed" <?php selected(($options['wizard_default_entry_mode'] ?? 'number_first'), 'country_fixed'); ?>>País fijo (country_fixed)</option>
+                            </select>
+                            <p class="description">Define cómo inicia el wizard: por número de teléfono o por país preseleccionado.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_wizard_fixed_prefix">Prefijo fijo de país</label></th>
+                        <td>
+                            <input type="text" id="dc_wizard_fixed_prefix" name="dc_recargas_options[wizard_fixed_prefix]" class="small-text" value="<?php echo esc_attr((string) ($options['wizard_fixed_prefix'] ?? '')); ?>" placeholder="ej: 53">
+                            <p class="description">Solo dígitos. Se antepone al número en modo <code>country_fixed</code>. Dejar vacío si no aplica.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_wizard_checkout_mapping_mode">Mapeo de teléfono en checkout</label></th>
+                        <td>
+                            <select id="dc_wizard_checkout_mapping_mode" name="dc_recargas_options[wizard_checkout_mapping_mode]">
+                                <option value="both" <?php selected(($options['wizard_checkout_mapping_mode'] ?? 'both'), 'both'); ?>>Ambos (beneficiario + comprador)</option>
+                                <option value="beneficiary_only" <?php selected(($options['wizard_checkout_mapping_mode'] ?? 'both'), 'beneficiary_only'); ?>>Solo beneficiario</option>
+                                <option value="buyer_only" <?php selected(($options['wizard_checkout_mapping_mode'] ?? 'both'), 'buyer_only'); ?>>Solo comprador</option>
+                            </select>
+                            <p class="description">Define si el wizard guarda solo teléfono del beneficiario, solo del comprador o ambos.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_wizard_checkout_beneficiary_key">Meta key teléfono beneficiario</label></th>
+                        <td>
+                            <input type="text" id="dc_wizard_checkout_beneficiary_key" name="dc_recargas_options[wizard_checkout_beneficiary_meta_key]" class="regular-text" value="<?php echo esc_attr((string) ($options['wizard_checkout_beneficiary_meta_key'] ?? '_dc_beneficiary_phone')); ?>">
+                            <p class="description">Meta key que usará WooCommerce para guardar el teléfono del beneficiario cuando aplique.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_wizard_retry_attempts">Reintentos automáticos por transferencia</label></th>
+                        <td>
+                            <input type="number" id="dc_wizard_retry_attempts" name="dc_recargas_options[wizard_transfer_retry_attempts]" min="0" max="5" step="1" value="<?php echo esc_attr((int) ($options['wizard_transfer_retry_attempts'] ?? 2)); ?>">
+                            <p class="description">Cantidad de reintentos automáticos para errores transitorios después de pago exitoso (0-5).</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_wizard_retry_delay">Espera entre reintentos (minutos)</label></th>
+                        <td>
+                            <input type="number" id="dc_wizard_retry_delay" name="dc_recargas_options[wizard_transfer_retry_delay_minutes]" min="1" max="240" step="1" value="<?php echo esc_attr((int) ($options['wizard_transfer_retry_delay_minutes'] ?? 15)); ?>">
+                            <p class="description">Minutos de espera antes de ejecutar el próximo intento automático.</p>
                         </td>
                     </tr>
                 </table>
