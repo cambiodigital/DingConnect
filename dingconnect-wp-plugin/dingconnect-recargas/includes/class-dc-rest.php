@@ -163,12 +163,6 @@ class DC_Recargas_REST {
         $session_id = sanitize_text_field((string) $request->get_param('session_id'));
         $session = $this->wizard->get_session($session_id);
 
-        if (is_wp_error($session)) {
-            $status = (int) (($session->get_error_data()['status'] ?? 500));
-
-            return $this->wizard_error('wizard_session_get', $session->get_error_message(), $status, $session->get_error_data());
-        }
-
         if (!$session) {
             return $this->wizard_error('wizard_session_get', 'Sesión wizard no encontrada o expirada.', 404);
         }

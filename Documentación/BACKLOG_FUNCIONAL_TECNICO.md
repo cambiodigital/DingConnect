@@ -110,6 +110,7 @@ Una iniciativa se considera lista cuando cumple:
 44. Cierre documental de fase 6.8 del cambio `dingconnect-recargas-v2`: se actualizó el backlog técnico y la guía técnica con resultados actuales, brechas runtime, riesgos y recomendación `NO-GO` condicional hasta completar evidencia de staging con WooCommerce y pasarelas.
 45. Endurecimiento del wizard v2 contra bypass de pasos: la persistencia de sesión ahora valida reglas por paso (categoría, número, operador y producto) y bloquea saltos no secuenciales en backend para evitar estados inconsistentes por llamadas REST directas.
 46. Detección automática en flujo number-first: en el paso de datos del destinatario el país pasa a ser opcional y el wizard intenta resolverlo automáticamente desde el catálogo obtenido con el número, manteniendo opción de selección manual.
+47. Limpieza técnica del controlador REST del wizard: `wizard/session/{session_id}` eliminó un manejo muerto de `WP_Error` en lectura de sesión para reflejar el contrato real de `get_session()` (`array|null`) y evitar falsos positivos de análisis estático.
 
 ## Backlog actualizado por impacto
 
