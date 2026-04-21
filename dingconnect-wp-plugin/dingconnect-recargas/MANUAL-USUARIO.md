@@ -43,15 +43,15 @@ Este plugin permite publicar un formulario de recargas en WordPress, consultar p
 
 ## 5. Gestión del catálogo curado
 
-### 5.1 Buscar productos en el CSV
+### 5.1 Buscar productos en la API
 
-Si el archivo `Products-with-sku.csv` está disponible, el panel permite:
+En `Catálogo y alta`, el panel permite:
 
-- Buscar por SKU, operador, país o descripción.
-- Filtrar por país.
-- Seleccionar un resultado del CSV.
+- Consultar paquetes directamente en DingConnect por país.
+- Filtrar resultados por tipo de paquete.
+- Seleccionar un resultado live de la API.
 - Crear un bundle automáticamente desde la selección.
-- Publicarlo de inmediato como activo, si la casilla correspondiente está marcada.
+- Cargar un paquete en `Alta manual` con doble click para revisarlo antes de guardarlo.
 
 ### 5.2 Añadir bundles manualmente
 

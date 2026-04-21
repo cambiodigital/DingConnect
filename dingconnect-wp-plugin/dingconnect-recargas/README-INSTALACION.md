@@ -64,9 +64,9 @@ WordPress crea automáticamente la carpeta `dingconnect-recargas/` a partir del 
 
 ## 3) Preparar el catálogo
 
-Puedes combinar tres mecanismos:
+Puedes combinar dos mecanismos:
 
-1. Buscar productos en `Products-with-sku.csv` y crear bundles desde selección.
+1. Buscar productos en la API de DingConnect y crear bundles desde la selección.
 2. Añadir bundles manualmente si necesitas un catálogo curado propio.
 
 ## 4) Publicar el formulario

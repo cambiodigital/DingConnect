@@ -16,12 +16,6 @@ class DC_Recargas_API {
             'payment_mode' => 'direct',
             'validate_only' => 1,
             'allow_real_recharge' => 0,
-            'wizard_enabled' => 0,
-            'wizard_max_offers_per_category' => 6,
-            'wizard_checkout_mapping_mode' => 'both',
-            'wizard_checkout_beneficiary_meta_key' => '_dc_beneficiary_phone',
-            'wizard_transfer_retry_attempts' => 2,
-            'wizard_transfer_retry_delay_minutes' => 15,
         ];
 
         return wp_parse_args(get_option('dc_recargas_options', []), $defaults);

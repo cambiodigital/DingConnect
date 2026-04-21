@@ -141,6 +141,7 @@ Flujo recomendado:
 - El panel admin incluye gestión de shortcodes dinámicos por objetivo de campaña/landing.
 - Cada landing puede seleccionar bundles específicos y opcionalmente fijar país, título y subtítulo del formulario.
 - La configuración de cada landing se administra inline en el panel (alta, edición y baja) sin salir de la pantalla de configuración del plugin.
+- El campo `País fijo (ISO, opcional)` del admin opera como buscador/select sobre países disponibles en sistema (`bundles + landings existentes + catálogo CSV`) y valida que el ISO fijo pertenezca a los bundles seleccionados.
 - El shortcode base soporta `landing_key` para resolver configuración guardada en admin:
   - Ejemplo: `[dingconnect_recargas landing_key="cuba-mayo-2026"]`
 - También soporta filtros directos por atributos cuando se requiera configuración manual:
@@ -148,6 +149,11 @@ Flujo recomendado:
   - `country="CU"`
   - `title="Recargas Cuba"`
   - `subtitle="Selecciona tu paquete y confirma"`
+
+### Nota operativa Catálogo y alta (abril 2026)
+
+- En la subpestaña `Buscar en API` del admin, los bundles creados desde resultados live se guardan como inactivos por defecto.
+- La activación/desactivación de bundles se realiza exclusivamente desde `Bundles guardados`, para mantener un único punto de control operativo.
 
 ## 7.2 PIN, vouchers y productos de lectura de recibo
 
@@ -369,8 +375,8 @@ Cuando se requiera documentación visual para QA o negocio, conviene adjuntar es
 
 Desde abril de 2026, el plugin incorpora capacidades para acelerar operación y soporte:
 
-1. Búsqueda sobre `Products-with-sku.csv` con selector de resultados para autocompletar alta de bundles.
-2. Filtros por país y tipo de paquete/producto en métodos CSV y API dentro del panel de catálogo.
+1. Búsqueda en API con selector de resultados para crear bundles curados, precargar el formulario de alta manual y mostrar en el encabezado de `Datos del bundle` el nombre limpio del paquete API seleccionado.
+2. Filtros por país y tipo de paquete/producto dentro del método `Buscar en API` del panel de catálogo.
 3. Panel admin modernizado sin numeración en títulos y pestañas, con estilo visual más actual para navegación y operación diaria.
 
 ### Objetivo operativo
@@ -379,10 +385,23 @@ Desde abril de 2026, el plugin incorpora capacidades para acelerar operación y 
 - Agilizar la creación de catálogo curado por país.
 - Mantener coherencia entre export de DingConnect y bundles disponibles en frontend.
 
+## 17. Incidencia técnica resuelta (21-04-2026)
+
+Se corrigió un problema de marcado HTML en el render del admin del plugin: faltaba el cierre de la sección `tab_wizard` antes de abrir `tab_catalog`.
+
+Impacto observado:
+
+- Las pestañas "Catálogo y alta", "Bundles guardados" y "Registros" podían marcarse como activas, pero su contenido no se mostraba.
+- En el DOM, esos paneles quedaban anidados dentro de `tab_wizard`, que normalmente está oculto (`display: none`).
+
+Corrección aplicada:
+
+- Se añadió el cierre de sección faltante en `dingconnect-wp-plugin/dingconnect-recargas/includes/class-dc-admin.php` para restaurar la jerarquía correcta de paneles hermanos bajo `dc-admin-tabs`.
+
 ### Recomendación de uso
 
-1. Cargar o actualizar el CSV oficial de DingConnect desde el Método 1.
-2. Usar buscador CSV o API para ampliar catálogo según campañas o necesidades comerciales.
+1. Usar `Buscar en API` para ampliar catálogo según campañas o necesidades comerciales.
+2. Completar o ajustar bundles desde `Alta manual` cuando se necesite curaduría adicional.
 3. Verificar en frontend y pruebas controladas antes de habilitar recarga real.
 
 ### Buenas prácticas

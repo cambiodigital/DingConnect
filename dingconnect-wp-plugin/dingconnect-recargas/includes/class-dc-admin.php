@@ -21,9 +21,7 @@ class DC_Recargas_Admin {
         add_action('admin_post_dc_toggle_bundle', [$this, 'handle_toggle_bundle']);
         add_action('admin_post_dc_delete_bundle', [$this, 'handle_delete_bundle']);
         add_action('admin_post_dc_bulk_delete_bundles', [$this, 'handle_bulk_delete_bundles']);
-        add_action('wp_ajax_dc_search_csv_products', [$this, 'ajax_search_csv_products']);
-        add_action('wp_ajax_dc_create_bundle_from_csv', [$this, 'ajax_create_bundle_from_csv']);
-        add_action('admin_post_dc_upload_csv', [$this, 'handle_upload_csv']);
+        add_action('wp_ajax_dc_create_bundle_from_catalog', [$this, 'ajax_create_bundle_from_catalog']);
         add_action('wp_ajax_dc_get_transfer_logs', [$this, 'ajax_get_transfer_logs']);
         add_action('admin_post_dc_clear_logs', [$this, 'handle_clear_logs']);
         add_action('wp_ajax_dc_fetch_api_products', [$this, 'ajax_fetch_api_products']);
@@ -58,37 +56,6 @@ class DC_Recargas_Admin {
         if ($hook_suffix !== 'toplevel_page_dc-recargas') {
             return;
         }
-
-        wp_enqueue_style(
-            'dc-recargas-wizard',
-            DC_RECARGAS_URL . 'assets/css/wizard.css',
-            [],
-            DC_RECARGAS_VERSION
-        );
-
-        wp_enqueue_script(
-            'dc-recargas-wizard',
-            DC_RECARGAS_URL . 'assets/js/wizard-core.js',
-            [],
-            DC_RECARGAS_VERSION,
-            true
-        );
-
-        wp_localize_script('dc-recargas-wizard', 'DC_WIZARD_DATA', [
-            'restBase' => esc_url_raw(rest_url('dingconnect/v1')),
-            'nonce' => wp_create_nonce('wp_rest'),
-            'countries' => $this->get_admin_wizard_countries(),
-            'wizardEnabled' => true,
-            'maxOffersPerCategory' => 6,
-            'texts' => [
-                'loading' => 'Consultando ofertas disponibles...',
-                'error' => 'No fue posible cargar las ofertas ahora.',
-                'empty' => 'No encontramos ofertas para los datos seleccionados.',
-                'next' => 'Siguiente',
-                'back' => 'Atrás',
-                'continueCheckout' => 'Continuar al checkout',
-            ],
-        ]);
     }
 
     public function handle_add_landing_shortcode() {
@@ -153,7 +120,17 @@ class DC_Recargas_Admin {
             exit;
         }
 
-        if ($country_iso === '' && !empty($detected_countries)) {
+        $detected_countries = array_values(array_unique(array_filter(array_map('strval', $detected_countries))));
+
+        if (!$this->is_valid_landing_country_selection($country_iso, $detected_countries)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'landing_shortcode_country_invalid',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        if ($country_iso === '' && count($detected_countries) === 1) {
             $country_iso = $detected_countries[0];
         }
 
@@ -265,7 +242,7 @@ class DC_Recargas_Admin {
             'page' => 'dc-recargas',
             'dc_msg' => 'landing_shortcode_cloned',
             'dc_edit_landing' => $clone['id'],
-            'dc_tab' => 'tab_wizard',
+            'dc_tab' => 'tab_landings',
         ], admin_url('admin.php')));
         exit;
     }
@@ -346,7 +323,17 @@ class DC_Recargas_Admin {
             exit;
         }
 
-        if ($country_iso === '' && !empty($detected_countries)) {
+        $detected_countries = array_values(array_unique(array_filter(array_map('strval', $detected_countries))));
+
+        if (!$this->is_valid_landing_country_selection($country_iso, $detected_countries)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'landing_shortcode_country_invalid',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        if ($country_iso === '' && count($detected_countries) === 1) {
             $country_iso = $detected_countries[0];
         }
 
@@ -379,42 +366,6 @@ class DC_Recargas_Admin {
             $mode = 'direct';
         }
 
-        $checkout_mapping_mode = sanitize_key((string) ($input['wizard_checkout_mapping_mode'] ?? 'both'));
-        if (!in_array($checkout_mapping_mode, ['both', 'beneficiary_only', 'buyer_only'], true)) {
-            $checkout_mapping_mode = 'both';
-        }
-
-        $wizard_max_offers = (int) ($input['wizard_max_offers_per_category'] ?? 6);
-        if ($wizard_max_offers < 1) {
-            $wizard_max_offers = 1;
-        }
-        if ($wizard_max_offers > 20) {
-            $wizard_max_offers = 20;
-        }
-
-        $wizard_entry_mode = sanitize_key((string) ($input['wizard_default_entry_mode'] ?? 'number_first'));
-        if (!in_array($wizard_entry_mode, ['number_first', 'country_fixed'], true)) {
-            $wizard_entry_mode = 'number_first';
-        }
-
-        $wizard_fixed_prefix = preg_replace('/[^0-9+]/', '', (string) ($input['wizard_fixed_prefix'] ?? ''));
-
-        $retry_attempts = (int) ($input['wizard_transfer_retry_attempts'] ?? 2);
-        if ($retry_attempts < 0) {
-            $retry_attempts = 0;
-        }
-        if ($retry_attempts > 5) {
-            $retry_attempts = 5;
-        }
-
-        $retry_delay_minutes = (int) ($input['wizard_transfer_retry_delay_minutes'] ?? 15);
-        if ($retry_delay_minutes < 1) {
-            $retry_delay_minutes = 1;
-        }
-        if ($retry_delay_minutes > 240) {
-            $retry_delay_minutes = 240;
-        }
-
         // Convert recharge mode select to validate_only and allow_real_recharge flags
         $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
         if (!in_array($recharge_mode, ['test_simulate', 'test_allow_change', 'production'], true)) {
@@ -438,14 +389,6 @@ class DC_Recargas_Admin {
             'recharge_mode' => $recharge_mode,
             'validate_only' => $validate_only,
             'allow_real_recharge' => $allow_real_recharge,
-            'wizard_enabled' => empty($input['wizard_enabled']) ? 0 : 1,
-            'wizard_max_offers_per_category' => $wizard_max_offers,
-            'wizard_default_entry_mode' => $wizard_entry_mode,
-            'wizard_fixed_prefix' => $wizard_fixed_prefix,
-            'wizard_checkout_mapping_mode' => $checkout_mapping_mode,
-            'wizard_checkout_beneficiary_meta_key' => sanitize_key((string) ($input['wizard_checkout_beneficiary_meta_key'] ?? '_dc_beneficiary_phone')),
-            'wizard_transfer_retry_attempts' => $retry_attempts,
-            'wizard_transfer_retry_delay_minutes' => $retry_delay_minutes,
         ];
     }
 
@@ -649,117 +592,12 @@ class DC_Recargas_Admin {
         exit;
     }
 
-    public function handle_upload_csv() {
-        if (!current_user_can('manage_options')) {
-            wp_die('No tienes permisos para realizar esta acción.');
-        }
-
-        check_admin_referer('dc_upload_csv');
-
-        if (empty($_FILES['csv_file']['tmp_name'])) {
-            wp_safe_redirect(add_query_arg([
-                'page' => 'dc-recargas',
-                'dc_msg' => 'csv_no_file',
-            ], admin_url('admin.php')));
-            exit;
-        }
-
-        $file = $_FILES['csv_file'];
-
-        $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        if ($ext !== 'csv') {
-            wp_safe_redirect(add_query_arg([
-                'page' => 'dc-recargas',
-                'dc_msg' => 'csv_upload_error',
-            ], admin_url('admin.php')));
-            exit;
-        }
-
-        $handle = fopen($file['tmp_name'], 'r');
-        if (!$handle) {
-            wp_safe_redirect(add_query_arg([
-                'page' => 'dc-recargas',
-                'dc_msg' => 'csv_upload_error',
-            ], admin_url('admin.php')));
-            exit;
-        }
-
-        $header = fgetcsv($handle);
-        fclose($handle);
-
-        if (!is_array($header)) {
-            wp_safe_redirect(add_query_arg([
-                'page' => 'dc-recargas',
-                'dc_msg' => 'csv_upload_error',
-            ], admin_url('admin.php')));
-            exit;
-        }
-
-        $required_columns = ['Operator', 'Country', 'Send amount', 'Receive', 'Product type', 'Validity', 'SkuCode'];
-        $header_map = array_flip($header);
-        foreach ($required_columns as $col) {
-            if (!isset($header_map[$col])) {
-                wp_safe_redirect(add_query_arg([
-                    'page' => 'dc-recargas',
-                    'dc_msg' => 'csv_upload_error',
-                ], admin_url('admin.php')));
-                exit;
-            }
-        }
-
-        $upload_dir = wp_upload_dir();
-        $dest_dir = trailingslashit($upload_dir['basedir']) . 'dingconnect';
-        if (!file_exists($dest_dir)) {
-            wp_mkdir_p($dest_dir);
-        }
-        $dest = trailingslashit($dest_dir) . 'Products-with-sku.csv';
-        $moved = move_uploaded_file($file['tmp_name'], $dest);
-
-        if (!$moved) {
-            wp_safe_redirect(add_query_arg([
-                'page' => 'dc-recargas',
-                'dc_msg' => 'csv_upload_error',
-            ], admin_url('admin.php')));
-            exit;
-        }
-
-        wp_safe_redirect(add_query_arg([
-            'page' => 'dc-recargas',
-            'dc_msg' => 'csv_uploaded',
-        ], admin_url('admin.php')));
-        exit;
-    }
-
-    public function ajax_search_csv_products() {
+    public function ajax_create_bundle_from_catalog() {
         if (!current_user_can('manage_options')) {
             wp_send_json_error(['message' => 'No autorizado.'], 403);
         }
 
-        check_ajax_referer('dc_csv_search', 'nonce');
-
-        $query = sanitize_text_field(wp_unslash($_GET['q'] ?? ''));
-        $country = sanitize_text_field(wp_unslash($_GET['country'] ?? ''));
-        $initial = !empty($_GET['initial']);
-
-        if ($initial) {
-            $items = $this->search_products_csv_main_countries(10);
-        } else {
-            $items = $this->search_products_csv($query, $country, 120);
-        }
-
-        $csv_path = $this->get_products_csv_path();
-        wp_send_json_success([
-            'items' => $items,
-            'csv_found' => !empty($csv_path),
-        ]);
-    }
-
-    public function ajax_create_bundle_from_csv() {
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'No autorizado.'], 403);
-        }
-
-        check_ajax_referer('dc_csv_search', 'nonce');
+        check_ajax_referer('dc_catalog_admin', 'nonce');
 
         $country_iso = strtoupper(sanitize_text_field(wp_unslash($_POST['country_iso'] ?? '')));
         $sku_code = sanitize_text_field(wp_unslash($_POST['sku_code'] ?? ''));
@@ -794,7 +632,7 @@ class DC_Recargas_Admin {
         update_option('dc_recargas_bundles', $bundles);
 
         wp_send_json_success([
-            'message' => 'Bundle creado correctamente desde CSV.',
+            'message' => 'Bundle creado correctamente desde catálogo.',
             'bundle' => $bundle,
         ]);
     }
@@ -805,7 +643,7 @@ class DC_Recargas_Admin {
             return;
         }
 
-        check_ajax_referer('dc_csv_search', 'nonce');
+        check_ajax_referer('dc_catalog_admin', 'nonce');
 
         $country_iso = strtoupper(sanitize_text_field(wp_unslash($_GET['country_iso'] ?? '')));
 
@@ -832,6 +670,8 @@ class DC_Recargas_Admin {
         }
 
         $items = [];
+        $group_counts = [];
+        $group_labels = $this->get_api_package_group_labels();
         foreach ($raw_items as $product) {
             $benefits = [];
             if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
@@ -846,6 +686,12 @@ class DC_Recargas_Admin {
 
             $receive = !empty($benefits) ? implode(', ', $benefits) : ($product['DefaultDisplayText'] ?? '');
             $label   = ($product['DefaultDisplayText'] ?? '') ?: ($product['SkuCode'] ?? '');
+            $package_group = $this->classify_api_package_group($product, $receive, $label);
+
+            if (!isset($group_counts[$package_group])) {
+                $group_counts[$package_group] = 0;
+            }
+            $group_counts[$package_group]++;
 
             $items[] = [
                 'country_iso'       => $country_iso,
@@ -856,10 +702,94 @@ class DC_Recargas_Admin {
                 'send_currency_iso' => $product['Minimum']['SendCurrencyIso'] ?? 'USD',
                 'receive'           => $receive,
                 'validity'          => $product['ValidityPeriodIso'] ?? '',
+                'package_group'     => $package_group,
+                'package_group_label' => $group_labels[$package_group] ?? ($group_labels['other'] ?? 'Otros'),
             ];
         }
 
-        wp_send_json_success(['items' => $items, 'country_iso' => $country_iso, 'total' => count($items)]);
+        wp_send_json_success([
+            'items' => $items,
+            'country_iso' => $country_iso,
+            'total' => count($items),
+            'group_counts' => $group_counts,
+            'group_labels' => $group_labels,
+        ]);
+    }
+
+    private function get_api_package_group_labels() {
+        return [
+            'saldo' => 'Saldo / top-up',
+            'data' => 'Datos',
+            'combo' => 'Combo / voz + datos',
+            'other' => 'Otros',
+        ];
+    }
+
+    private function classify_api_package_group($product, $receive = '', $label = '') {
+        $product_type = strtolower(trim((string) ($product['ProductType'] ?? '')));
+        $benefit_types = [];
+
+        if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
+            foreach ($product['Benefits'] as $benefit) {
+                $benefit_types[] = strtolower(trim((string) ($benefit['BenefitType'] ?? '')));
+            }
+        }
+
+        $haystack = strtolower(trim(implode(' ', array_filter([
+            (string) $receive,
+            (string) $label,
+            (string) ($product['DefaultDisplayText'] ?? ''),
+            (string) ($product['Description'] ?? ''),
+            implode(' ', $benefit_types),
+            (string) ($product['ProviderCode'] ?? ''),
+            (string) ($product['SkuCode'] ?? ''),
+            $product_type,
+        ]))));
+
+        $has_data = preg_match('/\b(?:\d+(?:[\.,]\d+)?\s?(?:gb|mb)|data|internet|social|whatsapp|facebook|instagram|tiktok|youtube|stream(?:ing)?|navegaci(?:on|o)n|4g|5g|lte)\b/i', $haystack) === 1;
+        $has_voice_sms = preg_match('/\b(?:\d+(?:[\.,]\d+)?\s?(?:min|mins|minutes|sms)|unlimited\s+(?:minutes|calls|texts)|voice|calls?|mins?|minutes|sms|texts|on-?net|off-?net|talk)\b/i', $haystack) === 1;
+        $looks_like_topup = $this->looks_like_topup_amount($receive, $label, $product);
+
+        if ($has_data && $has_voice_sms) {
+            return 'combo';
+        }
+
+        if (strpos($product_type, 'bundle') !== false) {
+            return 'combo';
+        }
+
+        if ($has_data || strpos($product_type, 'data') !== false) {
+            return 'data';
+        }
+
+        if (strpos($product_type, 'top-up') !== false || strpos($product_type, 'topup') !== false || $looks_like_topup) {
+            return 'saldo';
+        }
+
+        return 'other';
+    }
+
+    private function looks_like_topup_amount($receive, $label, $product) {
+        $receive = trim((string) $receive);
+        $label = trim((string) $label);
+
+        if (!empty($product['Minimum']['SendValue']) && !empty($product['Maximum']['SendValue'])) {
+            return true;
+        }
+
+        if ($receive !== '' && preg_match('/\b(?:min|max)\b/i', $receive)) {
+            return true;
+        }
+
+        if ($receive !== '' && preg_match('/^[A-Z]{3}\s?[0-9]/', $receive)) {
+            return true;
+        }
+
+        if ($label !== '' && preg_match('/\btop\s?-?up\b/i', $label)) {
+            return true;
+        }
+
+        return false;
     }
 
     public function render_page() {
@@ -874,14 +804,12 @@ class DC_Recargas_Admin {
         $editing_bundle = $this->find_bundle_by_id($bundles, $editing_bundle_id);
         $editing_landing_id = sanitize_text_field($_GET['dc_edit_landing'] ?? '');
         $editing_landing = $this->find_landing_by_id($landing_shortcodes, $editing_landing_id);
-        $csv_path = $this->get_products_csv_path();
-        $csv_found = !empty($csv_path);
-        $csv_countries = $this->get_csv_countries();
-        $csv_nonce = wp_create_nonce('dc_csv_search');
+        $catalog_nonce = wp_create_nonce('dc_catalog_admin');
         $active_tab = 'tab_setup';
+        $landing_country_choices = $this->get_landing_country_choices($bundles, $landing_shortcodes);
 
         // Extract unique values from existing bundles for datalist dropdowns.
-        $dl_country_iso     = array_values(array_unique(array_filter(array_column($bundles, 'country_iso'))));
+        $dl_country_iso     = array_column($landing_country_choices, 'iso');
         $dl_label           = array_values(array_unique(array_filter(array_column($bundles, 'label'))));
         $dl_send_currency   = array_values(array_unique(array_filter(array_column($bundles, 'send_currency_iso'))));
         $dl_provider_name   = array_values(array_unique(array_filter(array_column($bundles, 'provider_name'))));
@@ -897,10 +825,9 @@ class DC_Recargas_Admin {
         $inactive_bundles = max(0, $total_bundles - $active_bundles);
         $landing_count = count($landing_shortcodes);
         $payment_mode_label = (($options['payment_mode'] ?? 'direct') === 'woocommerce') ? 'WooCommerce' : 'Directo';
-        $csv_status_label = $csv_found ? 'CSV operativo' : 'CSV pendiente';
 
         $requested_tab = sanitize_key($_GET['dc_tab'] ?? '');
-        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_wizard', 'tab_logs'], true)) {
+        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs'], true)) {
             $active_tab = $requested_tab;
         }
 
@@ -908,7 +835,7 @@ class DC_Recargas_Admin {
             $active_tab = 'tab_saved';
         }
 
-        if (in_array($msg, ['csv_uploaded', 'csv_upload_error', 'csv_no_file', 'bundle_error', 'bundle_duplicate'], true)) {
+        if (in_array($msg, ['bundle_error', 'bundle_duplicate'], true)) {
             $active_tab = !empty($editing_bundle) ? 'tab_saved' : 'tab_catalog';
         }
 
@@ -916,12 +843,12 @@ class DC_Recargas_Admin {
             $active_tab = 'tab_saved';
         }
 
-        if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error'], true)) {
-            $active_tab = 'tab_wizard';
+        if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error', 'landing_shortcode_country_invalid'], true)) {
+            $active_tab = 'tab_landings';
         }
 
         if (!empty($editing_landing)) {
-            $active_tab = 'tab_wizard';
+            $active_tab = 'tab_landings';
         }
         ?>
         <div class="wrap dc-admin-wrap">
@@ -933,7 +860,6 @@ class DC_Recargas_Admin {
                 </div>
                 <div class="dc-admin-hero__meta">
                     <span class="dc-admin-chip"><?php echo esc_html($payment_mode_label); ?></span>
-                    <span class="dc-admin-chip"><?php echo esc_html($csv_status_label); ?></span>
                 </div>
             </div>
 
@@ -1599,6 +1525,34 @@ class DC_Recargas_Admin {
                     font-size: 13px;
                 }
 
+                .dc-manual-bundle-heading {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                }
+
+                .dc-manual-bundle-source {
+                    display: inline-flex;
+                    align-items: center;
+                    max-width: 100%;
+                    padding: 2px 10px;
+                    border-radius: 999px;
+                    background: #e0ecff;
+                    color: #1d4a9a;
+                    font-size: 12px;
+                    font-weight: 600;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .dc-admin-inline-warning {
+                    margin: 0 0 8px;
+                    color: #b45309;
+                    font-weight: 600;
+                }
+
                 @media (max-width: 782px) {
                     .dc-catalog-subnav__btn {
                         flex: 1;
@@ -1612,7 +1566,7 @@ class DC_Recargas_Admin {
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_setup">Credenciales</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_catalog">Catálogo y alta</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_saved">Bundles guardados</button>
-                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_wizard">Wizard y landings</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_landings">Landings</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_logs">Registros</button>
                 </h2>
 
@@ -1674,72 +1628,6 @@ class DC_Recargas_Admin {
                             </p>
                         </td>
                     </tr>
-                    <tr>
-                        <th scope="row">Wizard paso a paso</th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="dc_recargas_options[wizard_enabled]" value="1" <?php checked(!empty($options['wizard_enabled'])); ?>>
-                                Activar flujo wizard para landings y sesiones recuperables.
-                            </label>
-                            <p class="description">Cuando está desactivado, el shortcode clásico sigue siendo la experiencia principal.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_wizard_max_offers">Máximo de ofertas por categoría</label></th>
-                        <td>
-                            <input type="number" id="dc_wizard_max_offers" name="dc_recargas_options[wizard_max_offers_per_category]" min="1" max="20" step="1" value="<?php echo esc_attr((int) ($options['wizard_max_offers_per_category'] ?? 6)); ?>">
-                            <p class="description">Controla cuántas ofertas se muestran por categoría en el wizard (1-20).</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_wizard_entry_mode">Modo de entrada predeterminado</label></th>
-                        <td>
-                            <select id="dc_wizard_entry_mode" name="dc_recargas_options[wizard_default_entry_mode]">
-                                <option value="number_first" <?php selected(($options['wizard_default_entry_mode'] ?? 'number_first'), 'number_first'); ?>>Número primero (number_first)</option>
-                                <option value="country_fixed" <?php selected(($options['wizard_default_entry_mode'] ?? 'number_first'), 'country_fixed'); ?>>País fijo (country_fixed)</option>
-                            </select>
-                            <p class="description">Define cómo inicia el wizard: por número de teléfono o por país preseleccionado.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_wizard_fixed_prefix">Prefijo fijo de país</label></th>
-                        <td>
-                            <input type="text" id="dc_wizard_fixed_prefix" name="dc_recargas_options[wizard_fixed_prefix]" class="small-text" value="<?php echo esc_attr((string) ($options['wizard_fixed_prefix'] ?? '')); ?>" placeholder="ej: 53">
-                            <p class="description">Solo dígitos. Se antepone al número en modo <code>country_fixed</code>. Dejar vacío si no aplica.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_wizard_checkout_mapping_mode">Mapeo de teléfono en checkout</label></th>
-                        <td>
-                            <select id="dc_wizard_checkout_mapping_mode" name="dc_recargas_options[wizard_checkout_mapping_mode]">
-                                <option value="both" <?php selected(($options['wizard_checkout_mapping_mode'] ?? 'both'), 'both'); ?>>Ambos (beneficiario + comprador)</option>
-                                <option value="beneficiary_only" <?php selected(($options['wizard_checkout_mapping_mode'] ?? 'both'), 'beneficiary_only'); ?>>Solo beneficiario</option>
-                                <option value="buyer_only" <?php selected(($options['wizard_checkout_mapping_mode'] ?? 'both'), 'buyer_only'); ?>>Solo comprador</option>
-                            </select>
-                            <p class="description">Define si el wizard guarda solo teléfono del beneficiario, solo del comprador o ambos.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_wizard_checkout_beneficiary_key">Meta key teléfono beneficiario</label></th>
-                        <td>
-                            <input type="text" id="dc_wizard_checkout_beneficiary_key" name="dc_recargas_options[wizard_checkout_beneficiary_meta_key]" class="regular-text" value="<?php echo esc_attr((string) ($options['wizard_checkout_beneficiary_meta_key'] ?? '_dc_beneficiary_phone')); ?>">
-                            <p class="description">Meta key que usará WooCommerce para guardar el teléfono del beneficiario cuando aplique.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_wizard_retry_attempts">Reintentos automáticos por transferencia</label></th>
-                        <td>
-                            <input type="number" id="dc_wizard_retry_attempts" name="dc_recargas_options[wizard_transfer_retry_attempts]" min="0" max="5" step="1" value="<?php echo esc_attr((int) ($options['wizard_transfer_retry_attempts'] ?? 2)); ?>">
-                            <p class="description">Cantidad de reintentos automáticos para errores transitorios después de pago exitoso (0-5).</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_wizard_retry_delay">Espera entre reintentos (minutos)</label></th>
-                        <td>
-                            <input type="number" id="dc_wizard_retry_delay" name="dc_recargas_options[wizard_transfer_retry_delay_minutes]" min="1" max="240" step="1" value="<?php echo esc_attr((int) ($options['wizard_transfer_retry_delay_minutes'] ?? 15)); ?>">
-                            <p class="description">Minutos de espera antes de ejecutar el próximo intento automático.</p>
-                        </td>
-                    </tr>
                 </table>
 
                 <?php submit_button('Guardar configuración'); ?>
@@ -1753,27 +1641,10 @@ class DC_Recargas_Admin {
             </p>
             <div id="dc_balance_result" class="dc-balance-panel" aria-live="polite"></div>
 
-            <hr>
-            <h2>Uso en frontend</h2>
-            <p>Crea una página y coloca el shortcode:</p>
-            <p><code>[dingconnect_recargas]</code></p>
-
                 </section>
 
-                <section id="dc-tab-wizard" class="dc-tab-panel" data-dc-tab-panel="tab_wizard">
+                <section id="dc-tab-landings" class="dc-tab-panel" data-dc-tab-panel="tab_landings">
 
-            <hr>
-            <h2>Wizard de pruebas internas</h2>
-            <p>Ejecuta el flujo paso a paso dentro del panel admin para validar operación sin depender de una landing pública.</p>
-            <?php if (empty($options['wizard_enabled'])) : ?>
-                <div class="notice notice-warning inline"><p>El wizard está desactivado. Activa <strong>Wizard paso a paso</strong> para usar esta vista.</p></div>
-            <?php else : ?>
-                <div style="max-width: 860px;">
-                    <?php echo do_shortcode('[dingconnect_wizard]'); ?>
-                </div>
-            <?php endif; ?>
-
-            <hr>
             <h2>Landings y shortcodes dinámicos</h2>
             <p>Define objetivos de landing y asocia bundles concretos para generar shortcodes reutilizables.</p>
 
@@ -1807,7 +1678,7 @@ class DC_Recargas_Admin {
                         <th scope="row"><label for="dc_landing_country_iso">País fijo (ISO, opcional)</label></th>
                         <td>
                             <input type="text" id="dc_landing_country_iso" name="landing_country_iso" class="small-text dc-combo-input" placeholder="CU" list="dc_dl_country_iso">
-                            <p class="description">Si se define, el selector de país se bloquea en esa landing.</p>
+                            <p class="description">Busca un país disponible en catálogo o bundles ya dados de alta. Si se define, el selector de país se bloquea en esa landing.</p>
                         </td>
                     </tr>
                     <tr>
@@ -1910,7 +1781,10 @@ class DC_Recargas_Admin {
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_landing_country_iso">País fijo (ISO, opcional)</label></th>
-                                <td><input type="text" id="dc_edit_landing_country_iso" name="landing_country_iso" class="small-text dc-combo-input" list="dc_dl_country_iso" placeholder="CU"></td>
+                                <td>
+                                    <input type="text" id="dc_edit_landing_country_iso" name="landing_country_iso" class="small-text dc-combo-input" list="dc_dl_country_iso" placeholder="CU">
+                                    <p class="description">El país fijo debe existir en el sistema y coincidir con los bundles seleccionados.</p>
+                                </td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_landing_bundle_ids">Bundles de la landing</label></th>
@@ -1935,17 +1809,16 @@ class DC_Recargas_Admin {
                 </div>
             </div>
 
+                </section>
+
                 <section id="dc-tab-catalog" class="dc-tab-panel" data-dc-tab-panel="tab_catalog">
 
             <h2>Catálogo y alta de bundles</h2>
-            <p>Añade productos al catálogo visible en el frontend usando cualquiera de los tres métodos disponibles.</p>
+            <p>Añade productos al catálogo visible en el frontend usando búsqueda en API o alta manual.</p>
 
             <div class="dc-catalog-subtabs">
                 <nav class="dc-catalog-subnav" aria-label="Métodos de alta de bundles">
-                    <button type="button" class="dc-catalog-subnav__btn is-active" data-catalog-subtab="csv">
-                        📋 Buscar en CSV
-                    </button>
-                    <button type="button" class="dc-catalog-subnav__btn" data-catalog-subtab="api">
+                    <button type="button" class="dc-catalog-subnav__btn is-active" data-catalog-subtab="api">
                         🔌 Buscar en API
                     </button>
                     <button type="button" class="dc-catalog-subnav__btn" data-catalog-subtab="manual">
@@ -1953,69 +1826,8 @@ class DC_Recargas_Admin {
                     </button>
                 </nav>
 
-                <!-- ── Sub-panel 1: CSV ── -->
-                <div class="dc-catalog-subpanel is-active" data-catalog-panel="csv">
-
-            <p class="dc-catalog-subpanel__intro">Sube el archivo <strong>Products-with-sku.csv</strong> desde DingConnect, busca un producto y crea el bundle con un clic. Es el método más rápido y preciso.</p>
-
-            <h4>Archivo de catálogo (Products-with-sku.csv)</h4>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
-                <input type="hidden" name="action" value="dc_upload_csv">
-                <?php wp_nonce_field('dc_upload_csv'); ?>
-                <table class="form-table" role="presentation">
-                    <tr>
-                        <th scope="row"><label for="dc_csv_file"><?php echo $csv_found ? 'Actualizar CSV' : 'Importar CSV'; ?></label></th>
-                        <td>
-                            <?php if ($csv_found) : ?>
-                                <div class="notice notice-success inline" style="margin:0 0 10px"><p>Catálogo cargado correctamente. Última modificación: <strong><?php echo esc_html(date('d/m/Y H:i', filemtime($csv_path))); ?></strong></p></div>
-                            <?php else : ?>
-                                <div class="notice notice-warning inline" style="margin:0 0 10px"><p>No hay catálogo cargado. Sube el archivo para habilitar la búsqueda de productos.</p></div>
-                            <?php endif; ?>
-                            <input type="file" id="dc_csv_file" name="csv_file" accept=".csv">
-                            <p class="description">Sube el archivo <strong>Products-with-sku.csv</strong> exportado desde <a href="https://www.dingconnect.com/en-US/PricingAndPromotions/Products" target="_blank">DingConnect &rarr; Pricing &amp; Promotions &rarr; Products</a>. Puedes actualizarlo en cualquier momento.</p>
-                        </td>
-                    </tr>
-                </table>
-                <?php submit_button($csv_found ? 'Actualizar catálogo' : 'Importar catálogo', 'secondary', 'submit', false); ?>
-            </form>
-
-            <table class="form-table" role="presentation">
-                <tr>
-                    <th scope="row"><label for="dc_csv_query">Buscar producto</label></th>
-                    <td>
-                        <input type="text" id="dc_csv_query" class="regular-text" placeholder="SKU, operador, país, descripción...">
-                        <select id="dc_csv_country" class="regular-text">
-                            <option value="">Todos los países</option>
-                            <?php foreach ($csv_countries as $country_name) : ?>
-                                <option value="<?php echo esc_attr($country_name); ?>"><?php echo esc_html($country_name); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <button type="button" class="button" id="dc_csv_search_btn">Buscar</button>
-                        <p class="description">Consejo: escribe al menos 3 caracteres para resultados más precisos.</p>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row"><label for="dc_csv_results">Resultados</label></th>
-                    <td>
-                        <select id="dc_csv_results" size="10" class="large-text"></select>
-                        <p class="description" id="dc_csv_help">Cargando resultados iniciales...</p>
-                        <p>
-                            <label>
-                                <input type="checkbox" id="dc_csv_auto_active" checked>
-                                Publicar bundle inmediatamente (activo)
-                            </label>
-                        </p>
-                        <p>
-                            <button type="button" class="button button-primary" id="dc_csv_create_btn">Crear bundle automáticamente desde selección</button>
-                        </p>
-                    </td>
-                </tr>
-            </table>
-
-                </div><!-- /sub-panel csv -->
-
                 <!-- ── Sub-panel 2: API ── -->
-                <div class="dc-catalog-subpanel" data-catalog-panel="api">
+                <div class="dc-catalog-subpanel is-active" data-catalog-panel="api">
 
             <p class="dc-catalog-subpanel__intro">Consulta los paquetes disponibles directamente desde DingConnect en tiempo real. No necesitas el CSV; los resultados se guardan en caché por <strong>10 minutos</strong> por país.</p>
 
@@ -2023,6 +1835,7 @@ class DC_Recargas_Admin {
                 <tr>
                     <th scope="row"><label for="dc_api_country_iso">País (código ISO)</label></th>
                     <td>
+                        <p class="description dc-admin-inline-warning" id="dc_api_country_warning" hidden>Selecciona un país antes de buscar.</p>
                         <select id="dc_api_country_iso" class="regular-text">
                             <option value="">Selecciona un país...</option>
                             <option value="AR">Argentina (AR)</option>
@@ -2053,16 +1866,20 @@ class DC_Recargas_Admin {
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><label for="dc_api_results">Paquetes encontrados</label></th>
+                    <th scope="row"><label for="dc_api_package_group">Tipo de paquete</label></th>
                     <td>
+                        <select id="dc_api_package_group" class="regular-text" disabled>
+                            <option value="all">Todos los tipos</option>
+                        </select>
+                        <p class="description">Filtro operativo derivado del catálogo: saldo/top-up, datos y combos. Se habilita después de consultar la API.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="dc_api_results">Paquetes encontrados (doble click para alta manual)</label></th>
+                    <td>
+                        <input type="text" id="dc_api_search" class="regular-text" placeholder="Buscar por operador, beneficio o SKU..." disabled style="margin-bottom:6px;width:100%;box-sizing:border-box;">
                         <select id="dc_api_results" size="10" class="large-text"></select>
-                        <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API».</p>
-                        <p>
-                            <label>
-                                <input type="checkbox" id="dc_api_auto_active" checked>
-                                Publicar bundle inmediatamente (activo)
-                            </label>
-                        </p>
+                        <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API». Luego puedes hacer doble click en un paquete para cargarlo en «Alta manual».</p>
                         <p>
                             <button type="button" class="button button-primary" id="dc_api_create_btn" disabled>Crear bundle desde API</button>
                         </p>
@@ -2071,14 +1888,112 @@ class DC_Recargas_Admin {
             </table>
             <script>
             (function () {
-                var apiNonce     = <?php echo wp_json_encode($csv_nonce); ?>;
+                 var apiNonce     = <?php echo wp_json_encode($catalog_nonce); ?>;
+                 var apiStorageKey = 'dc_admin_api_last_search_v1';
                 var apiCountryEl = document.getElementById('dc_api_country_iso');
+                var apiCountryWarningEl = document.getElementById('dc_api_country_warning');
                 var apiFetchBtn  = document.getElementById('dc_api_fetch_btn');
+                var apiFilterEl  = document.getElementById('dc_api_package_group');
                 var apiResultsEl = document.getElementById('dc_api_results');
                 var apiHelpEl    = document.getElementById('dc_api_help');
-                var apiActiveEl  = document.getElementById('dc_api_auto_active');
                 var apiCreateBtn = document.getElementById('dc_api_create_btn');
+                var manualCountryIsoEl = document.getElementById('dc_country_iso');
+                var manualLabelEl = document.getElementById('dc_label');
+                var manualSkuEl = document.getElementById('dc_sku_code');
+                var manualSendValueEl = document.getElementById('dc_send_value');
+                var manualSendCurrencyEl = document.getElementById('dc_send_currency_iso');
+                var manualProviderEl = document.getElementById('dc_provider_name');
+                var manualDescriptionEl = document.getElementById('dc_description');
+                var manualBundleSourceEl = document.getElementById('dc_manual_bundle_source');
                 var apiSelected  = null;
+                var apiItems = [];
+                var apiGroupCounts = {};
+                var apiSearchEl  = document.getElementById('dc_api_search');
+                var apiGroupLabels = {
+                    saldo: 'Saldo / top-up',
+                    data: 'Datos',
+                    combo: 'Combo / voz + datos',
+                    other: 'Otros'
+                };
+
+                function apiGroupOrder(group) {
+                    var order = { combo: 1, data: 2, saldo: 3, other: 4 };
+                    return order[group] || 99;
+                }
+
+                function loadStoredApiState() {
+                    try {
+                        return JSON.parse(localStorage.getItem(apiStorageKey) || 'null');
+                    } catch (e) {
+                        return null;
+                    }
+                }
+
+                function saveStoredApiState() {
+                    var payload = {
+                        country_iso: apiCountryEl ? String(apiCountryEl.value || '') : '',
+                        package_group: apiFilterEl ? String(apiFilterEl.value || 'all') : 'all',
+                        search_term: apiSearchEl ? String(apiSearchEl.value || '') : '',
+                        items: apiItems,
+                        group_counts: apiGroupCounts,
+                        group_labels: apiGroupLabels,
+                        saved_at: new Date().toISOString()
+                    };
+
+                    try {
+                        localStorage.setItem(apiStorageKey, JSON.stringify(payload));
+                    } catch (e) {
+                        // Ignore storage errors in private mode or restricted browsers.
+                    }
+                }
+
+                function restoreStoredApiState() {
+                    var stored = loadStoredApiState();
+                    if (!stored || !apiCountryEl) {
+                        return;
+                    }
+
+                    apiCountryEl.value = String(stored.country_iso || '');
+                    apiItems = Array.isArray(stored.items) ? stored.items : [];
+                    apiGroupCounts = stored.group_counts && typeof stored.group_counts === 'object' ? stored.group_counts : {};
+                    apiGroupLabels = stored.group_labels && typeof stored.group_labels === 'object' ? stored.group_labels : apiGroupLabels;
+
+                    refreshApiResults();
+
+                    if (apiFilterEl) {
+                        var storedGroup = String(stored.package_group || 'all');
+                        if (apiFilterEl.querySelector('option[value="' + storedGroup + '"]')) {
+                            apiFilterEl.value = storedGroup;
+                        }
+                    }
+
+                    if (apiSearchEl) {
+                        apiSearchEl.value = String(stored.search_term || '');
+                    }
+
+                    renderApiResults(getFilteredApiItems());
+
+                    if (stored.country_iso) {
+                        apiHelpEl.textContent = apiItems.length > 0
+                            ? 'Última búsqueda restaurada para ' + stored.country_iso + '. Puedes seguir filtrando, crear un bundle o volver a consultar la API.'
+                            : 'Última búsqueda restaurada para ' + stored.country_iso + '. Esa consulta no devolvió paquetes.';
+                    }
+                }
+
+                function setApiCountryWarning(message) {
+                    if (!apiCountryWarningEl) {
+                        return;
+                    }
+
+                    if (message) {
+                        apiCountryWarningEl.textContent = message;
+                        apiCountryWarningEl.hidden = false;
+                        return;
+                    }
+
+                    apiCountryWarningEl.textContent = 'Selecciona un país antes de buscar.';
+                    apiCountryWarningEl.hidden = true;
+                }
 
                 function apiOptionLabel(item) {
                     var parts = [item.operator, item.receive || item.label];
@@ -2091,39 +2006,217 @@ class DC_Recargas_Admin {
                     return parts.filter(Boolean).join(' — ');
                 }
 
+                function syncApiFilterOptions() {
+                    var current = apiFilterEl ? String(apiFilterEl.value || 'all') : 'all';
+                    var order = ['combo', 'data', 'saldo', 'other'];
+
+                    if (!apiFilterEl) {
+                        return;
+                    }
+
+                    apiFilterEl.innerHTML = '';
+
+                    var allOption = document.createElement('option');
+                    allOption.value = 'all';
+                    allOption.textContent = 'Todos los tipos (' + apiItems.length + ')';
+                    apiFilterEl.appendChild(allOption);
+
+                    order.forEach(function (group) {
+                        var count = Number(apiGroupCounts[group] || 0);
+                        if (!count) {
+                            return;
+                        }
+
+                        var opt = document.createElement('option');
+                        opt.value = group;
+                        opt.textContent = (apiGroupLabels[group] || group) + ' (' + count + ')';
+                        apiFilterEl.appendChild(opt);
+                    });
+
+                    apiFilterEl.disabled = apiItems.length === 0;
+
+                    if (apiFilterEl.querySelector('option[value="' + current + '"]')) {
+                        apiFilterEl.value = current;
+                    } else {
+                        apiFilterEl.value = 'all';
+                    }
+                }
+
+                function getFilteredApiItems() {
+                    var selectedGroup = apiFilterEl ? String(apiFilterEl.value || 'all') : 'all';
+                    var searchTerm = apiSearchEl ? apiSearchEl.value.trim().toLowerCase() : '';
+
+                    var items = apiItems.slice();
+
+                    if (selectedGroup !== 'all') {
+                        items = items.filter(function (item) {
+                            return String(item.package_group || 'other') === selectedGroup;
+                        });
+                    }
+
+                    if (searchTerm) {
+                        items = items.filter(function (item) {
+                            var haystack = [
+                                item.operator || '',
+                                item.receive || '',
+                                item.label || '',
+                                item.sku_code || '',
+                                item.send_value ? String(item.send_value) : '',
+                                item.send_currency_iso || '',
+                                item.validity || ''
+                            ].join(' ').toLowerCase();
+                            return haystack.indexOf(searchTerm) !== -1;
+                        });
+                    }
+
+                    return items;
+                }
+
+                function getManualBundleSourceText(item) {
+                    var text = item && (item.label || item.receive || item.sku_code || '');
+                    return String(text || '').trim();
+                }
+
+                function updateManualBundleSource(item) {
+                    if (!manualBundleSourceEl) {
+                        return;
+                    }
+
+                    var text = getManualBundleSourceText(item);
+                    if (!text) {
+                        manualBundleSourceEl.textContent = '';
+                        manualBundleSourceEl.hidden = true;
+                        return;
+                    }
+
+                    manualBundleSourceEl.textContent = 'Paquete API: ' + text;
+                    manualBundleSourceEl.hidden = false;
+                }
+
+                function fillManualForm(item) {
+                    if (manualCountryIsoEl) manualCountryIsoEl.value = item.country_iso || '';
+                    if (manualLabelEl) manualLabelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.label || item.sku_code || '');
+                    if (manualSkuEl) manualSkuEl.value = item.sku_code || '';
+                    if (manualSendValueEl) manualSendValueEl.value = item.send_value != null ? item.send_value : '';
+                    if (manualSendCurrencyEl) manualSendCurrencyEl.value = item.send_currency_iso || 'USD';
+                    if (manualProviderEl) manualProviderEl.value = item.operator || '';
+                    if (manualDescriptionEl) manualDescriptionEl.value = item.receive || item.label || '';
+                    updateManualBundleSource(item);
+                }
+
+                function openManualSubtab() {
+                    var manualTabBtn = document.querySelector('[data-catalog-subtab="manual"]');
+                    if (manualTabBtn) {
+                        manualTabBtn.click();
+                    }
+                }
+
+                function resetApiState(message) {
+                    apiItems = [];
+                    apiGroupCounts = {};
+                    apiSelected = null;
+                    apiResultsEl.innerHTML = '';
+                    apiCreateBtn.disabled = true;
+
+                    if (apiFilterEl) {
+                        apiFilterEl.innerHTML = '<option value="all">Todos los tipos</option>';
+                        apiFilterEl.value = 'all';
+                        apiFilterEl.disabled = true;
+                    }
+
+                    if (apiSearchEl) {
+                        apiSearchEl.value = '';
+                        apiSearchEl.disabled = true;
+                    }
+
+                    if (message) {
+                        apiHelpEl.textContent = message;
+                    }
+                }
+
                 function renderApiResults(items) {
+                    var grouped = {};
+
                     apiResultsEl.innerHTML = '';
                     apiSelected = null;
                     apiCreateBtn.disabled = true;
 
                     if (!items || items.length === 0) {
-                        apiHelpEl.textContent = 'No se encontraron paquetes para este país en la API.';
+                        apiHelpEl.textContent = apiItems.length > 0
+                            ? 'No hay resultados para el tipo de paquete seleccionado.'
+                            : 'No se encontraron paquetes para este país en la API.';
                         return;
                     }
 
-                    items.forEach(function (item) {
-                        var opt = document.createElement('option');
-                        opt.value = item.sku_code;
-                        opt.textContent = apiOptionLabel(item);
-                        opt.dataset.item = JSON.stringify(item);
-                        apiResultsEl.appendChild(opt);
-                    });
+                    items
+                        .slice()
+                        .sort(function (left, right) {
+                            var groupCmp = apiGroupOrder(left.package_group) - apiGroupOrder(right.package_group);
+                            if (groupCmp !== 0) {
+                                return groupCmp;
+                            }
 
-                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s). Selecciona uno para crear el bundle.';
+                            var operatorCmp = String(left.operator || '').localeCompare(String(right.operator || ''));
+                            if (operatorCmp !== 0) {
+                                return operatorCmp;
+                            }
+
+                            return String(left.label || '').localeCompare(String(right.label || ''));
+                        })
+                        .forEach(function (item) {
+                            var group = String(item.package_group || 'other');
+                            if (!grouped[group]) {
+                                grouped[group] = [];
+                            }
+                            grouped[group].push(item);
+                        });
+
+                    Object.keys(grouped)
+                        .sort(function (left, right) {
+                            return apiGroupOrder(left) - apiGroupOrder(right);
+                        })
+                        .forEach(function (group) {
+                            var optgroup = document.createElement('optgroup');
+                            optgroup.label = (apiGroupLabels[group] || group) + ' (' + grouped[group].length + ')';
+
+                            grouped[group].forEach(function (item) {
+                                var opt = document.createElement('option');
+                                opt.value = item.sku_code;
+                                opt.textContent = apiOptionLabel(item);
+                                opt.dataset.item = JSON.stringify(item);
+                                optgroup.appendChild(opt);
+                            });
+
+                            apiResultsEl.appendChild(optgroup);
+                        });
+
+                    if (apiFilterEl && apiFilterEl.value !== 'all') {
+                        apiHelpEl.textContent = items.length + ' paquete(s) en «' + (apiGroupLabels[apiFilterEl.value] || apiFilterEl.value) + '». Selecciona uno para crear el bundle o haz doble click para cargarlo en alta manual.';
+                        return;
+                    }
+
+                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s), agrupados por tipo. Selecciona uno para crear el bundle o haz doble click para cargarlo en alta manual.';
+                }
+
+                function refreshApiResults() {
+                    syncApiFilterOptions();
+                    renderApiResults(getFilteredApiItems());
+                    if (apiSearchEl) {
+                        apiSearchEl.disabled = apiItems.length === 0;
+                    }
                 }
 
                 apiFetchBtn.addEventListener('click', function () {
                     var iso = apiCountryEl.value;
                     if (!iso) {
-                        apiHelpEl.textContent = 'Selecciona un país antes de buscar.';
+                        setApiCountryWarning('Selecciona un país antes de buscar.');
+                        apiCountryEl.focus();
                         return;
                     }
 
+                    setApiCountryWarning('');
                     apiFetchBtn.disabled = true;
-                    apiHelpEl.textContent = 'Consultando la API de DingConnect...';
-                    apiResultsEl.innerHTML = '';
-                    apiSelected = null;
-                    apiCreateBtn.disabled = true;
+                    resetApiState('Consultando la API de DingConnect...');
 
                     var url = ajaxurl + '?action=dc_fetch_api_products&nonce=' + encodeURIComponent(apiNonce) + '&country_iso=' + encodeURIComponent(iso);
 
@@ -2132,16 +2225,44 @@ class DC_Recargas_Admin {
                         .then(function (data) {
                             apiFetchBtn.disabled = false;
                             if (data.success) {
-                                renderApiResults(data.data.items);
+                                apiItems = (data.data && data.data.items) ? data.data.items : [];
+                                apiGroupCounts = (data.data && data.data.group_counts) ? data.data.group_counts : {};
+                                apiGroupLabels = (data.data && data.data.group_labels) ? data.data.group_labels : apiGroupLabels;
+                                refreshApiResults();
+                                saveStoredApiState();
                             } else {
+                                resetApiState();
                                 apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo conectar a la API.');
                             }
                         })
                         .catch(function () {
                             apiFetchBtn.disabled = false;
+                            resetApiState();
                             apiHelpEl.textContent = 'Error de red al consultar la API.';
                         });
                 });
+
+                if (apiFilterEl) {
+                    apiFilterEl.addEventListener('change', function () {
+                        renderApiResults(getFilteredApiItems());
+                        saveStoredApiState();
+                    });
+                }
+
+                if (apiCountryEl) {
+                    apiCountryEl.addEventListener('change', function () {
+                        if (apiCountryEl.value) {
+                            setApiCountryWarning('');
+                        }
+                    });
+                }
+
+                if (apiSearchEl) {
+                    apiSearchEl.addEventListener('input', function () {
+                        renderApiResults(getFilteredApiItems());
+                        saveStoredApiState();
+                    });
+                }
 
                 apiResultsEl.addEventListener('change', function () {
                     var opt = apiResultsEl.options[apiResultsEl.selectedIndex];
@@ -2159,6 +2280,22 @@ class DC_Recargas_Admin {
                     }
                 });
 
+                apiResultsEl.addEventListener('dblclick', function () {
+                    var opt = apiResultsEl.options[apiResultsEl.selectedIndex];
+                    if (!opt) {
+                        return;
+                    }
+
+                    try {
+                        var item = JSON.parse(opt.dataset.item);
+                        fillManualForm(item);
+                        openManualSubtab();
+                        apiHelpEl.textContent = 'Producto cargado en «Alta manual». Revisa los campos y guarda el bundle cuando quieras.';
+                    } catch (e) {
+                        apiHelpEl.textContent = 'No se pudo cargar el producto seleccionado en el formulario manual.';
+                    }
+                });
+
                 apiCreateBtn.addEventListener('click', function () {
                     if (!apiSelected) { return; }
 
@@ -2166,7 +2303,7 @@ class DC_Recargas_Admin {
                     apiHelpEl.textContent = 'Creando bundle...';
 
                     var body = new URLSearchParams({
-                        action: 'dc_create_bundle_from_csv',
+                        action: 'dc_create_bundle_from_catalog',
                         nonce: apiNonce,
                         country_iso: apiSelected.country_iso,
                         sku_code: apiSelected.sku_code,
@@ -2174,7 +2311,7 @@ class DC_Recargas_Admin {
                         receive: apiSelected.receive || apiSelected.label,
                         send_value: apiSelected.send_value,
                         send_currency_iso: apiSelected.send_currency_iso,
-                        is_active: apiActiveEl.checked ? '1' : '0',
+                        is_active: '0',
                     });
 
                     fetch(ajaxurl, {
@@ -2188,15 +2325,18 @@ class DC_Recargas_Admin {
                             apiCreateBtn.disabled = false;
                             if (data.success) {
                                 var bundleLabel = data.data.bundle && data.data.bundle.label ? data.data.bundle.label : apiSelected.label;
-                                apiHelpEl.textContent = 'Bundle «' + bundleLabel + '» creado correctamente.';
-                                var opts = apiResultsEl.options;
-                                for (var i = opts.length - 1; i >= 0; i--) {
-                                    if (opts[i].value === apiSelected.sku_code) {
-                                        apiResultsEl.remove(i);
-                                        break;
-                                    }
-                                }
+                                apiItems = apiItems.filter(function (item) {
+                                    return String(item.sku_code) !== String(apiSelected.sku_code);
+                                });
+                                apiGroupCounts = {};
+                                apiItems.forEach(function (item) {
+                                    var group = String(item.package_group || 'other');
+                                    apiGroupCounts[group] = Number(apiGroupCounts[group] || 0) + 1;
+                                });
                                 apiSelected = null;
+                                refreshApiResults();
+                                saveStoredApiState();
+                                apiHelpEl.textContent = 'Bundle «' + bundleLabel + '» creado correctamente.';
                             } else {
                                 apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo crear el bundle.');
                             }
@@ -2206,6 +2346,8 @@ class DC_Recargas_Admin {
                             apiHelpEl.textContent = 'Error de red al crear el bundle.';
                         });
                 });
+
+                restoreStoredApiState();
             })();
             </script>
 
@@ -2216,7 +2358,7 @@ class DC_Recargas_Admin {
 
             <p class="dc-catalog-subpanel__intro">Completa el formulario con los datos del bundle. Usa este método cuando conozcas el SKU exacto y quieras un control total sobre los valores que se muestran al usuario.</p>
 
-            <h4>Datos del bundle</h4>
+            <h4 class="dc-manual-bundle-heading">Datos del bundle <span id="dc_manual_bundle_source" class="dc-manual-bundle-source" hidden></span></h4>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="dc_add_bundle">
                 <?php wp_nonce_field('dc_add_bundle'); ?>
@@ -2826,8 +2968,8 @@ class DC_Recargas_Admin {
 
         <?php // Shared datalists for combobox fields — populated from existing bundles. ?>
         <datalist id="dc_dl_country_iso">
-            <?php foreach ($dl_country_iso as $v) : ?>
-                <option value="<?php echo esc_attr($v); ?>">
+            <?php foreach ($landing_country_choices as $country_choice) : ?>
+                <option value="<?php echo esc_attr((string) ($country_choice['iso'] ?? '')); ?>" label="<?php echo esc_attr((string) ($country_choice['label'] ?? ($country_choice['iso'] ?? ''))); ?>">
             <?php endforeach; ?>
         </datalist>
         <datalist id="dc_dl_label">
@@ -2848,14 +2990,6 @@ class DC_Recargas_Admin {
 
         <script>
             (function () {
-                var searchBtn = document.getElementById('dc_csv_search_btn');
-                var queryEl = document.getElementById('dc_csv_query');
-                var countryEl = document.getElementById('dc_csv_country');
-                var resultsEl = document.getElementById('dc_csv_results');
-                var helpEl = document.getElementById('dc_csv_help');
-                var createBtn = document.getElementById('dc_csv_create_btn');
-                var autoActiveEl = document.getElementById('dc_csv_auto_active');
-                var autoSearchTimer = null;
                 var tabButtons = document.querySelectorAll('[data-dc-tab-btn]');
                 var tabPanels = document.querySelectorAll('[data-dc-tab-panel]');
                 var activeTabFromPhp = '<?php echo esc_js($active_tab); ?>';
@@ -3165,12 +3299,12 @@ class DC_Recargas_Admin {
 
                     landingEditModalEl.hidden = false;
                     document.body.classList.add('modal-open');
-                    setActiveTab('tab_wizard', true);
+                    setActiveTab('tab_landings', true);
 
                     var url = new URL(window.location.href);
                     if (landing.id) {
                         url.searchParams.set('dc_edit_landing', landing.id);
-                        url.searchParams.set('dc_tab', 'tab_wizard');
+                        url.searchParams.set('dc_tab', 'tab_landings');
                         window.history.replaceState({}, '', url.toString());
                     }
 
@@ -3251,273 +3385,14 @@ class DC_Recargas_Admin {
                 var providerEl = document.getElementById('dc_provider_name');
                 var descriptionEl = document.getElementById('dc_description');
 
-                if (!searchBtn || !queryEl || !resultsEl) {
-                    return;
-                }
-
-                function optionLabel(item) {
-                    return '[' + (item.country_iso || '--') + '] ' + item.operator + ' | ' + item.send_amount + ' | ' + item.receive + ' | ' + item.sku_code;
-                }
-
                 function fillForm(item) {
                     if (countryIsoEl) countryIsoEl.value = item.country_iso || '';
                     if (labelEl) labelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.sku_code || '');
                     if (skuEl) skuEl.value = item.sku_code || '';
-                    if (sendValueEl) sendValueEl.value = item.send_value || '';
+                    if (sendValueEl) sendValueEl.value = item.send_value != null ? item.send_value : '';
                     if (sendCurrencyEl) sendCurrencyEl.value = item.send_currency_iso || 'EUR';
                     if (providerEl) providerEl.value = item.operator || '';
                     if (descriptionEl) descriptionEl.value = item.receive || '';
-                }
-
-                function renderResults(items) {
-                    resultsEl.innerHTML = '';
-
-                    if (!items || !items.length) {
-                        var none = document.createElement('option');
-                        none.value = '';
-                        none.textContent = 'Sin resultados para el filtro actual.';
-                        resultsEl.appendChild(none);
-                        helpEl.textContent = 'No se encontraron coincidencias.';
-                        if (createBtn) createBtn.disabled = true;
-                        return;
-                    }
-
-                    items.forEach(function (item) {
-                        var opt = document.createElement('option');
-                        opt.value = item.sku_code;
-                        opt.textContent = optionLabel(item);
-                        opt.dataset.item = JSON.stringify(item);
-                        resultsEl.appendChild(opt);
-                    });
-
-                    helpEl.textContent = 'Se encontraron ' + items.length + ' resultados. Selecciona uno para cargarlo en el formulario.';
-                    if (createBtn) createBtn.disabled = false;
-                }
-
-                async function createBundleFromSelection() {
-                    var selected = resultsEl.options[resultsEl.selectedIndex];
-                    if (!selected || !selected.dataset.item) {
-                        helpEl.textContent = 'Selecciona primero un producto del listado.';
-                        return;
-                    }
-
-                    var item;
-                    try {
-                        item = JSON.parse(selected.dataset.item);
-                    } catch (e) {
-                        helpEl.textContent = 'No se pudo leer el resultado seleccionado.';
-                        return;
-                    }
-
-                    if (!createBtn) {
-                        return;
-                    }
-
-                    createBtn.disabled = true;
-                    createBtn.textContent = 'Creando...';
-
-                    try {
-                        var body = new URLSearchParams();
-                        body.append('action', 'dc_create_bundle_from_csv');
-                        body.append('nonce', '<?php echo esc_js($csv_nonce); ?>');
-                        body.append('country_iso', item.country_iso || '');
-                        body.append('sku_code', item.sku_code || '');
-                        body.append('operator', item.operator || '');
-                        body.append('receive', item.receive || '');
-                        body.append('send_value', item.send_value || 0);
-                        body.append('send_currency_iso', item.send_currency_iso || 'EUR');
-                        body.append('is_active', (autoActiveEl && autoActiveEl.checked) ? '1' : '0');
-
-                        var response = await fetch(ajaxurl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                            },
-                            body: body.toString()
-                        });
-
-                        var data = await response.json();
-                        if (!data || !data.success) {
-                            var errorMsg = (data && data.data && data.data.message) ? data.data.message : 'No se pudo crear el bundle.';
-                            throw new Error(errorMsg);
-                        }
-
-                        fillForm(item);
-                        helpEl.textContent = 'Bundle creado correctamente. Recargando lista de bundles...';
-                        window.location.href = '<?php echo esc_url(add_query_arg(['page' => 'dc-recargas', 'dc_msg' => 'bundle_added'], admin_url('admin.php'))); ?>';
-                    } catch (err) {
-                        helpEl.textContent = err.message || 'Error al crear bundle automático.';
-                    } finally {
-                        createBtn.disabled = false;
-                        createBtn.textContent = 'Crear bundle automáticamente desde selección';
-                    }
-                }
-
-                async function doSearch() {
-                    var query = (queryEl.value || '').trim();
-                    var country = countryEl ? countryEl.value : '';
-
-                    searchBtn.disabled = true;
-                    searchBtn.textContent = 'Buscando...';
-                    helpEl.textContent = 'Consultando catálogo...';
-
-                    try {
-                        var url = ajaxurl + '?action=dc_search_csv_products'
-                            + '&nonce=' + encodeURIComponent('<?php echo esc_js($csv_nonce); ?>')
-                            + '&q=' + encodeURIComponent(query)
-                            + '&country=' + encodeURIComponent(country);
-
-                        var response = await fetch(url);
-                        var data = await response.json();
-
-                        if (!data || !data.success) {
-                            throw new Error('No se pudo leer el catálogo CSV.');
-                        }
-
-                        renderResults((data.data && data.data.items) ? data.data.items : []);
-                    } catch (err) {
-                        resultsEl.innerHTML = '';
-                        var errorOpt = document.createElement('option');
-                        errorOpt.value = '';
-                        errorOpt.textContent = 'Error al consultar catálogo CSV.';
-                        resultsEl.appendChild(errorOpt);
-                        helpEl.textContent = err.message || 'Error inesperado.';
-                    } finally {
-                        searchBtn.disabled = false;
-                        searchBtn.textContent = 'Buscar';
-                    }
-                }
-
-                async function loadInitialResults() {
-                    searchBtn.disabled = true;
-                    searchBtn.textContent = 'Cargando...';
-                    helpEl.textContent = 'Cargando resultados de países principales...';
-
-                    try {
-                        var url = ajaxurl + '?action=dc_search_csv_products'
-                            + '&nonce=' + encodeURIComponent('<?php echo esc_js($csv_nonce); ?>')
-                            + '&initial=1';
-
-                        var response = await fetch(url);
-                        var data = await response.json();
-
-                        if (!data || !data.success) {
-                            throw new Error('No se pudo leer el catálogo CSV.');
-                        }
-
-                        var payload = data.data || {};
-                        if (!payload.csv_found) {
-                            renderResults([]);
-                            helpEl.textContent = 'No hay ningún CSV cargado. Importa Products-with-sku.csv para ver resultados.';
-                            if (createBtn) createBtn.disabled = true;
-                            return;
-                        }
-
-                        renderResults(payload.items || []);
-                        if (payload.items && payload.items.length) {
-                            helpEl.textContent = 'Se cargaron los primeros 10 resultados de países principales.';
-                        }
-                    } catch (err) {
-                        resultsEl.innerHTML = '';
-                        var errorOpt = document.createElement('option');
-                        errorOpt.value = '';
-                        errorOpt.textContent = 'Error al cargar resultados iniciales.';
-                        resultsEl.appendChild(errorOpt);
-                        helpEl.textContent = err.message || 'Error inesperado.';
-                        if (createBtn) createBtn.disabled = true;
-                    } finally {
-                        searchBtn.disabled = false;
-                        searchBtn.textContent = 'Buscar';
-                    }
-                }
-
-                searchBtn.addEventListener('click', doSearch);
-                queryEl.addEventListener('input', function () {
-                    if (autoSearchTimer) {
-                        clearTimeout(autoSearchTimer);
-                    }
-
-                    // Debounce to avoid firing one request per keystroke.
-                    autoSearchTimer = setTimeout(function () {
-                        doSearch();
-                    }, 300);
-                });
-
-                if (countryEl) {
-                    countryEl.addEventListener('change', doSearch);
-                }
-
-                resultsEl.addEventListener('change', function () {
-                    var selected = resultsEl.options[resultsEl.selectedIndex];
-                    if (!selected || !selected.dataset.item) {
-                        return;
-                    }
-
-                    try {
-                        fillForm(JSON.parse(selected.dataset.item));
-                    } catch (e) {
-                        helpEl.textContent = 'No se pudo interpretar el producto seleccionado.';
-                    }
-                });
-
-                resultsEl.addEventListener('dblclick', function () {
-                    var selected = resultsEl.options[resultsEl.selectedIndex];
-                    if (!selected || !selected.dataset.item) {
-                        return;
-                    }
-
-                    try {
-                        var item = JSON.parse(selected.dataset.item);
-                        fillForm(item);
-                        setActiveTab('tab_catalog', true);
-                        var manualTabBtn = document.querySelector('[data-catalog-subtab="manual"]');
-                        if (manualTabBtn) {
-                            manualTabBtn.click();
-                        }
-                    } catch (e) {
-                        helpEl.textContent = 'No se pudo interpretar el producto seleccionado.';
-                    }
-                });
-
-                if (createBtn) {
-                    createBtn.disabled = true;
-                    createBtn.addEventListener('click', createBundleFromSelection);
-                }
-
-                loadInitialResults();
-            })();
-
-            // -- Datalist sync: ensure new values typed in any field are added
-            // -- to the shared datalist so other bundles see them immediately.
-            (function () {
-                var datalistMap = {
-                    dc_dl_country_iso: ['dc_country_iso', 'dc_edit_country_iso'],
-                    dc_dl_label: ['dc_label', 'dc_edit_label'],
-                    dc_dl_send_currency: ['dc_send_currency_iso', 'dc_edit_send_currency_iso'],
-                    dc_dl_provider_name: ['dc_provider_name', 'dc_edit_provider_name']
-                };
-
-                var comboboxRegistry = [];
-
-                function addToDatalist(datalistId, value) {
-                    if (!value || !value.trim()) return;
-                    value = value.trim();
-                    var dl = document.getElementById(datalistId);
-                    if (!dl) return;
-                    var opts = dl.querySelectorAll('option');
-                    for (var i = 0; i < opts.length; i++) {
-                        if (opts[i].value === value) return; // already exists
-                    }
-                    var opt = document.createElement('option');
-                    opt.value = value;
-                    dl.appendChild(opt);
-
-                    // Refresh open combobox menus that depend on this datalist.
-                    comboboxRegistry.forEach(function (combo) {
-                        if (combo.datalistId === datalistId && combo.wrap.classList.contains('is-open')) {
-                            renderMenu(combo, combo.input.value || '');
-                        }
-                    });
                 }
 
                 function getOptions(datalistId) {
@@ -3530,13 +3405,18 @@ class DC_Recargas_Admin {
                     var seen = {};
                     dl.querySelectorAll('option').forEach(function (opt) {
                         var v = (opt.value || '').trim();
+                        var label = (opt.getAttribute('label') || opt.textContent || v).trim();
                         if (!v) {
                             return;
                         }
                         var key = v.toLowerCase();
                         if (!seen[key]) {
                             seen[key] = true;
-                            options.push(v);
+                            options.push({
+                                value: v,
+                                label: label || v,
+                                searchText: ((label || v) + ' ' + v).toLowerCase()
+                            });
                         }
                     });
 
@@ -3564,7 +3444,7 @@ class DC_Recargas_Admin {
                     var term = (filterValue || '').trim().toLowerCase();
                     var all = getOptions(combo.datalistId);
                     var filtered = all.filter(function (item) {
-                        return !term || item.toLowerCase().indexOf(term) !== -1;
+                        return !term || item.searchText.indexOf(term) !== -1;
                     });
 
                     combo.menu.innerHTML = '';
@@ -3573,13 +3453,13 @@ class DC_Recargas_Admin {
                         return;
                     }
 
-                    filtered.forEach(function (value) {
+                    filtered.forEach(function (option) {
                         var item = document.createElement('div');
                         item.className = 'dc-combo-option';
-                        item.textContent = value;
+                        item.textContent = option.label;
                         item.addEventListener('mousedown', function (ev) {
                             ev.preventDefault();
-                            combo.input.value = value;
+                            combo.input.value = option.value;
                             combo.input.dispatchEvent(new Event('change', { bubbles: true }));
                             closeCombo(combo);
                         });
@@ -3714,49 +3594,6 @@ class DC_Recargas_Admin {
         <?php
     }
 
-    private function get_csv_countries() {
-        $path = $this->get_products_csv_path();
-        if (empty($path)) {
-            return [];
-        }
-
-        $handle = fopen($path, 'r');
-        if (!$handle) {
-            return [];
-        }
-
-        $header = fgetcsv($handle);
-        if (!is_array($header)) {
-            fclose($handle);
-            return [];
-        }
-
-        $indexes = array_flip($header);
-        if (!isset($indexes['Country'])) {
-            fclose($handle);
-            return [];
-        }
-
-        $countries_map = [];
-        while (($row = fgetcsv($handle)) !== false) {
-            $country_name = trim((string) ($row[$indexes['Country']] ?? ''));
-            if ($country_name === '') {
-                continue;
-            }
-
-            $countries_map[strtoupper($country_name)] = $country_name;
-        }
-
-        fclose($handle);
-
-        if (empty($countries_map)) {
-            return [];
-        }
-
-        natcasesort($countries_map);
-        return array_values($countries_map);
-    }
-
     private function render_notice($msg) {
         $count = isset($_GET['dc_count']) ? (int) $_GET['dc_count'] : 0;
         $state = sanitize_text_field($_GET['dc_state'] ?? '');
@@ -3773,12 +3610,10 @@ class DC_Recargas_Admin {
             'landing_shortcode_cloned' => ['success', 'Landing duplicada correctamente.'],
             'landing_shortcode_deleted' => ['success', 'Shortcode dinámico eliminado correctamente.'],
             'landing_shortcode_error' => ['error', 'Completa nombre y selecciona al menos un bundle válido para crear el shortcode dinámico.'],
+            'landing_shortcode_country_invalid' => ['error', 'El país fijo debe existir en el sistema y coincidir con al menos uno de los bundles seleccionados para esa landing.'],
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un bundle.'],
             'bundle_duplicate' => ['error', 'Ya existe otro bundle con el mismo país y SKU.'],
             'bundle_not_found' => ['error', 'No se encontró el bundle solicitado.'],
-            'csv_uploaded' => ['success', 'Archivo Products-with-sku.csv importado correctamente. Ya puedes buscar productos.'],
-            'csv_upload_error' => ['error', 'No se pudo importar el archivo CSV. Verifica que sea un archivo .csv válido.'],
-            'csv_no_file' => ['error', 'No se seleccionó ningún archivo para importar.'],
         ];
 
         if (!isset($map[$msg])) {
@@ -3787,54 +3622,6 @@ class DC_Recargas_Admin {
 
         [$class, $text] = $map[$msg];
         echo '<div class="notice notice-' . esc_attr($class) . ' is-dismissible"><p>' . esc_html($text) . '</p></div>';
-    }
-
-    private function get_admin_wizard_countries() {
-        $bundles = get_option('dc_recargas_bundles', []);
-        $iso_set = [];
-
-        foreach ((array) $bundles as $bundle) {
-            $iso = strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? '')));
-            if ($iso !== '' && preg_match('/^[A-Z]{2}$/', $iso)) {
-                $iso_set[$iso] = true;
-            }
-        }
-
-        if (empty($iso_set)) {
-            $iso_set['CU'] = true;
-            $iso_set['CO'] = true;
-            $iso_set['MX'] = true;
-            $iso_set['ES'] = true;
-        }
-
-        ksort($iso_set);
-
-        $names = [
-            'AR' => 'Argentina',
-            'BO' => 'Bolivia',
-            'BR' => 'Brasil',
-            'CL' => 'Chile',
-            'CO' => 'Colombia',
-            'CU' => 'Cuba',
-            'DO' => 'República Dominicana',
-            'EC' => 'Ecuador',
-            'ES' => 'España',
-            'MX' => 'México',
-            'PE' => 'Perú',
-            'US' => 'Estados Unidos',
-            'VE' => 'Venezuela',
-        ];
-
-        $countries = [];
-        foreach (array_keys($iso_set) as $iso) {
-            $countries[] = [
-                'iso' => $iso,
-                'name' => $names[$iso] ?? $iso,
-                'dial' => '',
-            ];
-        }
-
-        return $countries;
     }
 
     private function generate_unique_landing_key($base_key, $existing_shortcodes) {
@@ -3866,172 +3653,85 @@ class DC_Recargas_Admin {
         return $base_key . '-' . $i;
     }
 
-    private function get_products_csv_path() {
-        $upload_dir = wp_upload_dir();
-        $path = trailingslashit($upload_dir['basedir']) . 'dingconnect/Products-with-sku.csv';
+    private function get_landing_country_choices($bundles = null, $landings = null) {
+        $bundles = is_array($bundles) ? $bundles : get_option('dc_recargas_bundles', []);
+        $landings = is_array($landings) ? $landings : get_option('dc_recargas_landing_shortcodes', []);
+        $reference_map = class_exists('DC_Recargas_Frontend') ? DC_Recargas_Frontend::get_country_reference_map() : [];
+        $choices = [];
 
-        if (file_exists($path) && is_readable($path)) {
-            return $path;
-        }
-
-        return '';
-    }
-
-    private function search_products_csv($query, $country, $limit = 120) {
-        $path = $this->get_products_csv_path();
-        if (empty($path)) {
-            return [];
-        }
-
-        $query = strtolower(trim((string) $query));
-        $country = trim((string) $country);
-        $limit = max(1, min((int) $limit, 300));
-
-        $results = [];
-        $handle = fopen($path, 'r');
-        if (!$handle) {
-            return [];
-        }
-
-        $header = fgetcsv($handle);
-        if (!is_array($header)) {
-            fclose($handle);
-            return [];
-        }
-
-        $indexes = array_flip($header);
-        $required = ['Operator', 'Country', 'Send amount', 'Receive', 'Product type', 'Validity', 'SkuCode'];
-        foreach ($required as $key) {
-            if (!isset($indexes[$key])) {
-                fclose($handle);
-                return [];
-            }
-        }
-
-        while (($row = fgetcsv($handle)) !== false) {
-            $operator = trim((string) ($row[$indexes['Operator']] ?? ''));
-            $country_name = trim((string) ($row[$indexes['Country']] ?? ''));
-            $send_amount = trim((string) ($row[$indexes['Send amount']] ?? ''));
-            $receive = trim((string) ($row[$indexes['Receive']] ?? ''));
-            $product_type = trim((string) ($row[$indexes['Product type']] ?? ''));
-            $validity = trim((string) ($row[$indexes['Validity']] ?? ''));
-            $sku_code = trim((string) ($row[$indexes['SkuCode']] ?? ''));
-
-            if (empty($sku_code) || empty($operator)) {
-                continue;
+        $add_choice = function ($country_iso, $fallback_name = '') use (&$choices, $reference_map) {
+            $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+            if ($country_iso === '') {
+                return;
             }
 
-            if (!empty($country) && strcasecmp($country_name, $country) !== 0) {
-                continue;
+            $name = '';
+            $dial = '';
+            if (isset($reference_map[$country_iso])) {
+                $name = sanitize_text_field((string) ($reference_map[$country_iso]['name'] ?? ''));
+                $dial = sanitize_text_field((string) ($reference_map[$country_iso]['dial'] ?? ''));
+            } elseif ($fallback_name !== '') {
+                $name = sanitize_text_field((string) $fallback_name);
             }
 
-            if (!empty($query)) {
-                $haystack = strtolower(implode(' ', [$operator, $country_name, $send_amount, $receive, $product_type, $validity, $sku_code]));
-                if (strpos($haystack, $query) === false) {
-                    continue;
-                }
-            }
-
-            $country_iso = $this->country_name_to_iso($country_name);
-            $send_value = $this->extract_first_number($send_amount);
-            $send_currency = $this->extract_currency_from_send_amount($send_amount);
-
-            $results[] = [
-                'operator' => $operator,
-                'country' => $country_name,
-                'country_iso' => $country_iso,
-                'send_amount' => $send_amount,
-                'send_value' => $send_value,
-                'send_currency_iso' => $send_currency,
-                'receive' => $receive,
-                'product_type' => $product_type,
-                'validity' => $validity,
-                'sku_code' => $sku_code,
+            $choices[$country_iso] = [
+                'iso' => $country_iso,
+                'name' => $name,
+                'dial' => $dial,
+                'label' => $name !== '' ? sprintf('%s (%s)', $name, $country_iso) : $country_iso,
             ];
+        };
 
-            if (count($results) >= $limit) {
-                break;
-            }
-        }
-
-        fclose($handle);
-        return $results;
-    }
-
-    private function search_products_csv_main_countries($limit = 10) {
-        $path = $this->get_products_csv_path();
-        if (empty($path)) {
-            return [];
-        }
-
-        $limit = max(1, min((int) $limit, 100));
-        $main_countries = [
-            'COLOMBIA' => true,
-            'SPAIN' => true,
-            'MEXICO' => true,
-            'CUBA' => true,
-        ];
-
-        $results = [];
-        $handle = fopen($path, 'r');
-        if (!$handle) {
-            return [];
-        }
-
-        $header = fgetcsv($handle);
-        if (!is_array($header)) {
-            fclose($handle);
-            return [];
-        }
-
-        $indexes = array_flip($header);
-        $required = ['Operator', 'Country', 'Send amount', 'Receive', 'Product type', 'Validity', 'SkuCode'];
-        foreach ($required as $key) {
-            if (!isset($indexes[$key])) {
-                fclose($handle);
-                return [];
-            }
-        }
-
-        while (($row = fgetcsv($handle)) !== false) {
-            $operator = trim((string) ($row[$indexes['Operator']] ?? ''));
-            $country_name = trim((string) ($row[$indexes['Country']] ?? ''));
-            $send_amount = trim((string) ($row[$indexes['Send amount']] ?? ''));
-            $receive = trim((string) ($row[$indexes['Receive']] ?? ''));
-            $product_type = trim((string) ($row[$indexes['Product type']] ?? ''));
-            $validity = trim((string) ($row[$indexes['Validity']] ?? ''));
-            $sku_code = trim((string) ($row[$indexes['SkuCode']] ?? ''));
-
-            if (empty($sku_code) || empty($operator)) {
+        foreach ((array) $bundles as $bundle) {
+            if (!is_array($bundle)) {
                 continue;
             }
 
-            $country_key = strtoupper($country_name);
-            if (!isset($main_countries[$country_key])) {
+            $add_choice($bundle['country_iso'] ?? '');
+        }
+
+        foreach ((array) $landings as $landing) {
+            if (!is_array($landing)) {
                 continue;
             }
 
-            $results[] = [
-                'operator' => $operator,
-                'country' => $country_name,
-                'country_iso' => $this->country_name_to_iso($country_name),
-                'send_amount' => $send_amount,
-                'send_value' => $this->extract_first_number($send_amount),
-                'send_currency_iso' => $this->extract_currency_from_send_amount($send_amount),
-                'receive' => $receive,
-                'product_type' => $product_type,
-                'validity' => $validity,
-                'sku_code' => $sku_code,
-            ];
+            $add_choice($landing['country_iso'] ?? '');
+        }
 
-            if (count($results) >= $limit) {
-                break;
+        uasort($choices, function ($left, $right) {
+            return strcasecmp((string) ($left['label'] ?? ''), (string) ($right['label'] ?? ''));
+        });
+
+        return array_values($choices);
+    }
+
+    private function is_valid_landing_country_selection($country_iso, $detected_countries = []) {
+        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        if ($country_iso === '') {
+            return true;
+        }
+
+        if (strlen($country_iso) !== 2 || !ctype_alpha($country_iso)) {
+            return false;
+        }
+
+        $detected_countries = array_values(array_unique(array_filter(array_map(function ($value) {
+            return strtoupper(sanitize_text_field((string) $value));
+        }, (array) $detected_countries))));
+
+        if (!empty($detected_countries) && !in_array($country_iso, $detected_countries, true)) {
+            return false;
+        }
+
+        foreach ($this->get_landing_country_choices() as $choice) {
+            if ($country_iso === strtoupper((string) ($choice['iso'] ?? ''))) {
+                return true;
             }
         }
 
-        fclose($handle);
-        return $results;
+        return false;
     }
+
 
     private function extract_first_number($text) {
         $text = (string) $text;

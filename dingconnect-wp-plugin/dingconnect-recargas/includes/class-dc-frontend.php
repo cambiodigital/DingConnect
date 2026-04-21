@@ -9,15 +9,11 @@ if (class_exists('DC_Recargas_Frontend')) {
 }
 
 class DC_Recargas_Frontend {
-    private $wizard;
+    private $api;
 
-    public function __construct($wizard = null) {
-        $this->wizard = $wizard;
+    public function __construct($api = null) {
+        $this->api = $api;
         add_shortcode('dingconnect_recargas', [$this, 'render_shortcode']);
-        add_shortcode('dingconnect_wizard', [$this, 'render_wizard_shortcode']);
-        add_shortcode('dingconnect_wizard_recargas', [$this, 'render_wizard_recargas_shortcode']);
-        add_shortcode('dingconnect_wizard_giftcards', [$this, 'render_wizard_giftcards_shortcode']);
-        add_shortcode('dingconnect_wizard_cuba', [$this, 'render_wizard_cuba_shortcode']);
         add_action('wp_enqueue_scripts', [$this, 'register_assets']);
     }
 
@@ -37,27 +33,12 @@ class DC_Recargas_Frontend {
             true
         );
 
-        wp_register_style(
-            'dc-recargas-wizard',
-            DC_RECARGAS_URL . 'assets/css/wizard.css',
-            [],
-            DC_RECARGAS_VERSION
-        );
-
-        wp_register_script(
-            'dc-recargas-wizard',
-            DC_RECARGAS_URL . 'assets/js/wizard-core.js',
-            [],
-            DC_RECARGAS_VERSION,
-            true
-        );
-
         $opts = get_option('dc_recargas_options', []);
 
         wp_localize_script('dc-recargas-frontend', 'DC_RECARGAS_DATA', [
             'restBase' => esc_url_raw(rest_url('dingconnect/v1')),
             'nonce' => wp_create_nonce('wp_rest'),
-            'countries' => $this->countries(),
+            'countries' => self::get_country_reference_list(),
             'woocommerce_active' => (($opts['payment_mode'] ?? 'direct') === 'woocommerce') && class_exists('WooCommerce'),
             'cartUrl' => class_exists('WooCommerce') ? wc_get_cart_url() : '',
             'checkoutUrl' => class_exists('WooCommerce') ? wc_get_checkout_url() : '',
@@ -65,22 +46,6 @@ class DC_Recargas_Frontend {
                 'loading' => 'Consultando paquetes...',
                 'search' => 'Buscar paquetes',
                 'pay' => 'Procesar recarga',
-            ],
-        ]);
-
-        wp_localize_script('dc-recargas-wizard', 'DC_WIZARD_DATA', [
-            'restBase' => esc_url_raw(rest_url('dingconnect/v1')),
-            'nonce' => wp_create_nonce('wp_rest'),
-            'countries' => $this->countries(),
-            'wizardEnabled' => !empty($opts['wizard_enabled']),
-            'maxOffersPerCategory' => (int) ($opts['wizard_max_offers_per_category'] ?? 6),
-            'texts' => [
-                'loading' => 'Consultando ofertas disponibles...',
-                'error' => 'No fue posible cargar las ofertas ahora.',
-                'empty' => 'No encontramos ofertas para los datos seleccionados.',
-                'next' => 'Siguiente',
-                'back' => 'Atrás',
-                'continueCheckout' => 'Continuar al checkout',
             ],
         ]);
     }
@@ -121,10 +86,11 @@ class DC_Recargas_Frontend {
         }
 
         $bundle_attr = implode(',', $bundle_ids);
+        $available_countries = $this->get_available_countries_for_shortcode($bundle_ids, $country_iso);
 
         ob_start();
         ?>
-        <div class="dc-recargas" id="dc-recargas-app" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-fixed-country-iso="<?php echo esc_attr($country_iso); ?>">
+        <div class="dc-recargas" id="dc-recargas-app" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-fixed-country-iso="<?php echo esc_attr($country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
             <div class="dc-card">
                 <div class="dc-header">
                     <h2><?php echo esc_html($title); ?></h2>
@@ -214,99 +180,86 @@ class DC_Recargas_Frontend {
         return array_values(array_unique($clean));
     }
 
-    public function render_wizard_shortcode($atts = []) {
-        wp_enqueue_style('dc-recargas-wizard');
-        wp_enqueue_script('dc-recargas-wizard');
+    private function get_available_countries_for_shortcode($bundle_ids, $fixed_country_iso = '') {
+        $reference_map = self::get_country_reference_map();
+        $selected_isos = [];
+        $bundle_ids = array_values(array_unique(array_filter(array_map('strval', (array) $bundle_ids))));
+        $bundle_id_map = !empty($bundle_ids) ? array_fill_keys($bundle_ids, true) : [];
+        $bundles = get_option('dc_recargas_bundles', []);
 
-        $atts = shortcode_atts([
-            'entry_mode' => 'number_first',
-            'country' => '',
-            'category' => '',
-            'fixed_prefix' => '',
-        ], (array) $atts, 'dingconnect_wizard');
+        foreach ((array) $bundles as $bundle) {
+            if (!is_array($bundle)) {
+                continue;
+            }
 
-        $entry_mode = sanitize_key((string) $atts['entry_mode']);
-        if (!in_array($entry_mode, ['number_first', 'country_fixed'], true)) {
-            $entry_mode = 'number_first';
+            $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
+            if (!empty($bundle_id_map) && !isset($bundle_id_map[$bundle_id])) {
+                continue;
+            }
+
+            if (empty($bundle_id_map) && empty($bundle['is_active'])) {
+                continue;
+            }
+
+            $country_iso = strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? '')));
+            if ($country_iso !== '') {
+                $selected_isos[$country_iso] = true;
+            }
         }
 
-        $country_iso = strtoupper(sanitize_text_field((string) $atts['country']));
-        $category = sanitize_key((string) $atts['category']);
-        if (!in_array($category, ['', 'recargas', 'gift_cards'], true)) {
-            $category = '';
+        $fixed_country_iso = strtoupper(sanitize_text_field((string) $fixed_country_iso));
+        if ($fixed_country_iso !== '') {
+            $selected_isos[$fixed_country_iso] = true;
         }
 
-        $fixed_prefix = preg_replace('/\D+/', '', (string) $atts['fixed_prefix']);
-        $wizard_state = $this->wizard instanceof DC_Recargas_Wizard
-            ? $this->wizard->get_initial_state(['country_iso' => $country_iso])
-            : [];
+        if (empty($selected_isos)) {
+            return self::get_country_reference_list();
+        }
 
-        ob_start();
-        ?>
-        <div class="dc-wizard" data-dc-wizard="1" data-entry-mode="<?php echo esc_attr($entry_mode); ?>" data-country-iso="<?php echo esc_attr($country_iso); ?>" data-category="<?php echo esc_attr($category); ?>" data-fixed-prefix="<?php echo esc_attr($fixed_prefix); ?>">
-            <div class="dc-card">
-                <div class="dc-header">
-                    <h2>Wizard de recargas y gift cards</h2>
-                    <p>Flujo guiado paso a paso para seleccionar producto y continuar al pago.</p>
-                </div>
+        $countries = [];
+        foreach (array_keys($selected_isos) as $country_iso) {
+            if (isset($reference_map[$country_iso])) {
+                $countries[] = $reference_map[$country_iso];
+            } else {
+                $countries[] = [
+                    'iso' => $country_iso,
+                    'name' => $country_iso,
+                    'dial' => '',
+                ];
+            }
+        }
 
-                <ol class="dc-wizard-steps" aria-label="Pasos del wizard">
-                    <li data-step="category">1. Categoría</li>
-                    <li data-step="country">2. País</li>
-                    <li data-step="operator">3. Operador</li>
-                    <li data-step="product">4. Producto</li>
-                    <li data-step="review">5. Confirmación</li>
-                </ol>
+        usort($countries, function ($left, $right) use ($fixed_country_iso) {
+            if ($fixed_country_iso !== '') {
+                if (($left['iso'] ?? '') === $fixed_country_iso) {
+                    return -1;
+                }
+                if (($right['iso'] ?? '') === $fixed_country_iso) {
+                    return 1;
+                }
+            }
 
-                <div class="dc-wizard-panel" data-dc-wizard-state="<?php echo esc_attr(wp_json_encode($wizard_state)); ?>"></div>
+            return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
+        });
 
-                <div class="dc-wizard-actions">
-                    <button type="button" class="dc-wizard-btn dc-wizard-btn-secondary" data-dc-wizard-back hidden>Atrás</button>
-                    <button type="button" class="dc-wizard-btn dc-wizard-btn-primary" data-dc-wizard-next>Siguiente</button>
-                </div>
-
-                <div class="dc-feedback" data-dc-wizard-feedback aria-live="polite"></div>
-            </div>
-        </div>
-        <?php
-
-        return ob_get_clean();
+        return array_values($countries);
     }
 
-    public function render_wizard_recargas_shortcode($atts = []) {
-        $atts = shortcode_atts([
-            'entry_mode' => 'number_first',
-            'country' => '',
-            'fixed_prefix' => '',
-        ], (array) $atts, 'dingconnect_wizard_recargas');
-        $atts['category'] = 'recargas';
+    public static function get_country_reference_map() {
+        $map = [];
+        foreach (self::get_country_reference_list() as $country) {
+            $iso = strtoupper((string) ($country['iso'] ?? ''));
+            if ($iso === '') {
+                continue;
+            }
 
-        return $this->render_wizard_shortcode($atts);
+            $map[$iso] = $country;
+        }
+
+        return $map;
     }
 
-    public function render_wizard_giftcards_shortcode($atts = []) {
-        $atts = shortcode_atts([
-            'entry_mode' => 'number_first',
-            'country' => '',
-            'fixed_prefix' => '',
-        ], (array) $atts, 'dingconnect_wizard_giftcards');
-        $atts['category'] = 'gift_cards';
-
-        return $this->render_wizard_shortcode($atts);
-    }
-
-    public function render_wizard_cuba_shortcode($atts = []) {
-        $atts = shortcode_atts([
-            'entry_mode' => 'country_fixed',
-            'country' => 'CU',
-            'category' => 'recargas',
-            'fixed_prefix' => '53',
-        ], (array) $atts, 'dingconnect_wizard_cuba');
-
-        return $this->render_wizard_shortcode($atts);
-    }
-
-    private function countries() {
+    public static function get_country_reference_list() {
         return [
             ['iso' => 'AF', 'name' => 'Afganistán', 'dial' => '93'],
             ['iso' => 'AL', 'name' => 'Albania', 'dial' => '355'],

@@ -85,11 +85,11 @@ Namespace actual: `dingconnect/v1`
 5. Normalización de respuestas DingConnect de `Items` a `Result` en backend.
 6. Registro de intentos de transferencia en `Transfer Logs`.
 7. Resultado visual amigable en frontend en lugar de JSON crudo.
-8. Buscador CSV del panel admin con países cargados dinámicamente desde el archivo `Products-with-sku.csv` y auto-búsqueda por texto y país sin clic explícito en Buscar.
+8. Catálogo admin simplificado: `Catálogo y alta` opera con búsqueda en API y alta manual, eliminando la dependencia del subflujo `Buscar en CSV` dentro del plugin.
 9. Formulario público del shortcode con auto-búsqueda al editar número móvil o cambiar país, evitando dependencia del botón Buscar paquetes.
 10. Release de branding aplicado en plugin WordPress: versión 1.2.0 con créditos visibles "Hecho por Cambiodigital.net" y "personalizado para cubakilos.com" en componentes clave de administración y frontend.
 8. Gestión de bundles guardados en panel admin con edición, activación/desactivación y eliminación por fila.
-9. Panel administrativo reorganizado en pestañas para operación más rápida: pestaña de configuración que agrupa credenciales y uso en frontend (1 y 6), pestaña operativa de catálogo y alta (2-3-4) y pestaña especial de bundles guardados (5).
+9. Panel administrativo reorganizado en pestañas para operación más rápida: pestaña de configuración centrada en credenciales/modo/balance, pestaña operativa de catálogo y alta (2-3-4) y pestaña especial de bundles guardados (5).
 10. Edición de bundles guardados optimizada: el botón Editar abre un modal inline en la pestaña de bundles guardados, evitando navegación o recarga visual entre pantallas para cambios rápidos.
 11. Sincronización frontend-admin mejorada: la deduplicación de búsquedas por país+número en el frontend ahora usa expiración (TTL de 10 segundos), permitiendo que bundles y operadores añadidos en admin aparezcan sin recargar la página completa.
 12. Frontend público más resiliente: el script del shortcode ahora resuelve elementos dentro del contenedor del formulario y valida nodos críticos para evitar errores por `innerHTML` en elementos nulos cuando hay markup incompleto o plantillas desactualizadas.
@@ -121,6 +121,12 @@ Namespace actual: `dingconnect/v1`
 37. Bloqueo actual de ejecución en esta estación: binario `docker` no disponible en PowerShell, impidiendo levantar contenedores y recolectar evidencia E2E runtime.
 38. Refresh visual del panel admin del plugin: nueva cabecera operativa con chips de estado y KPIs rápidos (bundles/landings), mejoras de jerarquía visual en tarjetas y tablas, tabs con comportamiento sticky y foco accesible en controles para una experiencia de operación más clara y moderna.
 39. Re-categorización del panel admin por responsabilidad: `Wizard y landings` ahora vive en pestaña propia, con nombre operativo corregido (`Wizard de pruebas internas`) y flujo de navegación ajustado para que edición/acciones de landings abran siempre en su sección.
+40. Catálogo admin enfocado en operación live: en `Catálogo y alta` se mantiene `Buscar en API` como método principal y `Alta manual` como respaldo operativo.
+41. Mejora UX en catálogo por API del admin: `Paquetes encontrados` ahora informa el uso de doble click para `Alta manual` y ese gesto precarga el bundle seleccionado en el formulario manual para revisión antes del alta.
+42. Mejora UX en `Buscar en API`: se añadió un filtro secundario `Tipo de paquete` y agrupación visual de resultados usando tres patrones operativos derivados del catálogo CSV (`Saldo / top-up`, `Datos`, `Combo / voz + datos`), con fallback `Otros` para productos fuera de esos patrones.
+43. Mejora UX en `Buscar en API`: el warning `Selecciona un país antes de buscar.` dejó de reutilizar el bloque de ayuda de resultados y ahora aparece sobre el selector de país con estilo visual naranja para señalar mejor la acción requerida.
+44. Persistencia local en `Buscar en API`: la última consulta exitosa del admin queda guardada por navegador (`localStorage`) con país, filtro, texto y resultados restaurables para continuar catalogación sin reconsultar de inmediato a DingConnect.
+45. Mejora UX en `Alta manual`: cuando un paquete se carga con doble click desde `Buscar en API`, ahora se muestra junto a `Datos del bundle` una etiqueta con el nombre limpio del paquete seleccionado (`label` API) para dar trazabilidad visual durante la edición manual.
 
 ## Hallazgos clave para futuras IA
 

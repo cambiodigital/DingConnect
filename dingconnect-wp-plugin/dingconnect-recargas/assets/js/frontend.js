@@ -47,7 +47,21 @@
         return;
     }
 
-    var allCountries = Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : [];
+    function parseJsonAttr(name) {
+        var raw = String(app.getAttribute(name) || '');
+        if (!raw) return null;
+
+        try {
+            return JSON.parse(raw);
+        } catch (err) {
+            return null;
+        }
+    }
+
+    var appCountries = parseJsonAttr('data-available-countries');
+    var allCountries = Array.isArray(appCountries) && appCountries.length
+        ? appCountries
+        : (Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : []);
     var fixedCountryIso = String(app.getAttribute('data-fixed-country-iso') || '').toUpperCase();
     var allowedBundleIds = String(app.getAttribute('data-allowed-bundle-ids') || '')
         .split(',')
@@ -128,7 +142,7 @@
         var matches = allCountries.filter(function (c) {
             if (!q) return true;
             return c.name.toLowerCase().indexOf(q) !== -1
-                || c.dial.indexOf(q) !== -1
+                || String(c.dial || '').indexOf(q) !== -1
                 || c.iso.toLowerCase().indexOf(q) !== -1;
         });
 
@@ -145,7 +159,7 @@
             opt.className = 'dc-country-option' + (state.country && state.country.iso === c.iso ? ' active' : '');
             opt.innerHTML = '<span class="dc-country-option-flag">' + isoToFlag(c.iso) + '</span>'
                 + '<span class="dc-country-option-name">' + escapeHtml(c.name) + '</span>'
-                + '<span class="dc-country-option-dial">+' + escapeHtml(c.dial) + '</span>';
+                + '<span class="dc-country-option-dial">' + (c.dial ? '+' + escapeHtml(c.dial) : escapeHtml(c.iso)) + '</span>';
             opt.addEventListener('click', function () {
                 selectCountry(c);
                 phoneEl.focus();

@@ -62,22 +62,21 @@ Una iniciativa se considera lista cuando cumple:
 ## Avances implementados (14-04-2026)
 
 1. Panel admin con importación rápida de bundles preconfigurados para Colombia, España, México y Cuba.
-2. Buscador sobre `Products-with-sku.csv` integrado en admin con selector de resultados para autocompletar alta de bundles.
+2. Búsqueda operativa de catálogo integrada en admin para acelerar el alta de bundles curados.
 3. Prevención de duplicados al importar presets por clave `country_iso + sku_code`.
-4. Creación automática de bundle desde resultado CSV seleccionado (publicación inmediata opcional).
+4. Creación automática de bundle desde resultados de catálogo seleccionados (publicación inmediata opcional).
 5. Integración opcional con WooCommerce para anadir al carrito, checkout obligatorio y despacho al confirmar el pago.
 6. Registro interno de transferencias y normalización backend de respuestas `Items`/`Result`.
 7. Rate limiting básico por IP en endpoints operativos del plugin.
-8. Reorganización de la interfaz del panel admin en pestañas: sección 1 junto con uso en frontend (6) en pestaña propia, secciones 2-3-4 en pestaña operativa y sección 5 en pestaña especial para bundles guardados.
+8. Reorganización de la interfaz del panel admin en pestañas: pestaña de configuración para credenciales, modo y balance; pestaña operativa para catálogo/alta; y pestaña especial para bundles guardados.
 9. Gestión operativa de bundles guardados en admin con edición, activación/desactivación y eliminación.
-8. Mejora UX en buscador CSV del panel admin: carga automática inicial de 10 resultados de países principales (CO, ES, MX, CU) y mensaje explícito en resultados cuando no hay CSV cargado.
-9. Mejora UX en buscador CSV del panel admin: selector de país dinámico con todos los países detectados en el CSV cargado y búsqueda automática al escribir o cambiar país, sin depender del botón Buscar.
 10. Mejora UX en frontend público de recargas: auto-búsqueda de paquetes al escribir el número móvil o cambiar el país, con debounce y sin necesidad de pulsar el botón Buscar paquetes.
 11. Optimización del frontend público: deduplicación de consultas para no repetir llamadas al endpoint cuando país y número no cambiaron o ya hay una consulta idéntica en curso.
 12. Actualización de release y branding del plugin: versión 1.2.0, créditos visibles de Cambiodigital.net y personalización para cubakilos.com en cabecera del plugin, panel admin, frontend y manuales del plugin.
 13. Modernización visual del panel admin: eliminación de numeración en títulos y pestañas, actualización de estilo con tabs tipo píldora, paneles en tarjeta y jerarquía visual más limpia para reducir la apariencia clásica de WordPress.
 14. Mejora UX en bundles guardados: la acción Editar ahora abre un modal inline sobre la tabla, sin salto de pantalla, para actualizar el bundle de forma rápida y contextual.
 15. Corrección de sincronización frontend-admin: el caché de búsqueda por país+número en el frontend ahora expira (TTL 10 segundos) para refrescar operadores y bundles nuevos sin recargar toda la página.
+16. Corrección estructural en tabs del admin: se cerró correctamente la sección "Wizard y landings" para evitar que "Catálogo y alta", "Bundles guardados" y "Registros" quedaran anidados dentro de un panel oculto (síntoma: pestaña activa sin contenido visible).
 16. Corrección de robustez en frontend público: el script del shortcode ahora valida nodos requeridos y maneja markup parcial sin lanzar errores de JavaScript como `Cannot set properties of null (setting 'innerHTML')` durante la búsqueda automática de paquetes.
 17. Corrección productiva en recargas: el backend REST ahora normaliza `AccountNumber` a solo dígitos (sin símbolo `+`) para cumplir validación regex de DingConnect en `SendTransfer`, y propaga el código HTTP real del error para diagnóstico operativo.
 18. Mejora de diagnóstico productivo: el cliente API del plugin ahora traduce códigos de negocio de DingConnect (incluyendo `InsufficientBalance`) a mensajes claros para operación y soporte, manteniendo el detalle técnico en `error_data`.
@@ -120,6 +119,16 @@ Una iniciativa se considera lista cuando cumple:
 53. Edición inline de shortcodes dinámicos en admin: el listado de landings ahora permite abrir modal de edición, actualizar objetivo/clave/país/bundles y guardar cambios sin salir del panel.
 54. Duplicado rápido de landings en admin: cada shortcode dinámico ahora incluye acción `Duplicar`, clonando configuración (título, subtítulo, país y bundles) con clave única automática para acelerar nuevas campañas y abriendo automáticamente el modal de edición de la copia.
 55. Reorganización funcional del panel admin por secciones: el bloque de wizard y landings se movió a pestaña dedicada `Wizard y landings`, se renombró el título operativo a `Wizard de pruebas internas` y se alineó la navegación (mensajes, edición y redirecciones) para caer en la sección correcta.
+56. Ajuste de prioridad visual en subpestañas de catálogo: en `Catálogo y alta` se priorizó el flujo `Buscar en API` como entrada principal para crear bundles.
+57. Mejora UX en `Buscar en API`: el listado `Paquetes encontrados` ahora indica el doble click para `Alta manual` y ese gesto carga el producto seleccionado en el formulario manual para edición previa al guardado.
+58. Mejora UX en `Buscar en API`: nuevo filtro `Tipo de paquete` y render agrupado del listado usando tres patrones dominantes detectados en `Products-with-sku.csv` (`Saldo / top-up`, `Datos`, `Combo / voz + datos`), conservando `Otros` como fallback para productos no móviles.
+59. Consistencia operativa en landings: el campo `País fijo (ISO, opcional)` ahora funciona como buscador con select etiquetado por país real (`Nombre + ISO`), alimentado desde países presentes en bundles, landings y catálogo CSV; además el guardado valida que el país fijo coincida con los bundles seleccionados para evitar configuraciones inconsistentes.
+60. Mejora UX en `Buscar en API`: el aviso `Selecciona un país antes de buscar.` ahora se muestra arriba del selector de país con estilo de advertencia en naranja, separado del texto de ayuda de resultados.
+61. Simplificación del panel admin de catálogo: se eliminó el subflujo `Buscar en CSV` y se consolidó la operación en dos métodos soportados, `Buscar en API` y `Alta manual`, manteniendo la creación automática de bundles desde resultados live de la API.
+62. Persistencia local en `Buscar en API`: el panel admin ahora guarda en el navegador la última consulta exitosa con país, filtro, texto y resultados restaurables para retomar la catalogación sin repetir inmediatamente la llamada a DingConnect.
+63. Mejora de trazabilidad en `Alta manual`: al cargar un producto con doble click desde `Buscar en API`, se muestra junto a `Datos del bundle` el nombre limpio del paquete seleccionado (`label` original de la API) para confirmar visualmente qué producto se está editando.
+64. Ajuste operativo en `Buscar en API`: se eliminó la opción `Publicar bundle inmediatamente (activo)` y la creación desde catálogo ahora guarda el bundle inactivo por defecto; la activación/desactivación se centraliza en la pestaña `Bundles guardados`.
+65. Limpieza de UX en pestaña Credenciales: se retiró del panel admin el bloque estático `Uso en frontend` con el shortcode base `[dingconnect_recargas]`, dejando la publicación centrada en `Wizard y landings`.
 
 ## Backlog actualizado por impacto
 

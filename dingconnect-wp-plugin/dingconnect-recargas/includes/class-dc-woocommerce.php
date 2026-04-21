@@ -594,8 +594,7 @@ class DC_Recargas_WooCommerce {
     }
 
     private function get_retry_attempt_limit() {
-        $options = $this->api->get_options();
-        $attempts = (int) ($options['wizard_transfer_retry_attempts'] ?? 2);
+        $attempts = 2;
 
         if ($attempts < 0) {
             $attempts = 0;
@@ -608,8 +607,7 @@ class DC_Recargas_WooCommerce {
     }
 
     private function get_retry_delay_minutes() {
-        $options = $this->api->get_options();
-        $minutes = (int) ($options['wizard_transfer_retry_delay_minutes'] ?? 15);
+        $minutes = 15;
 
         if ($minutes < 1) {
             $minutes = 1;
