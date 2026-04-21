@@ -27,6 +27,11 @@ class DC_Recargas_Admin {
         add_action('wp_ajax_dc_get_transfer_logs', [$this, 'ajax_get_transfer_logs']);
         add_action('admin_post_dc_clear_logs', [$this, 'handle_clear_logs']);
         add_action('wp_ajax_dc_fetch_api_products', [$this, 'ajax_fetch_api_products']);
+        add_action('admin_post_dc_add_landing_shortcode', [$this, 'handle_add_landing_shortcode']);
+        add_action('admin_post_dc_clone_landing_shortcode', [$this, 'handle_clone_landing_shortcode']);
+        add_action('admin_post_dc_update_landing_shortcode', [$this, 'handle_update_landing_shortcode']);
+        add_action('admin_post_dc_delete_landing_shortcode', [$this, 'handle_delete_landing_shortcode']);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
     }
 
     public function register_menu() {
@@ -47,6 +52,325 @@ class DC_Recargas_Admin {
             'sanitize_callback' => [$this, 'sanitize_options'],
             'default' => [],
         ]);
+    }
+
+    public function enqueue_admin_assets($hook_suffix) {
+        if ($hook_suffix !== 'toplevel_page_dc-recargas') {
+            return;
+        }
+
+        wp_enqueue_style(
+            'dc-recargas-wizard',
+            DC_RECARGAS_URL . 'assets/css/wizard.css',
+            [],
+            DC_RECARGAS_VERSION
+        );
+
+        wp_enqueue_script(
+            'dc-recargas-wizard',
+            DC_RECARGAS_URL . 'assets/js/wizard-core.js',
+            [],
+            DC_RECARGAS_VERSION,
+            true
+        );
+
+        wp_localize_script('dc-recargas-wizard', 'DC_WIZARD_DATA', [
+            'restBase' => esc_url_raw(rest_url('dingconnect/v1')),
+            'nonce' => wp_create_nonce('wp_rest'),
+            'countries' => $this->get_admin_wizard_countries(),
+            'wizardEnabled' => true,
+            'maxOffersPerCategory' => 6,
+            'texts' => [
+                'loading' => 'Consultando ofertas disponibles...',
+                'error' => 'No fue posible cargar las ofertas ahora.',
+                'empty' => 'No encontramos ofertas para los datos seleccionados.',
+                'next' => 'Siguiente',
+                'back' => 'Atrás',
+                'continueCheckout' => 'Continuar al checkout',
+            ],
+        ]);
+    }
+
+    public function handle_add_landing_shortcode() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_add_landing_shortcode');
+
+        $name = sanitize_text_field((string) ($_POST['landing_name'] ?? ''));
+        $key_input = sanitize_key((string) ($_POST['landing_key'] ?? ''));
+        $title = sanitize_text_field((string) ($_POST['landing_title'] ?? ''));
+        $subtitle = sanitize_text_field((string) ($_POST['landing_subtitle'] ?? ''));
+        $country_iso = strtoupper(sanitize_text_field((string) ($_POST['landing_country_iso'] ?? '')));
+
+        $raw_bundle_ids = wp_unslash($_POST['bundle_ids'] ?? []);
+        $bundle_ids = [];
+        if (is_array($raw_bundle_ids)) {
+            foreach ($raw_bundle_ids as $bundle_id) {
+                $bundle_id = sanitize_text_field((string) $bundle_id);
+                if ($bundle_id !== '') {
+                    $bundle_ids[] = $bundle_id;
+                }
+            }
+        }
+        $bundle_ids = array_values(array_unique($bundle_ids));
+
+        if ($name === '' || empty($bundle_ids)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'landing_shortcode_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $bundles = get_option('dc_recargas_bundles', []);
+        $valid_bundle_ids = [];
+        foreach ($bundles as $bundle) {
+            $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
+            if ($bundle_id !== '') {
+                $valid_bundle_ids[$bundle_id] = strtoupper((string) ($bundle['country_iso'] ?? ''));
+            }
+        }
+
+        $selected_bundle_ids = [];
+        $detected_countries = [];
+        foreach ($bundle_ids as $bundle_id) {
+            if (!isset($valid_bundle_ids[$bundle_id])) {
+                continue;
+            }
+            $selected_bundle_ids[] = $bundle_id;
+            if ($valid_bundle_ids[$bundle_id] !== '') {
+                $detected_countries[] = $valid_bundle_ids[$bundle_id];
+            }
+        }
+
+        if (empty($selected_bundle_ids)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'landing_shortcode_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        if ($country_iso === '' && !empty($detected_countries)) {
+            $country_iso = $detected_countries[0];
+        }
+
+        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($shortcodes)) {
+            $shortcodes = [];
+        }
+
+        $key = $this->generate_unique_landing_key($key_input !== '' ? $key_input : sanitize_title($name), $shortcodes);
+
+        $shortcodes[] = [
+            'id' => uniqid('landing_', true),
+            'name' => $name,
+            'key' => $key,
+            'title' => $title,
+            'subtitle' => $subtitle,
+            'country_iso' => $country_iso,
+            'bundle_ids' => $selected_bundle_ids,
+            'created_at' => current_time('mysql'),
+        ];
+
+        update_option('dc_recargas_landing_shortcodes', $shortcodes);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_msg' => 'landing_shortcode_added',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_delete_landing_shortcode() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_delete_landing_shortcode');
+
+        $landing_id = sanitize_text_field((string) ($_GET['landing_id'] ?? ''));
+        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($shortcodes)) {
+            $shortcodes = [];
+        }
+
+        $new_shortcodes = array_values(array_filter($shortcodes, function ($item) use ($landing_id) {
+            return sanitize_text_field((string) ($item['id'] ?? '')) !== $landing_id;
+        }));
+
+        update_option('dc_recargas_landing_shortcodes', $new_shortcodes);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_msg' => 'landing_shortcode_deleted',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_clone_landing_shortcode() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_clone_landing_shortcode');
+
+        $landing_id = sanitize_text_field((string) ($_GET['landing_id'] ?? ''));
+        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($shortcodes)) {
+            $shortcodes = [];
+        }
+
+        $source = null;
+        foreach ($shortcodes as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            if (sanitize_text_field((string) ($item['id'] ?? '')) === $landing_id) {
+                $source = $item;
+                break;
+            }
+        }
+
+        if (!$source) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'landing_shortcode_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $base_name = sanitize_text_field((string) ($source['name'] ?? 'Landing'));
+        $base_key = sanitize_key((string) ($source['key'] ?? sanitize_title($base_name)));
+
+        $clone = [
+            'id' => uniqid('landing_', true),
+            'name' => $base_name . ' (copia)',
+            'key' => $this->generate_unique_landing_key($base_key . '-copy', $shortcodes),
+            'title' => sanitize_text_field((string) ($source['title'] ?? '')),
+            'subtitle' => sanitize_text_field((string) ($source['subtitle'] ?? '')),
+            'country_iso' => strtoupper(sanitize_text_field((string) ($source['country_iso'] ?? ''))),
+            'bundle_ids' => is_array($source['bundle_ids'] ?? null) ? array_values(array_unique(array_map('sanitize_text_field', $source['bundle_ids']))) : [],
+            'created_at' => current_time('mysql'),
+            'cloned_from' => sanitize_text_field((string) ($source['id'] ?? '')),
+        ];
+
+        $shortcodes[] = $clone;
+        update_option('dc_recargas_landing_shortcodes', array_values($shortcodes));
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_msg' => 'landing_shortcode_cloned',
+            'dc_edit_landing' => $clone['id'],
+            'dc_tab' => 'tab_setup',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_update_landing_shortcode() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_update_landing_shortcode');
+
+        $landing_id = sanitize_text_field((string) ($_POST['landing_id'] ?? ''));
+        $name = sanitize_text_field((string) ($_POST['landing_name'] ?? ''));
+        $key_input = sanitize_key((string) ($_POST['landing_key'] ?? ''));
+        $title = sanitize_text_field((string) ($_POST['landing_title'] ?? ''));
+        $subtitle = sanitize_text_field((string) ($_POST['landing_subtitle'] ?? ''));
+        $country_iso = strtoupper(sanitize_text_field((string) ($_POST['landing_country_iso'] ?? '')));
+
+        $raw_bundle_ids = wp_unslash($_POST['bundle_ids'] ?? []);
+        $bundle_ids = [];
+        if (is_array($raw_bundle_ids)) {
+            foreach ($raw_bundle_ids as $bundle_id) {
+                $bundle_id = sanitize_text_field((string) $bundle_id);
+                if ($bundle_id !== '') {
+                    $bundle_ids[] = $bundle_id;
+                }
+            }
+        }
+        $bundle_ids = array_values(array_unique($bundle_ids));
+
+        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($shortcodes)) {
+            $shortcodes = [];
+        }
+
+        $landing_index = -1;
+        foreach ($shortcodes as $idx => $item) {
+            if (sanitize_text_field((string) ($item['id'] ?? '')) === $landing_id) {
+                $landing_index = (int) $idx;
+                break;
+            }
+        }
+
+        if ($landing_index === -1 || $name === '' || empty($bundle_ids)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'landing_shortcode_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $bundles = get_option('dc_recargas_bundles', []);
+        $valid_bundle_ids = [];
+        foreach ($bundles as $bundle) {
+            $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
+            if ($bundle_id !== '') {
+                $valid_bundle_ids[$bundle_id] = strtoupper((string) ($bundle['country_iso'] ?? ''));
+            }
+        }
+
+        $selected_bundle_ids = [];
+        $detected_countries = [];
+        foreach ($bundle_ids as $bundle_id) {
+            if (!isset($valid_bundle_ids[$bundle_id])) {
+                continue;
+            }
+            $selected_bundle_ids[] = $bundle_id;
+            if ($valid_bundle_ids[$bundle_id] !== '') {
+                $detected_countries[] = $valid_bundle_ids[$bundle_id];
+            }
+        }
+
+        if (empty($selected_bundle_ids)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'landing_shortcode_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        if ($country_iso === '' && !empty($detected_countries)) {
+            $country_iso = $detected_countries[0];
+        }
+
+        $existing_for_uniqueness = array_values(array_filter($shortcodes, function ($item) use ($landing_id) {
+            return sanitize_text_field((string) ($item['id'] ?? '')) !== $landing_id;
+        }));
+        $default_key = sanitize_title($name);
+        $key = $this->generate_unique_landing_key($key_input !== '' ? $key_input : $default_key, $existing_for_uniqueness);
+
+        $shortcodes[$landing_index]['name'] = $name;
+        $shortcodes[$landing_index]['key'] = $key;
+        $shortcodes[$landing_index]['title'] = $title;
+        $shortcodes[$landing_index]['subtitle'] = $subtitle;
+        $shortcodes[$landing_index]['country_iso'] = $country_iso;
+        $shortcodes[$landing_index]['bundle_ids'] = $selected_bundle_ids;
+        $shortcodes[$landing_index]['updated_at'] = current_time('mysql');
+
+        update_option('dc_recargas_landing_shortcodes', array_values($shortcodes));
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_msg' => 'landing_shortcode_updated',
+        ], admin_url('admin.php')));
+        exit;
     }
 
     public function sanitize_options($input) {
@@ -541,9 +865,15 @@ class DC_Recargas_Admin {
     public function render_page() {
         $options = $this->api->get_options();
         $bundles = get_option('dc_recargas_bundles', []);
+        $landing_shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($landing_shortcodes)) {
+            $landing_shortcodes = [];
+        }
         $msg = sanitize_text_field($_GET['dc_msg'] ?? '');
         $editing_bundle_id = sanitize_text_field($_GET['dc_edit_bundle'] ?? '');
         $editing_bundle = $this->find_bundle_by_id($bundles, $editing_bundle_id);
+        $editing_landing_id = sanitize_text_field($_GET['dc_edit_landing'] ?? '');
+        $editing_landing = $this->find_landing_by_id($landing_shortcodes, $editing_landing_id);
         $csv_path = $this->get_products_csv_path();
         $csv_found = !empty($csv_path);
         $csv_countries = $this->get_csv_countries();
@@ -575,6 +905,14 @@ class DC_Recargas_Admin {
 
         if (in_array($msg, ['bundle_added', 'bundle_updated', 'bundle_toggled', 'bundle_deleted', 'bundle_bulk_deleted', 'bundle_bulk_empty'], true)) {
             $active_tab = 'tab_saved';
+        }
+
+        if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error'], true)) {
+            $active_tab = 'tab_setup';
+        }
+
+        if (!empty($editing_landing)) {
+            $active_tab = 'tab_setup';
         }
         ?>
         <div class="wrap dc-admin-wrap">
@@ -1016,6 +1354,87 @@ class DC_Recargas_Admin {
                         padding: 18px;
                     }
                 }
+
+                /* ── Sub-pestañas internas del Catálogo ────────────────── */
+                .dc-catalog-subnav {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 6px;
+                    margin-bottom: 18px;
+                    padding-bottom: 14px;
+                    border-bottom: 2px solid var(--dc-border);
+                }
+
+                .dc-catalog-subnav__btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    border: 1px solid var(--dc-border);
+                    background: #f8fafc;
+                    color: #334155;
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: color 0.15s, border-color 0.15s, background 0.15s;
+                }
+
+                .dc-catalog-subnav__btn:hover {
+                    background: var(--dc-primary-soft);
+                    color: var(--dc-primary);
+                    border-color: #bdd0ef;
+                }
+
+                .dc-catalog-subnav__btn.is-active {
+                    background: linear-gradient(135deg, #145dc9 0%, #0f4aa3 100%);
+                    color: #ffffff;
+                    border-color: transparent;
+                }
+
+                .dc-catalog-subnav__badge {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: rgba(255,255,255,0.22);
+                    border-radius: 999px;
+                    font-size: 10px;
+                    font-weight: 700;
+                    padding: 1px 7px;
+                    line-height: 1.5;
+                    letter-spacing: 0.02em;
+                    text-transform: uppercase;
+                }
+
+                .dc-catalog-subnav__btn:not(.is-active) .dc-catalog-subnav__badge {
+                    background: var(--dc-primary-soft);
+                    color: var(--dc-primary);
+                }
+
+                .dc-catalog-subpanel {
+                    display: none;
+                }
+
+                .dc-catalog-subpanel.is-active {
+                    display: block;
+                }
+
+                .dc-catalog-subpanel__intro {
+                    margin: 0 0 18px;
+                    padding: 12px 16px;
+                    background: var(--dc-primary-soft);
+                    border-left: 3px solid var(--dc-primary);
+                    border-radius: 0 8px 8px 0;
+                    color: #1e3a6e;
+                    font-size: 13px;
+                }
+
+                @media (max-width: 782px) {
+                    .dc-catalog-subnav__btn {
+                        flex: 1;
+                        justify-content: center;
+                    }
+                }
             </style>
 
             <div class="dc-admin-tabs">
@@ -1168,14 +1587,205 @@ class DC_Recargas_Admin {
             <p>Crea una página y coloca el shortcode:</p>
             <p><code>[dingconnect_recargas]</code></p>
 
+            <hr>
+            <h2>Wizard en panel admin</h2>
+            <p>El flujo paso a paso también queda disponible aquí para pruebas operativas internas, sin depender de una landing pública.</p>
+            <?php if (empty($options['wizard_enabled'])) : ?>
+                <div class="notice notice-warning inline"><p>El wizard está desactivado. Activa <strong>Wizard paso a paso</strong> para usar esta vista.</p></div>
+            <?php else : ?>
+                <div style="max-width: 860px;">
+                    <?php echo do_shortcode('[dingconnect_wizard]'); ?>
+                </div>
+            <?php endif; ?>
+
+            <hr>
+            <h2>Landing pages y shortcodes dinámicos</h2>
+            <p>Define objetivos de landing y asocia bundles concretos para generar shortcodes reutilizables.</p>
+
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                <input type="hidden" name="action" value="dc_add_landing_shortcode">
+                <?php wp_nonce_field('dc_add_landing_shortcode'); ?>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><label for="dc_landing_name">Nombre del objetivo</label></th>
+                        <td>
+                            <input required type="text" id="dc_landing_name" name="landing_name" class="regular-text" placeholder="Ej: Cuba recargas mayo">
+                            <p class="description">Nombre interno para identificar la landing.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_key">Clave de shortcode (opcional)</label></th>
+                        <td>
+                            <input type="text" id="dc_landing_key" name="landing_key" class="regular-text" placeholder="ej: cuba-mayo-2026">
+                            <p class="description">Si lo dejas vacío, se genera automáticamente.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_title">Título del formulario</label></th>
+                        <td><input type="text" id="dc_landing_title" name="landing_title" class="regular-text" placeholder="Recargas para Cuba"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_subtitle">Subtítulo del formulario</label></th>
+                        <td><input type="text" id="dc_landing_subtitle" name="landing_subtitle" class="regular-text" placeholder="Elige un paquete y confirma tu recarga"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_country_iso">País fijo (ISO, opcional)</label></th>
+                        <td>
+                            <input type="text" id="dc_landing_country_iso" name="landing_country_iso" class="small-text dc-combo-input" placeholder="CU" list="dc_dl_country_iso">
+                            <p class="description">Si se define, el selector de país se bloquea en esa landing.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_bundle_ids">Bundles de la landing</label></th>
+                        <td>
+                            <select id="dc_landing_bundle_ids" name="bundle_ids[]" class="large-text" size="8" multiple required>
+                                <?php foreach ($bundles as $bundle) : ?>
+                                    <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
+                                    <?php if ($bundle_id === '') { continue; } ?>
+                                    <option value="<?php echo esc_attr($bundle_id); ?>">
+                                        [<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description">Usa Ctrl/Cmd para seleccionar múltiples bundles.</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <?php submit_button('Crear shortcode de landing'); ?>
+            </form>
+
+            <h3>Shortcodes creados</h3>
+            <table class="widefat striped">
+                <thead>
+                    <tr>
+                        <th>Objetivo</th>
+                        <th>Clave</th>
+                        <th>Bundles</th>
+                        <th>Shortcode</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($landing_shortcodes)) : ?>
+                        <tr><td colspan="5">No hay shortcodes dinámicos creados todavía.</td></tr>
+                    <?php else : ?>
+                        <?php foreach ($landing_shortcodes as $landing_cfg) : ?>
+                            <?php
+                                $landing_id = sanitize_text_field((string) ($landing_cfg['id'] ?? ''));
+                                $landing_key = sanitize_key((string) ($landing_cfg['key'] ?? ''));
+                                $landing_name = sanitize_text_field((string) ($landing_cfg['name'] ?? 'Landing'));
+                                $landing_bundles = is_array($landing_cfg['bundle_ids'] ?? null) ? $landing_cfg['bundle_ids'] : [];
+                                $shortcode_text = '[dingconnect_recargas landing_key="' . $landing_key . '"]';
+                            ?>
+                            <tr>
+                                <td><?php echo esc_html($landing_name); ?></td>
+                                <td><code><?php echo esc_html($landing_key); ?></code></td>
+                                <td><?php echo esc_html((string) count($landing_bundles)); ?></td>
+                                <td><code><?php echo esc_html($shortcode_text); ?></code></td>
+                                <td>
+                                    <button type="button" class="button button-secondary dc-edit-landing-btn" data-landing="<?php echo esc_attr(wp_json_encode($landing_cfg)); ?>">Editar</button>
+                                    <a class="button" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
+                                        'action' => 'dc_clone_landing_shortcode',
+                                        'landing_id' => $landing_id,
+                                    ], admin_url('admin-post.php')), 'dc_clone_landing_shortcode')); ?>">Duplicar</a>
+                                    <a class="button button-secondary" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
+                                        'action' => 'dc_delete_landing_shortcode',
+                                        'landing_id' => $landing_id,
+                                    ], admin_url('admin-post.php')), 'dc_delete_landing_shortcode')); ?>" onclick="return confirm('¿Eliminar shortcode de landing?');">Eliminar</a>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <div id="dc-edit-landing-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-edit-landing-modal-title" hidden>
+                <div class="dc-edit-modal__backdrop" data-dc-landing-edit-close></div>
+                <div class="dc-edit-modal__dialog">
+                    <div class="dc-edit-modal__header">
+                        <div>
+                            <h3 id="dc-edit-landing-modal-title">Editar shortcode dinámico</h3>
+                            <p>Actualiza objetivo, clave, país y bundles sin salir de la configuración.</p>
+                        </div>
+                        <button type="button" class="dc-edit-modal__close" aria-label="Cerrar edición" data-dc-landing-edit-close>&times;</button>
+                    </div>
+
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="dc_edit_landing_form">
+                        <input type="hidden" name="action" value="dc_update_landing_shortcode">
+                        <?php wp_nonce_field('dc_update_landing_shortcode'); ?>
+                        <input type="hidden" id="dc_edit_landing_id" name="landing_id" value="">
+
+                        <table class="form-table" role="presentation">
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_name">Nombre del objetivo</label></th>
+                                <td><input required type="text" id="dc_edit_landing_name" name="landing_name" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_key">Clave de shortcode</label></th>
+                                <td><input type="text" id="dc_edit_landing_key" name="landing_key" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_title">Título del formulario</label></th>
+                                <td><input type="text" id="dc_edit_landing_title" name="landing_title" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_subtitle">Subtítulo del formulario</label></th>
+                                <td><input type="text" id="dc_edit_landing_subtitle" name="landing_subtitle" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_country_iso">País fijo (ISO, opcional)</label></th>
+                                <td><input type="text" id="dc_edit_landing_country_iso" name="landing_country_iso" class="small-text dc-combo-input" list="dc_dl_country_iso" placeholder="CU"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_bundle_ids">Bundles de la landing</label></th>
+                                <td>
+                                    <select id="dc_edit_landing_bundle_ids" name="bundle_ids[]" class="large-text" size="10" multiple required>
+                                        <?php foreach ($bundles as $bundle) : ?>
+                                            <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
+                                            <?php if ($bundle_id === '') { continue; } ?>
+                                            <option value="<?php echo esc_attr($bundle_id); ?>">
+                                                [<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <p class="description">Usa Ctrl/Cmd para selección múltiple.</p>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <?php submit_button('Guardar cambios del shortcode', 'primary', 'submit', false); ?>
+                        <button type="button" class="button button-secondary" data-dc-landing-edit-close>Cancelar</button>
+                    </form>
+                </div>
+            </div>
+
                 </section>
 
                 <section id="dc-tab-catalog" class="dc-tab-panel" data-dc-tab-panel="tab_catalog">
 
-            <h3>Método 1: Buscar en catálogo CSV</h3>
-            <p>Busca en todo el catálogo, selecciona un producto y crea el bundle automáticamente.</p>
+            <h2>Catálogo y alta de bundles</h2>
+            <p>Añade productos al catálogo visible en el frontend usando cualquiera de los tres métodos disponibles.</p>
 
-            <h4>Catálogo de productos (Products-with-sku.csv)</h4>
+            <div class="dc-catalog-subtabs">
+                <nav class="dc-catalog-subnav" aria-label="Métodos de alta de bundles">
+                    <button type="button" class="dc-catalog-subnav__btn is-active" data-catalog-subtab="csv">
+                        📋 Buscar en CSV
+                    </button>
+                    <button type="button" class="dc-catalog-subnav__btn" data-catalog-subtab="api">
+                        🔌 Buscar en API
+                    </button>
+                    <button type="button" class="dc-catalog-subnav__btn" data-catalog-subtab="manual">
+                        ✏️ Alta manual
+                    </button>
+                </nav>
+
+                <!-- ── Sub-panel 1: CSV ── -->
+                <div class="dc-catalog-subpanel is-active" data-catalog-panel="csv">
+
+            <p class="dc-catalog-subpanel__intro">Sube el archivo <strong>Products-with-sku.csv</strong> desde DingConnect, busca un producto y crea el bundle con un clic. Es el método más rápido y preciso.</p>
+
+            <h4>Archivo de catálogo (Products-with-sku.csv)</h4>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="dc_upload_csv">
                 <?php wp_nonce_field('dc_upload_csv'); ?>
@@ -1229,9 +1839,13 @@ class DC_Recargas_Admin {
                 </tr>
             </table>
 
-            <hr>
-            <h3>Buscar paquetes en la API de DingConnect por país</h3>
-            <p class="description">Consulta los paquetes disponibles directamente desde DingConnect. No necesitas el CSV; los resultados se traen en tiempo real y se guardan en caché por 10 minutos.</p>
+                </div><!-- /sub-panel csv -->
+
+                <!-- ── Sub-panel 2: API ── -->
+                <div class="dc-catalog-subpanel" data-catalog-panel="api">
+
+            <p class="dc-catalog-subpanel__intro">Consulta los paquetes disponibles directamente desde DingConnect en tiempo real. No necesitas el CSV; los resultados se guardan en caché por <strong>10 minutos</strong> por país.</p>
+
             <table class="form-table" role="presentation">
                 <tr>
                     <th scope="row"><label for="dc_api_country_iso">País (código ISO)</label></th>
@@ -1422,7 +2036,14 @@ class DC_Recargas_Admin {
             })();
             </script>
 
-            <h2>Añadir bundle curado</h2>
+                </div><!-- /sub-panel api -->
+
+                <!-- ── Sub-panel 3: Alta manual ── -->
+                <div class="dc-catalog-subpanel" data-catalog-panel="manual">
+
+            <p class="dc-catalog-subpanel__intro">Completa el formulario con los datos del bundle. Usa este método cuando conozcas el SKU exacto y quieras un control total sobre los valores que se muestran al usuario.</p>
+
+            <h4>Datos del bundle</h4>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="dc_add_bundle">
                 <?php wp_nonce_field('dc_add_bundle'); ?>
@@ -1472,6 +2093,10 @@ class DC_Recargas_Admin {
 
                 <?php submit_button('Añadir bundle'); ?>
             </form>
+
+                </div><!-- /sub-panel manual -->
+
+            </div><!-- /dc-catalog-subtabs -->
 
                 </section>
 
@@ -2069,6 +2694,7 @@ class DC_Recargas_Admin {
                 var bulkDeleteFormEl = document.getElementById('dc_bulk_delete_bundles_form');
                 var bundleCheckboxEls = document.querySelectorAll('.dc-bundle-checkbox');
                 var initialEditingBundle = <?php echo wp_json_encode($editing_bundle ? $editing_bundle : null); ?>;
+                var initialEditingLanding = <?php echo wp_json_encode($editing_landing ? $editing_landing : null); ?>;
                 var editIdEl = document.getElementById('dc_edit_bundle_id');
                 var editCountryIsoEl = document.getElementById('dc_edit_country_iso');
                 var editLabelEl = document.getElementById('dc_edit_label');
@@ -2078,6 +2704,16 @@ class DC_Recargas_Admin {
                 var editProviderEl = document.getElementById('dc_edit_provider_name');
                 var editDescriptionEl = document.getElementById('dc_edit_description');
                 var editIsActiveEl = document.getElementById('dc_edit_is_active');
+                var landingEditModalEl = document.getElementById('dc-edit-landing-modal');
+                var landingEditButtons = document.querySelectorAll('.dc-edit-landing-btn');
+                var landingEditCloseEls = document.querySelectorAll('[data-dc-landing-edit-close]');
+                var landingEditIdEl = document.getElementById('dc_edit_landing_id');
+                var landingEditNameEl = document.getElementById('dc_edit_landing_name');
+                var landingEditKeyEl = document.getElementById('dc_edit_landing_key');
+                var landingEditTitleEl = document.getElementById('dc_edit_landing_title');
+                var landingEditSubtitleEl = document.getElementById('dc_edit_landing_subtitle');
+                var landingEditCountryEl = document.getElementById('dc_edit_landing_country_iso');
+                var landingEditBundlesEl = document.getElementById('dc_edit_landing_bundle_ids');
                 var checkBalanceBtn = document.getElementById('dc_check_balance_btn');
                 var balanceResultEl = document.getElementById('dc_balance_result');
                 var lastBalanceAutoAt = 0;
@@ -2316,6 +2952,60 @@ class DC_Recargas_Admin {
                     updateEditParam('');
                 }
 
+                function closeLandingEditModal() {
+                    if (!landingEditModalEl) {
+                        return;
+                    }
+
+                    landingEditModalEl.hidden = true;
+                    document.body.classList.remove('modal-open');
+
+                    var url = new URL(window.location.href);
+                    url.searchParams.delete('dc_edit_landing');
+                    window.history.replaceState({}, '', url.toString());
+                }
+
+                function openLandingEditModal(landing) {
+                    if (!landingEditModalEl || !landing) {
+                        return;
+                    }
+
+                    if (landingEditIdEl) landingEditIdEl.value = landing.id || '';
+                    if (landingEditNameEl) landingEditNameEl.value = landing.name || '';
+                    if (landingEditKeyEl) landingEditKeyEl.value = landing.key || '';
+                    if (landingEditTitleEl) landingEditTitleEl.value = landing.title || '';
+                    if (landingEditSubtitleEl) landingEditSubtitleEl.value = landing.subtitle || '';
+                    if (landingEditCountryEl) landingEditCountryEl.value = landing.country_iso || '';
+
+                    if (landingEditBundlesEl) {
+                        var selectedMap = {};
+                        if (Array.isArray(landing.bundle_ids)) {
+                            landing.bundle_ids.forEach(function (bundleId) {
+                                selectedMap[String(bundleId)] = true;
+                            });
+                        }
+
+                        Array.prototype.forEach.call(landingEditBundlesEl.options, function (optionEl) {
+                            optionEl.selected = !!selectedMap[String(optionEl.value)];
+                        });
+                    }
+
+                    landingEditModalEl.hidden = false;
+                    document.body.classList.add('modal-open');
+                    setActiveTab('tab_setup', true);
+
+                    var url = new URL(window.location.href);
+                    if (landing.id) {
+                        url.searchParams.set('dc_edit_landing', landing.id);
+                        url.searchParams.set('dc_tab', 'tab_setup');
+                        window.history.replaceState({}, '', url.toString());
+                    }
+
+                    if (landingEditNameEl) {
+                        landingEditNameEl.focus();
+                    }
+                }
+
                 if (tabButtons.length && tabPanels.length) {
                     tabButtons.forEach(function (btn) {
                         btn.addEventListener('click', function () {
@@ -2344,14 +3034,40 @@ class DC_Recargas_Admin {
                     });
                 }
 
+                if (landingEditButtons.length) {
+                    landingEditButtons.forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            try {
+                                openLandingEditModal(JSON.parse(btn.getAttribute('data-landing') || '{}'));
+                            } catch (e) {
+                                window.alert('No se pudo abrir el editor del shortcode seleccionado.');
+                            }
+                        });
+                    });
+                }
+
+                if (landingEditCloseEls.length) {
+                    landingEditCloseEls.forEach(function (el) {
+                        el.addEventListener('click', closeLandingEditModal);
+                    });
+                }
+
                 document.addEventListener('keydown', function (event) {
                     if (event.key === 'Escape' && editModalEl && !editModalEl.hidden) {
                         closeEditModal();
+                    }
+
+                    if (event.key === 'Escape' && landingEditModalEl && !landingEditModalEl.hidden) {
+                        closeLandingEditModal();
                     }
                 });
 
                 if (initialEditingBundle && initialEditingBundle.id) {
                     openEditModal(initialEditingBundle);
+                }
+
+                if (initialEditingLanding && initialEditingLanding.id) {
+                    openLandingEditModal(initialEditingLanding);
                 }
 
                 var countryIsoEl = document.getElementById('dc_country_iso');
@@ -2571,6 +3287,25 @@ class DC_Recargas_Admin {
                     }
                 });
 
+                resultsEl.addEventListener('dblclick', function () {
+                    var selected = resultsEl.options[resultsEl.selectedIndex];
+                    if (!selected || !selected.dataset.item) {
+                        return;
+                    }
+
+                    try {
+                        var item = JSON.parse(selected.dataset.item);
+                        fillForm(item);
+                        setActiveTab('tab_catalog', true);
+                        var manualTabBtn = document.querySelector('[data-catalog-subtab="manual"]');
+                        if (manualTabBtn) {
+                            manualTabBtn.click();
+                        }
+                    } catch (e) {
+                        helpEl.textContent = 'No se pudo interpretar el producto seleccionado.';
+                    }
+                });
+
                 if (createBtn) {
                     createBtn.disabled = true;
                     createBtn.addEventListener('click', createBundleFromSelection);
@@ -2768,6 +3503,40 @@ class DC_Recargas_Admin {
                     }
                 });
             })();
+
+            // -- Sub-pestañas del Catálogo --------------------------------
+            (function () {
+                var subBtns   = document.querySelectorAll('[data-catalog-subtab]');
+                var subPanels = document.querySelectorAll('[data-catalog-panel]');
+
+                if (!subBtns.length || !subPanels.length) {
+                    return;
+                }
+
+                function setSubTab(tabId) {
+                    subBtns.forEach(function (btn) {
+                        if (btn.getAttribute('data-catalog-subtab') === tabId) {
+                            btn.classList.add('is-active');
+                        } else {
+                            btn.classList.remove('is-active');
+                        }
+                    });
+
+                    subPanels.forEach(function (panel) {
+                        if (panel.getAttribute('data-catalog-panel') === tabId) {
+                            panel.classList.add('is-active');
+                        } else {
+                            panel.classList.remove('is-active');
+                        }
+                    });
+                }
+
+                subBtns.forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        setSubTab(btn.getAttribute('data-catalog-subtab'));
+                    });
+                });
+            })();
         </script>
         <?php
     }
@@ -2826,6 +3595,11 @@ class DC_Recargas_Admin {
             'bundle_deleted' => ['success', 'Bundle eliminado correctamente.'],
             'bundle_bulk_deleted' => ['success', sprintf('Bundles eliminados correctamente: %d.', $count)],
             'bundle_bulk_empty' => ['error', 'Selecciona al menos un bundle para eliminar.'],
+            'landing_shortcode_added' => ['success', 'Shortcode dinámico de landing creado correctamente.'],
+            'landing_shortcode_updated' => ['success', 'Shortcode dinámico actualizado correctamente.'],
+            'landing_shortcode_cloned' => ['success', 'Landing duplicada correctamente.'],
+            'landing_shortcode_deleted' => ['success', 'Shortcode dinámico eliminado correctamente.'],
+            'landing_shortcode_error' => ['error', 'Completa nombre y selecciona al menos un bundle válido para crear el shortcode dinámico.'],
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un bundle.'],
             'bundle_duplicate' => ['error', 'Ya existe otro bundle con el mismo país y SKU.'],
             'bundle_not_found' => ['error', 'No se encontró el bundle solicitado.'],
@@ -2840,6 +3614,83 @@ class DC_Recargas_Admin {
 
         [$class, $text] = $map[$msg];
         echo '<div class="notice notice-' . esc_attr($class) . ' is-dismissible"><p>' . esc_html($text) . '</p></div>';
+    }
+
+    private function get_admin_wizard_countries() {
+        $bundles = get_option('dc_recargas_bundles', []);
+        $iso_set = [];
+
+        foreach ((array) $bundles as $bundle) {
+            $iso = strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? '')));
+            if ($iso !== '' && preg_match('/^[A-Z]{2}$/', $iso)) {
+                $iso_set[$iso] = true;
+            }
+        }
+
+        if (empty($iso_set)) {
+            $iso_set['CU'] = true;
+            $iso_set['CO'] = true;
+            $iso_set['MX'] = true;
+            $iso_set['ES'] = true;
+        }
+
+        ksort($iso_set);
+
+        $names = [
+            'AR' => 'Argentina',
+            'BO' => 'Bolivia',
+            'BR' => 'Brasil',
+            'CL' => 'Chile',
+            'CO' => 'Colombia',
+            'CU' => 'Cuba',
+            'DO' => 'República Dominicana',
+            'EC' => 'Ecuador',
+            'ES' => 'España',
+            'MX' => 'México',
+            'PE' => 'Perú',
+            'US' => 'Estados Unidos',
+            'VE' => 'Venezuela',
+        ];
+
+        $countries = [];
+        foreach (array_keys($iso_set) as $iso) {
+            $countries[] = [
+                'iso' => $iso,
+                'name' => $names[$iso] ?? $iso,
+                'dial' => '',
+            ];
+        }
+
+        return $countries;
+    }
+
+    private function generate_unique_landing_key($base_key, $existing_shortcodes) {
+        $base_key = sanitize_key((string) $base_key);
+        if ($base_key === '') {
+            $base_key = 'landing';
+        }
+
+        $used = [];
+        foreach ((array) $existing_shortcodes as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $item_key = sanitize_key((string) ($item['key'] ?? ''));
+            if ($item_key !== '') {
+                $used[$item_key] = true;
+            }
+        }
+
+        if (!isset($used[$base_key])) {
+            return $base_key;
+        }
+
+        $i = 2;
+        while (isset($used[$base_key . '-' . $i])) {
+            $i++;
+        }
+
+        return $base_key . '-' . $i;
     }
 
     private function get_products_csv_path() {
@@ -3084,6 +3935,21 @@ class DC_Recargas_Admin {
         }
 
         return is_array($bundles[$index]) ? $bundles[$index] : null;
+    }
+
+    private function find_landing_by_id($landings, $id) {
+        $id = (string) $id;
+        foreach ((array) $landings as $landing) {
+            if (!is_array($landing)) {
+                continue;
+            }
+
+            if ((string) ($landing['id'] ?? '') === $id) {
+                return $landing;
+            }
+        }
+
+        return null;
     }
 
     // -------------------------------------------------------------------------

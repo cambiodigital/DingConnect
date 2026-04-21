@@ -85,17 +85,50 @@ class DC_Recargas_Frontend {
         ]);
     }
 
-    public function render_shortcode() {
+    public function render_shortcode($atts = []) {
         wp_enqueue_style('dc-recargas-frontend');
         wp_enqueue_script('dc-recargas-frontend');
 
+        $atts = shortcode_atts([
+            'landing_key' => '',
+            'bundles' => '',
+            'country' => '',
+            'title' => 'Recargas Internacionales',
+            'subtitle' => 'Ingresa el número y elige tu paquete',
+        ], (array) $atts, 'dingconnect_recargas');
+
+        $landing_key = sanitize_key((string) $atts['landing_key']);
+        $config = $this->get_landing_shortcode_config($landing_key);
+
+        $bundle_ids = $this->parse_bundle_ids((string) $atts['bundles']);
+        if (!empty($config['bundle_ids']) && is_array($config['bundle_ids'])) {
+            $bundle_ids = array_values(array_unique(array_merge($bundle_ids, $this->parse_bundle_ids(implode(',', $config['bundle_ids'])))));
+        }
+
+        $country_iso = strtoupper(sanitize_text_field((string) $atts['country']));
+        if ($country_iso === '' && !empty($config['country_iso'])) {
+            $country_iso = strtoupper(sanitize_text_field((string) $config['country_iso']));
+        }
+
+        $title = sanitize_text_field((string) $atts['title']);
+        if ($title === 'Recargas Internacionales' && !empty($config['title'])) {
+            $title = sanitize_text_field((string) $config['title']);
+        }
+
+        $subtitle = sanitize_text_field((string) $atts['subtitle']);
+        if ($subtitle === 'Ingresa el número y elige tu paquete' && !empty($config['subtitle'])) {
+            $subtitle = sanitize_text_field((string) $config['subtitle']);
+        }
+
+        $bundle_attr = implode(',', $bundle_ids);
+
         ob_start();
         ?>
-        <div class="dc-recargas" id="dc-recargas-app">
+        <div class="dc-recargas" id="dc-recargas-app" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-fixed-country-iso="<?php echo esc_attr($country_iso); ?>">
             <div class="dc-card">
                 <div class="dc-header">
-                    <h2>Recargas Internacionales</h2>
-                    <p>Ingresa el número y elige tu paquete</p>
+                    <h2><?php echo esc_html($title); ?></h2>
+                    <p><?php echo esc_html($subtitle); ?></p>
                 </div>
 
                 <div class="dc-phone-row" id="dc-phone-row">
@@ -142,6 +175,43 @@ class DC_Recargas_Frontend {
         <?php
 
         return ob_get_clean();
+    }
+
+    private function get_landing_shortcode_config($landing_key) {
+        if ($landing_key === '') {
+            return [];
+        }
+
+        $configs = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($configs)) {
+            return [];
+        }
+
+        foreach ($configs as $config) {
+            if (!is_array($config)) {
+                continue;
+            }
+
+            if (sanitize_key((string) ($config['key'] ?? '')) === $landing_key) {
+                return $config;
+            }
+        }
+
+        return [];
+    }
+
+    private function parse_bundle_ids($raw_ids) {
+        $parts = array_map('trim', explode(',', (string) $raw_ids));
+        $clean = [];
+
+        foreach ($parts as $id) {
+            $id = sanitize_text_field($id);
+            if ($id !== '') {
+                $clean[] = $id;
+            }
+        }
+
+        return array_values(array_unique($clean));
     }
 
     public function render_wizard_shortcode($atts = []) {

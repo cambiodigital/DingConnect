@@ -134,6 +134,20 @@ Flujo recomendado:
 
 - En `entry_mode=number_first`, el paso de país puede quedar opcional en frontend: el wizard intenta inferir país automáticamente a partir del catálogo devuelto para el número consultado.
 - El backend del wizard ahora aplica validación de estado por paso y bloqueo de saltos no secuenciales al guardar sesión (`category -> country -> operator -> product -> review`, permitiendo retroceso de un paso), para evitar bypass vía llamadas REST directas.
+- Además del shortcode público, el wizard está disponible en el panel admin del plugin para operación interna y validación rápida de flujo sin publicar una landing.
+
+### Nota operativa Landings dinámicas (abril 2026)
+
+- El panel admin incluye gestión de shortcodes dinámicos por objetivo de campaña/landing.
+- Cada landing puede seleccionar bundles específicos y opcionalmente fijar país, título y subtítulo del formulario.
+- La configuración de cada landing se administra inline en el panel (alta, edición y baja) sin salir de la pantalla de configuración del plugin.
+- El shortcode base soporta `landing_key` para resolver configuración guardada en admin:
+  - Ejemplo: `[dingconnect_recargas landing_key="cuba-mayo-2026"]`
+- También soporta filtros directos por atributos cuando se requiera configuración manual:
+  - `bundles="bundle_id_1,bundle_id_2"`
+  - `country="CU"`
+  - `title="Recargas Cuba"`
+  - `subtitle="Selecciona tu paquete y confirma"`
 
 ## 7.2 PIN, vouchers y productos de lectura de recibo
 

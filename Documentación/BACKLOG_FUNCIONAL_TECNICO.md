@@ -113,6 +113,12 @@ Una iniciativa se considera lista cuando cumple:
 46. Detección automática en flujo number-first: en el paso de datos del destinatario el país pasa a ser opcional y el wizard intenta resolverlo automáticamente desde el catálogo obtenido con el número, manteniendo opción de selección manual.
 47. Limpieza técnica del controlador REST del wizard: `wizard/session/{session_id}` eliminó un manejo muerto de `WP_Error` en lectura de sesión para reflejar el contrato real de `get_session()` (`array|null`) y evitar falsos positivos de análisis estático.
 48. Actualización documental exhaustiva de DingConnect API: se auditó cobertura interna de `Methods`, `Description` y `FAQ`, se reforzó `API_DING_CONNECT_V1.md` con trazabilidad de fuentes y se agregó base de conocimiento ampliada en `Documentación/BASE_CONOCIMIENTO_API_DINGCONNECT_COMPLETA.md` para acelerar futuras fases de integración.
+49. Análisis funcional-técnico de solicitud René/Cubakilos para landings: se agregó `Documentación/ANALISIS_WEBHOOK_LANDINGS_RENE_CUBAKILOS.md` con definición de alcance para diseño por landing, paquetes propios por shortcode y ruta recomendada para webhook de `Deferred SendTransfer`.
+50. Wizard operativo dentro del panel admin: se habilitó una vista embebida del flujo paso a paso en la pestaña de configuración, reutilizando contrato REST del wizard para pruebas internas sin depender de una landing pública.
+51. Gestor de shortcodes dinámicos para landings en admin: nueva sección para crear objetivos de landing, seleccionar bundles concretos y generar shortcodes reutilizables con clave (`landing_key`).
+52. Shortcode `dingconnect_recargas` ampliado para objetivos: soporta `landing_key`, `bundles`, `country`, `title` y `subtitle`, permitiendo variantes por campaña con país fijo y catálogo restringido.
+53. Edición inline de shortcodes dinámicos en admin: el listado de landings ahora permite abrir modal de edición, actualizar objetivo/clave/país/bundles y guardar cambios sin salir del panel.
+54. Duplicado rápido de landings en admin: cada shortcode dinámico ahora incluye acción `Duplicar`, clonando configuración (título, subtítulo, país y bundles) con clave única automática para acelerar nuevas campañas y abriendo automáticamente el modal de edición de la copia.
 
 ## Backlog actualizado por impacto
 
@@ -133,6 +139,10 @@ Una iniciativa se considera lista cuando cumple:
    - Alcance validado para ejecutar: E2E recargas number-first, E2E gift cards country-fixed, enforcement payment-first, idempotencia por item, matriz multi-gateway y reconciliación manual.
    - Evidencia requerida: notas de pedido, logs internos de transferencia, comprobación de voucher en thank-you/email y resultado por gateway.
    - Estado actual de entorno: scripts de staging listos; ejecución bloqueada por ausencia de `docker` en la máquina local.
+5. Prioridad P1 - Operación multi-landing por shortcode dinámico.
+   - Estado: parcialmente completado.
+   - Completado: alta, edición inline, duplicado rápido y baja de configuraciones de landing desde admin, generación de shortcode por clave y filtrado de bundles por landing.
+   - Pendiente: vista previa de shortcode en frontend por entorno y métricas por objetivo.
 
 ## Nota operativa de despliegue (14-04-2026)
 

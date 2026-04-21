@@ -562,12 +562,14 @@ class DC_Recargas_REST {
 
         return array_map(function ($bundle) {
             return [
+                'BundleId' => $bundle['id'] ?? '',
                 'SkuCode' => $bundle['sku_code'] ?? '',
                 'ProviderName' => $bundle['provider_name'] ?? '',
                 'SendValue' => (float) ($bundle['send_value'] ?? 0),
                 'SendCurrencyIso' => $bundle['send_currency_iso'] ?? 'USD',
                 'DefaultDisplayText' => $bundle['label'] ?? '',
                 'Description' => $bundle['description'] ?? '',
+                'CountryIso' => strtoupper((string) ($bundle['country_iso'] ?? '')),
                 'IsPromotion' => false,
                 'IsRange' => false,
             ];

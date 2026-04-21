@@ -83,15 +83,54 @@ def fetch_static(url: str, timeout: int = 20) -> str:
     return resp.text
 
 
-def fetch_browser(url: str, wait_ms: int = 2000) -> str:
-    """Descarga HTML con Playwright (renderiza JavaScript)."""
-    from playwright.sync_api import sync_playwright
+def fetch_browser(url: str, wait_ms: int = 1500, headed: bool = False) -> str:
+    """Descarga HTML con Playwright (renderiza JavaScript).
+
+    Modos:
+      • headless=True (default): rápido, pero bloqueado por Cloudflare y protecciones bot.
+      • headed=True (--headed): abre Chrome visible, pasa Cloudflare.
+
+    Nota: para sites con Cloudflare (ej. dingconnect.com), usa --headed
+    o pide al AI que lo lea directamente con las herramientas MCP de browser.
+    """
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+    CONTENT_SELECTORS = [
+        "main", "article", "[role='main']",
+        ".faq_question", ".content", "#content", "#main",
+    ]
+
+    launch_args: dict = {"headless": not headed}
+    if not headed:
+        # Reducir señales de automatización en modo headless
+        launch_args["args"] = ["--disable-blink-features=AutomationControlled"]
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page(extra_http_headers={"User-Agent": HEADERS["User-Agent"]})
-        page.goto(url, wait_until="networkidle", timeout=30000)
-        # Espera adicional para frameworks lentos
+        browser = p.chromium.launch(**launch_args)
+        context = browser.new_context(
+            user_agent=HEADERS["User-Agent"],
+            viewport={"width": 1280, "height": 800},
+        )
+        page = context.new_page()
+        page.goto(url, wait_until="load", timeout=30000)
+
+        for selector in CONTENT_SELECTORS:
+            try:
+                page.wait_for_selector(selector, timeout=4000)
+                break
+            except PWTimeout:
+                continue
+
+        # Verificar si Cloudflare bloqueó la respuesta
+        title = page.title()
+        if "cloudflare" in title.lower() or "just a moment" in title.lower():
+            browser.close()
+            raise RuntimeError(
+                f"Cloudflare bot protection activo en {url}. "
+                "Usa --headed para abrir Chrome visible, o pídele a la IA "
+                "que lea la página directamente con sus herramientas de browser."
+            )
+
         page.wait_for_timeout(wait_ms)
         html = page.content()
         browser.close()
@@ -107,19 +146,19 @@ def is_js_page(html: str) -> bool:
     return True
 
 
-def process_url(url: str, out_dir: Path, use_browser: bool, auto_detect: bool) -> None:
+def process_url(url: str, out_dir: Path, use_browser: bool, auto_detect: bool, headed: bool = False) -> None:
     print(f"→ Fetching: {url}")
     try:
         if use_browser:
-            html = fetch_browser(url)
-            mode = "browser"
+            html = fetch_browser(url, headed=headed)
+            mode = "headed" if headed else "browser"
         else:
             html = fetch_static(url)
             mode = "static"
             # Auto-detectar si la página necesita JS
             if auto_detect and is_js_page(html):
                 print(f"  ⚠ Detectado JS-rendered, reintentando con browser...")
-                html = fetch_browser(url)
+                html = fetch_browser(url, headed=headed)
                 mode = "browser (auto)"
 
         content = html_to_markdown(html)
@@ -156,7 +195,12 @@ def main() -> None:
     parser.add_argument(
         "--browser", "-b",
         action="store_true",
-        help="Usar Playwright/Chromium para páginas con JavaScript",
+        help="Usar Playwright/Chromium headless (para páginas con JavaScript)",
+    )
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="Usar Chrome visible (necesario para sites con Cloudflare/bot protection)",
     )
     parser.add_argument(
         "--no-auto",
@@ -182,11 +226,11 @@ def main() -> None:
         sys.exit(1)
 
     args.out.mkdir(parents=True, exist_ok=True)
-    mode_label = "browser" if args.browser else "auto-detect"
+    mode_label = "headed browser" if args.headed else ("browser" if args.browser else "auto-detect")
     print(f"\nProcesando {len(urls)} URL(s) → {args.out}  [modo: {mode_label}]\n")
 
     for url in urls:
-        process_url(url, args.out, use_browser=args.browser, auto_detect=not args.no_auto)
+        process_url(url, args.out, use_browser=args.browser or args.headed, auto_detect=not args.no_auto, headed=args.headed)
 
     print(f"\nListo. Archivos en: {args.out.resolve()}")
 

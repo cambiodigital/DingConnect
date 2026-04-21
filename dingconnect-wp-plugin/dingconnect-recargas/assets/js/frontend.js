@@ -48,6 +48,15 @@
     }
 
     var allCountries = Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : [];
+    var fixedCountryIso = String(app.getAttribute('data-fixed-country-iso') || '').toUpperCase();
+    var allowedBundleIds = String(app.getAttribute('data-allowed-bundle-ids') || '')
+        .split(',')
+        .map(function (id) { return id.trim(); })
+        .filter(function (id) { return !!id; });
+    var allowedBundleMap = {};
+    allowedBundleIds.forEach(function (id) {
+        allowedBundleMap[id] = true;
+    });
     var autoTimer = null;
     var SEARCH_CACHE_TTL_MS = 10000;
 
@@ -62,6 +71,8 @@
         lastSearchAt: 0,
         inFlightSearchKey: '',
         dataSource: '', // 'saved' | 'dingconnect' | 'fallback'
+        fixedCountryIso: fixedCountryIso,
+        allowedBundleMap: allowedBundleMap,
     };
 
     /* -- Helpers -- */
@@ -96,6 +107,10 @@
     }
 
     function openOverlay() {
+        if (state.fixedCountryIso) {
+            setFeedback('Esta landing tiene país fijo configurado.', 'info');
+            return;
+        }
         overlay.hidden = false;
         countrySearch.value = '';
         renderCountryList('');
@@ -194,6 +209,14 @@
     /* -- Search bundles -- */
     async function searchBundles(opts) {
         opts = opts || {};
+        
+        // Validar país antes de nada
+        if (!state.country) {
+            if (!opts.silent) setFeedback('Selecciona un país primero en el botón de la izquierda →', 'warning');
+            hideBundles();
+            return;
+        }
+        
         var fullPhone = normalizePhone();
         if (!fullPhone) {
             if (!opts.silent) setFeedback('Ingresa un número móvil válido.', 'error');
@@ -222,6 +245,14 @@
             );
             var items = res.result || [];
             state.bundles = Array.isArray(items) ? items : [];
+
+            if (Object.keys(state.allowedBundleMap).length > 0) {
+                state.bundles = state.bundles.filter(function (bundle) {
+                    var bundleId = String(bundle.BundleId || '').trim();
+                    return bundleId && !!state.allowedBundleMap[bundleId];
+                });
+            }
+
             state.dataSource = res.source || 'unknown';
             state.selectedProvider = '';
             populateProviderFilter();
@@ -331,7 +362,7 @@
     function renderBundles() {
         bundlesEl.innerHTML = '';
         if (!state.filteredBundles.length) {
-            bundlesEl.innerHTML = '<p style="text-align:center;color:#64748b;font-size:14px;padding:12px 0">No hay paquetes disponibles para este número.</p>';
+            bundlesEl.innerHTML = '<div class="dc-empty-state"><p>No hay paquetes disponibles para este número.</p></div>';
             bundlesEl.hidden = false;
             return;
         }
@@ -522,5 +553,14 @@
 
     /* -- Init -- */
     var defaultCountry = allCountries.find(function (c) { return c.iso === 'CU'; }) || allCountries[0];
+    if (state.fixedCountryIso) {
+        defaultCountry = allCountries.find(function (c) { return c.iso === state.fixedCountryIso; }) || defaultCountry;
+        countryBtn.setAttribute('aria-disabled', 'true');
+        countryBtn.title = 'País fijo configurado para esta landing';
+    }
     if (defaultCountry) selectCountry(defaultCountry);
+
+    if (state.fixedCountryIso) {
+        countryBtn.classList.add('is-fixed-country');
+    }
 })();

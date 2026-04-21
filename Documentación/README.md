@@ -14,6 +14,7 @@ Esta carpeta concentra el contexto técnico y funcional del proyecto para facili
 
 - `CONTEXTO_IA.md`: fuente principal de contexto actual del repositorio, con mapa de archivos, flujos, riesgos e inconsistencias.
 - `BACKLOG_FUNCIONAL_TECNICO.md`: backlog priorizado por fases (seguridad, integración, producto y operación).
+- `ANALISIS_WEBHOOK_LANDINGS_RENE_CUBAKILOS.md`: análisis específico de solicitud de René sobre shortcodes por landing, paquetes propios y estrategia de webhook.
 - `../HANDOFF_ESTADO_ACTUAL.md`: handoff histórico de continuidad de trabajo.
 - `../REPORTE_INTEGRACION_DING_CONNECT.md`: reporte histórico de validación inicial.
 
