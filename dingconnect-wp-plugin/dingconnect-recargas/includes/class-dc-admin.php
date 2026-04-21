@@ -69,7 +69,6 @@ class DC_Recargas_Admin {
         $key_input = sanitize_key((string) ($_POST['landing_key'] ?? ''));
         $title = sanitize_text_field((string) ($_POST['landing_title'] ?? ''));
         $subtitle = sanitize_text_field((string) ($_POST['landing_subtitle'] ?? ''));
-        $country_iso = strtoupper(sanitize_text_field((string) ($_POST['landing_country_iso'] ?? '')));
 
         $raw_bundle_ids = wp_unslash($_POST['bundle_ids'] ?? []);
         $bundle_ids = [];
@@ -122,17 +121,7 @@ class DC_Recargas_Admin {
 
         $detected_countries = array_values(array_unique(array_filter(array_map('strval', $detected_countries))));
 
-        if (!$this->is_valid_landing_country_selection($country_iso, $detected_countries)) {
-            wp_safe_redirect(add_query_arg([
-                'page' => 'dc-recargas',
-                'dc_msg' => 'landing_shortcode_country_invalid',
-            ], admin_url('admin.php')));
-            exit;
-        }
-
-        if ($country_iso === '' && count($detected_countries) === 1) {
-            $country_iso = $detected_countries[0];
-        }
+        $country_iso = count($detected_countries) === 1 ? (string) $detected_countries[0] : '';
 
         $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
         if (!is_array($shortcodes)) {
@@ -259,7 +248,6 @@ class DC_Recargas_Admin {
         $key_input = sanitize_key((string) ($_POST['landing_key'] ?? ''));
         $title = sanitize_text_field((string) ($_POST['landing_title'] ?? ''));
         $subtitle = sanitize_text_field((string) ($_POST['landing_subtitle'] ?? ''));
-        $country_iso = strtoupper(sanitize_text_field((string) ($_POST['landing_country_iso'] ?? '')));
 
         $raw_bundle_ids = wp_unslash($_POST['bundle_ids'] ?? []);
         $bundle_ids = [];
@@ -325,17 +313,7 @@ class DC_Recargas_Admin {
 
         $detected_countries = array_values(array_unique(array_filter(array_map('strval', $detected_countries))));
 
-        if (!$this->is_valid_landing_country_selection($country_iso, $detected_countries)) {
-            wp_safe_redirect(add_query_arg([
-                'page' => 'dc-recargas',
-                'dc_msg' => 'landing_shortcode_country_invalid',
-            ], admin_url('admin.php')));
-            exit;
-        }
-
-        if ($country_iso === '' && count($detected_countries) === 1) {
-            $country_iso = $detected_countries[0];
-        }
+        $country_iso = count($detected_countries) === 1 ? (string) $detected_countries[0] : '';
 
         $existing_for_uniqueness = array_values(array_filter($shortcodes, function ($item) use ($landing_id) {
             return sanitize_text_field((string) ($item['id'] ?? '')) !== $landing_id;
@@ -843,7 +821,7 @@ class DC_Recargas_Admin {
             $active_tab = 'tab_saved';
         }
 
-        if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error', 'landing_shortcode_country_invalid'], true)) {
+        if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error'], true)) {
             $active_tab = 'tab_landings';
         }
 
@@ -1263,7 +1241,7 @@ class DC_Recargas_Admin {
                 }
 
                 .dc-combo-wrap.dc-combo-wrap--small {
-                    width: 120px;
+                    width: min(220px, 100%);
                 }
 
                 .dc-combo-wrap .dc-combo-input {
@@ -1327,7 +1305,7 @@ class DC_Recargas_Admin {
                 }
 
                 .dc-combo-input.small-text {
-                    width: 120px;
+                    width: 100%;
                 }
 
                 .dc-combo-input.regular-text {
@@ -1357,6 +1335,31 @@ class DC_Recargas_Admin {
 
                 .dc-edit-modal .dc-combo-wrap {
                     width: min(100%, 480px);
+                }
+
+                .dc-landing-bundles-checklist {
+                    max-height: 240px;
+                    overflow: auto;
+                    border: 1px solid #c9d6ea;
+                    border-radius: 8px;
+                    background: #ffffff;
+                    padding: 8px;
+                    display: grid;
+                    gap: 6px;
+                    width: min(680px, 100%);
+                }
+
+                .dc-landing-bundles-checklist__item {
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 8px;
+                    font-size: 13px;
+                    color: #1e293b;
+                    padding: 4px 2px;
+                }
+
+                .dc-landing-bundles-checklist__item input[type="checkbox"] {
+                    margin-top: 2px;
                 }
 
                 datalist {
@@ -1675,25 +1678,19 @@ class DC_Recargas_Admin {
                         <td><input type="text" id="dc_landing_subtitle" name="landing_subtitle" class="regular-text" placeholder="Elige un paquete y confirma tu recarga"></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="dc_landing_country_iso">País fijo (ISO, opcional)</label></th>
-                        <td>
-                            <input type="text" id="dc_landing_country_iso" name="landing_country_iso" class="small-text dc-combo-input" placeholder="CU" list="dc_dl_country_iso">
-                            <p class="description">Busca un país disponible en catálogo o bundles ya dados de alta. Si se define, el selector de país se bloquea en esa landing.</p>
-                        </td>
-                    </tr>
-                    <tr>
                         <th scope="row"><label for="dc_landing_bundle_ids">Bundles de la landing</label></th>
                         <td>
-                            <select id="dc_landing_bundle_ids" name="bundle_ids[]" class="large-text" size="8" multiple required>
+                            <div id="dc_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para la landing">
                                 <?php foreach ($bundles as $bundle) : ?>
                                     <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
                                     <?php if ($bundle_id === '') { continue; } ?>
-                                    <option value="<?php echo esc_attr($bundle_id); ?>">
-                                        [<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?>
-                                    </option>
+                                    <label class="dc-landing-bundles-checklist__item">
+                                        <input type="checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
+                                        <span>[<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
+                                    </label>
                                 <?php endforeach; ?>
-                            </select>
-                            <p class="description">Usa Ctrl/Cmd para seleccionar múltiples bundles.</p>
+                            </div>
+                            <p class="description">Marca con checkbox cada bundle que quieras incluir en la landing.</p>
                         </td>
                     </tr>
                 </table>
@@ -1752,7 +1749,7 @@ class DC_Recargas_Admin {
                     <div class="dc-edit-modal__header">
                         <div>
                             <h3 id="dc-edit-landing-modal-title">Editar shortcode dinámico</h3>
-                            <p>Actualiza objetivo, clave, país y bundles sin salir de la configuración.</p>
+                            <p>Actualiza objetivo, clave y bundles sin salir de la configuración.</p>
                         </div>
                         <button type="button" class="dc-edit-modal__close" aria-label="Cerrar edición" data-dc-landing-edit-close>&times;</button>
                     </div>
@@ -1780,25 +1777,19 @@ class DC_Recargas_Admin {
                                 <td><input type="text" id="dc_edit_landing_subtitle" name="landing_subtitle" class="regular-text"></td>
                             </tr>
                             <tr>
-                                <th scope="row"><label for="dc_edit_landing_country_iso">País fijo (ISO, opcional)</label></th>
-                                <td>
-                                    <input type="text" id="dc_edit_landing_country_iso" name="landing_country_iso" class="small-text dc-combo-input" list="dc_dl_country_iso" placeholder="CU">
-                                    <p class="description">El país fijo debe existir en el sistema y coincidir con los bundles seleccionados.</p>
-                                </td>
-                            </tr>
-                            <tr>
                                 <th scope="row"><label for="dc_edit_landing_bundle_ids">Bundles de la landing</label></th>
                                 <td>
-                                    <select id="dc_edit_landing_bundle_ids" name="bundle_ids[]" class="large-text" size="10" multiple required>
+                                    <div id="dc_edit_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para editar la landing">
                                         <?php foreach ($bundles as $bundle) : ?>
                                             <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
                                             <?php if ($bundle_id === '') { continue; } ?>
-                                            <option value="<?php echo esc_attr($bundle_id); ?>">
-                                                [<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?>
-                                            </option>
+                                            <label class="dc-landing-bundles-checklist__item">
+                                                <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
+                                                <span>[<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
+                                            </label>
                                         <?php endforeach; ?>
-                                    </select>
-                                    <p class="description">Usa Ctrl/Cmd para selección múltiple.</p>
+                                    </div>
+                                    <p class="description">Marca con checkbox los bundles que deben quedar en este shortcode.</p>
                                 </td>
                             </tr>
                         </table>
@@ -1897,6 +1888,7 @@ class DC_Recargas_Admin {
                 var apiResultsEl = document.getElementById('dc_api_results');
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiCreateBtn = document.getElementById('dc_api_create_btn');
+                var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
                 var manualCountryIsoEl = document.getElementById('dc_country_iso');
                 var manualLabelEl = document.getElementById('dc_label');
                 var manualSkuEl = document.getElementById('dc_sku_code');
@@ -2093,6 +2085,36 @@ class DC_Recargas_Admin {
                     manualBundleSourceEl.hidden = false;
                 }
 
+                function setCatalogSubtabState(tabId) {
+                    if (!catalogSubtabsEl || !tabId) {
+                        return false;
+                    }
+
+                    var tabFound = false;
+                    var subBtns = catalogSubtabsEl.querySelectorAll('[data-catalog-subtab]');
+                    var subPanels = catalogSubtabsEl.querySelectorAll('[data-catalog-panel]');
+
+                    subBtns.forEach(function (btn) {
+                        var isTarget = btn.getAttribute('data-catalog-subtab') === tabId;
+                        btn.classList.toggle('is-active', isTarget);
+                        btn.setAttribute('aria-pressed', isTarget ? 'true' : 'false');
+                        if (isTarget) {
+                            tabFound = true;
+                        }
+                    });
+
+                    subPanels.forEach(function (panel) {
+                        var isTarget = panel.getAttribute('data-catalog-panel') === tabId;
+                        panel.classList.toggle('is-active', isTarget);
+                        panel.hidden = !isTarget;
+                        panel.setAttribute('aria-hidden', isTarget ? 'false' : 'true');
+                    });
+
+                    return tabFound;
+                }
+
+                window.dcSetCatalogSubtab = setCatalogSubtabState;
+
                 function fillManualForm(item) {
                     if (manualCountryIsoEl) manualCountryIsoEl.value = item.country_iso || '';
                     if (manualLabelEl) manualLabelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.label || item.sku_code || '');
@@ -2105,9 +2127,25 @@ class DC_Recargas_Admin {
                 }
 
                 function openManualSubtab() {
-                    var manualTabBtn = document.querySelector('[data-catalog-subtab="manual"]');
-                    if (manualTabBtn) {
-                        manualTabBtn.click();
+                    var opened = false;
+
+                    if (typeof window.dcSetCatalogSubtab === 'function') {
+                        opened = window.dcSetCatalogSubtab('manual');
+                    }
+
+                    if (!opened) {
+                        var manualTabBtn = document.querySelector('[data-catalog-subtab="manual"]');
+                        if (manualTabBtn) {
+                            manualTabBtn.click();
+                            opened = true;
+                        }
+                    }
+
+                    if (opened && manualCountryIsoEl && typeof manualCountryIsoEl.focus === 'function') {
+                        manualCountryIsoEl.focus();
+                        if (typeof manualCountryIsoEl.scrollIntoView === 'function') {
+                            manualCountryIsoEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
                     }
                 }
 
@@ -3019,8 +3057,7 @@ class DC_Recargas_Admin {
                 var landingEditKeyEl = document.getElementById('dc_edit_landing_key');
                 var landingEditTitleEl = document.getElementById('dc_edit_landing_title');
                 var landingEditSubtitleEl = document.getElementById('dc_edit_landing_subtitle');
-                var landingEditCountryEl = document.getElementById('dc_edit_landing_country_iso');
-                var landingEditBundlesEl = document.getElementById('dc_edit_landing_bundle_ids');
+                var landingEditBundleCheckboxEls = document.querySelectorAll('#dc_edit_landing_form .dc-edit-landing-bundle-checkbox');
                 var checkBalanceBtn = document.getElementById('dc_check_balance_btn');
                 var balanceResultEl = document.getElementById('dc_balance_result');
                 var lastBalanceAutoAt = 0;
@@ -3282,9 +3319,8 @@ class DC_Recargas_Admin {
                     if (landingEditKeyEl) landingEditKeyEl.value = landing.key || '';
                     if (landingEditTitleEl) landingEditTitleEl.value = landing.title || '';
                     if (landingEditSubtitleEl) landingEditSubtitleEl.value = landing.subtitle || '';
-                    if (landingEditCountryEl) landingEditCountryEl.value = landing.country_iso || '';
 
-                    if (landingEditBundlesEl) {
+                    if (landingEditBundleCheckboxEls.length) {
                         var selectedMap = {};
                         if (Array.isArray(landing.bundle_ids)) {
                             landing.bundle_ids.forEach(function (bundleId) {
@@ -3292,8 +3328,8 @@ class DC_Recargas_Admin {
                             });
                         }
 
-                        Array.prototype.forEach.call(landingEditBundlesEl.options, function (optionEl) {
-                            optionEl.selected = !!selectedMap[String(optionEl.value)];
+                        landingEditBundleCheckboxEls.forEach(function (checkboxEl) {
+                            checkboxEl.checked = !!selectedMap[String(checkboxEl.value)];
                         });
                     }
 
@@ -3393,6 +3429,45 @@ class DC_Recargas_Admin {
                     if (sendCurrencyEl) sendCurrencyEl.value = item.send_currency_iso || 'EUR';
                     if (providerEl) providerEl.value = item.operator || '';
                     if (descriptionEl) descriptionEl.value = item.receive || '';
+                }
+
+                var datalistMap = {
+                    dc_dl_country_iso: ['dc_country_iso', 'dc_edit_country_iso'],
+                    dc_dl_label: ['dc_label', 'dc_edit_label'],
+                    dc_dl_send_currency: ['dc_send_currency_iso', 'dc_edit_send_currency_iso'],
+                    dc_dl_provider_name: ['dc_provider_name', 'dc_edit_provider_name']
+                };
+                var comboboxRegistry = [];
+
+                function addToDatalist(datalistId, value) {
+                    var dl = document.getElementById(datalistId);
+                    var rawValue = String(value || '').trim();
+                    if (!dl || !rawValue) {
+                        return;
+                    }
+
+                    var normalizedValue = rawValue;
+                    if (datalistId === 'dc_dl_country_iso') {
+                        normalizedValue = rawValue.toUpperCase();
+                    }
+                    if (datalistId === 'dc_dl_send_currency') {
+                        normalizedValue = rawValue.toUpperCase();
+                    }
+
+                    var existing = false;
+                    dl.querySelectorAll('option').forEach(function (opt) {
+                        if (String(opt.value || '').toLowerCase() === normalizedValue.toLowerCase()) {
+                            existing = true;
+                        }
+                    });
+
+                    if (existing) {
+                        return;
+                    }
+
+                    var option = document.createElement('option');
+                    option.value = normalizedValue;
+                    dl.appendChild(option);
                 }
 
                 function getOptions(datalistId) {
@@ -3559,36 +3634,39 @@ class DC_Recargas_Admin {
 
             // -- Sub-pestañas del Catálogo --------------------------------
             (function () {
-                var subBtns   = document.querySelectorAll('[data-catalog-subtab]');
-                var subPanels = document.querySelectorAll('[data-catalog-panel]');
+                var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
+                var subBtns = catalogSubtabsEl ? catalogSubtabsEl.querySelectorAll('[data-catalog-subtab]') : [];
+                var subPanels = catalogSubtabsEl ? catalogSubtabsEl.querySelectorAll('[data-catalog-panel]') : [];
 
                 if (!subBtns.length || !subPanels.length) {
                     return;
                 }
 
-                function setSubTab(tabId) {
-                    subBtns.forEach(function (btn) {
-                        if (btn.getAttribute('data-catalog-subtab') === tabId) {
-                            btn.classList.add('is-active');
-                        } else {
-                            btn.classList.remove('is-active');
-                        }
-                    });
+                var setSubTab = typeof window.dcSetCatalogSubtab === 'function'
+                    ? window.dcSetCatalogSubtab
+                    : function (tabId) {
+                        subBtns.forEach(function (btn) {
+                            var isTarget = btn.getAttribute('data-catalog-subtab') === tabId;
+                            btn.classList.toggle('is-active', isTarget);
+                            btn.setAttribute('aria-pressed', isTarget ? 'true' : 'false');
+                        });
 
-                    subPanels.forEach(function (panel) {
-                        if (panel.getAttribute('data-catalog-panel') === tabId) {
-                            panel.classList.add('is-active');
-                        } else {
-                            panel.classList.remove('is-active');
-                        }
-                    });
-                }
+                        subPanels.forEach(function (panel) {
+                            var isTarget = panel.getAttribute('data-catalog-panel') === tabId;
+                            panel.classList.toggle('is-active', isTarget);
+                            panel.hidden = !isTarget;
+                            panel.setAttribute('aria-hidden', isTarget ? 'false' : 'true');
+                        });
+                    };
 
                 subBtns.forEach(function (btn) {
                     btn.addEventListener('click', function () {
                         setSubTab(btn.getAttribute('data-catalog-subtab'));
                     });
                 });
+
+                var activeBtn = catalogSubtabsEl.querySelector('[data-catalog-subtab].is-active');
+                setSubTab(activeBtn ? activeBtn.getAttribute('data-catalog-subtab') : 'api');
             })();
         </script>
         <?php
@@ -3610,7 +3688,6 @@ class DC_Recargas_Admin {
             'landing_shortcode_cloned' => ['success', 'Landing duplicada correctamente.'],
             'landing_shortcode_deleted' => ['success', 'Shortcode dinámico eliminado correctamente.'],
             'landing_shortcode_error' => ['error', 'Completa nombre y selecciona al menos un bundle válido para crear el shortcode dinámico.'],
-            'landing_shortcode_country_invalid' => ['error', 'El país fijo debe existir en el sistema y coincidir con al menos uno de los bundles seleccionados para esa landing.'],
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un bundle.'],
             'bundle_duplicate' => ['error', 'Ya existe otro bundle con el mismo país y SKU.'],
             'bundle_not_found' => ['error', 'No se encontró el bundle solicitado.'],
@@ -3704,34 +3781,6 @@ class DC_Recargas_Admin {
 
         return array_values($choices);
     }
-
-    private function is_valid_landing_country_selection($country_iso, $detected_countries = []) {
-        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
-        if ($country_iso === '') {
-            return true;
-        }
-
-        if (strlen($country_iso) !== 2 || !ctype_alpha($country_iso)) {
-            return false;
-        }
-
-        $detected_countries = array_values(array_unique(array_filter(array_map(function ($value) {
-            return strtoupper(sanitize_text_field((string) $value));
-        }, (array) $detected_countries))));
-
-        if (!empty($detected_countries) && !in_array($country_iso, $detected_countries, true)) {
-            return false;
-        }
-
-        foreach ($this->get_landing_country_choices() as $choice) {
-            if ($country_iso === strtoupper((string) ($choice['iso'] ?? ''))) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
 
     private function extract_first_number($text) {
         $text = (string) $text;

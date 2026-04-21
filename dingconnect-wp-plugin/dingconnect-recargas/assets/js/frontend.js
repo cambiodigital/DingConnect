@@ -16,6 +16,10 @@
     var countryList      = findInApp('dc-country-list');
     var countryClose     = findInApp('dc-country-close');
     var loadingEl        = findInApp('dc-loading');
+    var activeStepEl     = findInApp('dc-active-step');
+    var activeBundleSel  = findInApp('dc-active-bundle-select');
+    var activeBundleInfo = findInApp('dc-active-bundle-info');
+    var changeBundleBtn  = findInApp('dc-change-bundle-btn');
     var providerFilter   = findInApp('dc-provider-filter');
     var providerButtons  = findInApp('dc-provider-buttons');
     var bundlesEl        = findInApp('dc-bundles');
@@ -35,6 +39,10 @@
         countryList,
         countryClose,
         loadingEl,
+        activeStepEl,
+        activeBundleSel,
+        activeBundleInfo,
+        changeBundleBtn,
         bundlesEl,
         confirmEl,
         confirmSummary,
@@ -62,7 +70,7 @@
     var allCountries = Array.isArray(appCountries) && appCountries.length
         ? appCountries
         : (Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : []);
-    var fixedCountryIso = String(app.getAttribute('data-fixed-country-iso') || '').toUpperCase();
+    var defaultCountryIso = String(app.getAttribute('data-default-country-iso') || '').toUpperCase();
     var allowedBundleIds = String(app.getAttribute('data-allowed-bundle-ids') || '')
         .split(',')
         .map(function (id) { return id.trim(); })
@@ -85,7 +93,6 @@
         lastSearchAt: 0,
         inFlightSearchKey: '',
         dataSource: '', // 'saved' | 'dingconnect' | 'fallback'
-        fixedCountryIso: fixedCountryIso,
         allowedBundleMap: allowedBundleMap,
     };
 
@@ -112,6 +119,72 @@
         return String((bundle && (bundle.ProviderName || bundle.ProviderCode)) || 'Operador');
     }
 
+    function formatMoney(amount, currency) {
+        return Number(amount || 0).toFixed(2) + ' ' + String(currency || 'USD');
+    }
+
+    function renderActiveBundleInfo(bundle) {
+        if (!bundle) {
+            activeBundleInfo.innerHTML = '';
+            return;
+        }
+
+        var benefit = String(bundle.Description || bundle.DefaultDisplayText || 'Sin beneficios adicionales informados.');
+        var providerLabel = getProviderLabel(bundle);
+        var amount = formatMoney(bundle.SendValue, bundle.SendCurrencyIso);
+
+        activeBundleInfo.innerHTML = '<div class="dc-active-field">'
+            + '<span class="dc-active-field-label">Beneficios recibidos</span>'
+            + '<span class="dc-active-field-value">' + escapeHtml(benefit) + '</span>'
+            + '</div>'
+            + '<div class="dc-active-field">'
+            + '<span class="dc-active-field-label">Operador</span>'
+            + '<span class="dc-active-field-value">' + escapeHtml(providerLabel) + '</span>'
+            + '</div>'
+            + '<div class="dc-active-field">'
+            + '<span class="dc-active-field-label">Monto y moneda</span>'
+            + '<span class="dc-active-field-value">' + escapeHtml(amount) + '</span>'
+            + '</div>';
+    }
+
+    function setReviewMode(enabled) {
+        if (enabled) {
+            providerFilter.hidden = true;
+            bundlesEl.hidden = true;
+            activeStepEl.hidden = false;
+            confirmEl.hidden = false;
+            return;
+        }
+
+        activeStepEl.hidden = true;
+        confirmEl.hidden = true;
+        showProviderStep();
+    }
+
+    function resetActiveStep() {
+        state.selected = null;
+        activeBundleSel.innerHTML = '';
+        renderActiveBundleInfo(null);
+        activeStepEl.hidden = true;
+        confirmEl.hidden = true;
+    }
+
+    function syncActiveBundleSelect(selectedSku) {
+        var bundles = state.filteredBundles || [];
+        activeBundleSel.innerHTML = '';
+
+        bundles.forEach(function (bundle) {
+            var option = document.createElement('option');
+            option.value = String(bundle.SkuCode || '');
+            option.textContent = (bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete')
+                + ' · ' + formatMoney(bundle.SendValue, bundle.SendCurrencyIso);
+            if (option.value === String(selectedSku || '')) {
+                option.selected = true;
+            }
+            activeBundleSel.appendChild(option);
+        });
+    }
+
     /* -- Country picker -- */
     function selectCountry(c) {
         state.country = c;
@@ -121,10 +194,6 @@
     }
 
     function openOverlay() {
-        if (state.fixedCountryIso) {
-            setFeedback('Esta landing tiene país fijo configurado.', 'info');
-            return;
-        }
         overlay.hidden = false;
         countrySearch.value = '';
         renderCountryList('');
@@ -245,17 +314,21 @@
 
         state.fullPhone = fullPhone;
         state.inFlightSearchKey = searchKey;
-        state.selected = null;
-        confirmEl.hidden = true;
+        resetActiveStep();
         resultEl.hidden = true;
         bundlesEl.hidden = true;
         loadingEl.hidden = false;
         setFeedback('', '');
 
         try {
+            var allowedBundleParam = allowedBundleIds.length
+                ? '&allowed_bundle_ids=' + encodeURIComponent(allowedBundleIds.join(','))
+                : '';
+
             var res = await fetchJson(
                 '/products?account_number=' + encodeURIComponent(fullPhone)
                 + '&country_iso=' + encodeURIComponent(state.country.iso)
+                + allowedBundleParam
             );
             var items = res.result || [];
             state.bundles = Array.isArray(items) ? items : [];
@@ -367,8 +440,7 @@
         state.filteredBundles = state.bundles.filter(function (b) {
             return getProviderLabel(b) === provider;
         });
-        state.selected = null;
-        confirmEl.hidden = true;
+        resetActiveStep();
         renderBundles();
     }
 
@@ -397,6 +469,7 @@
         state.filteredBundles.forEach(function (bundle) {
             var card = document.createElement('div');
             card.className = 'dc-bundle-card';
+            card.dataset.sku = String(bundle.SkuCode || '');
             var benefit = bundle.Description || '';
             var isUssd = benefit && /dial|\bUSSD\b|\*\d/i.test(benefit);
             var providerLabel = getProviderLabel(bundle);
@@ -414,7 +487,7 @@
                 + '</div>';
 
             card.addEventListener('click', function () {
-                selectBundle(bundle, card);
+                selectBundle(bundle, card, { promoteStep: true });
             });
             bundlesEl.appendChild(card);
         });
@@ -426,17 +499,29 @@
         bundlesEl.innerHTML = '';
         bundlesEl.hidden = true;
         if (providerFilter) providerFilter.hidden = true;
-        confirmEl.hidden = true;
+        resetActiveStep();
     }
 
     /* -- Select bundle ? show confirm -- */
-    function selectBundle(bundle, cardEl) {
+    function selectBundle(bundle, cardEl, opts) {
+        opts = opts || {};
         state.selected = bundle;
 
         // Visual selection
         var cards = bundlesEl.querySelectorAll('.dc-bundle-card');
         cards.forEach(function (c) { c.classList.remove('selected'); });
-        cardEl.classList.add('selected');
+        if (cardEl) {
+            cardEl.classList.add('selected');
+        } else {
+            cards.forEach(function (c) {
+                if (String(c.dataset.sku || '') === String(bundle.SkuCode || '')) {
+                    c.classList.add('selected');
+                }
+            });
+        }
+
+        syncActiveBundleSelect(bundle.SkuCode || '');
+        renderActiveBundleInfo(bundle);
 
         // Build summary
         var countryName = state.country ? state.country.name : '';
@@ -457,8 +542,29 @@
         }
         confirmBtn.disabled = false;
 
-        confirmEl.hidden = false;
-        confirmEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (opts.promoteStep !== false) {
+            setReviewMode(true);
+            activeStepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    if (activeBundleSel) {
+        activeBundleSel.addEventListener('change', function () {
+            var selectedSku = String(activeBundleSel.value || '');
+            var nextBundle = (state.filteredBundles || []).find(function (bundle) {
+                return String(bundle.SkuCode || '') === selectedSku;
+            });
+
+            if (!nextBundle) return;
+            selectBundle(nextBundle, null, { promoteStep: false });
+        });
+    }
+
+    if (changeBundleBtn) {
+        changeBundleBtn.addEventListener('click', function () {
+            setReviewMode(false);
+            bundlesEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
     }
 
     /* -- Confirm action -- */
@@ -567,14 +673,8 @@
 
     /* -- Init -- */
     var defaultCountry = allCountries.find(function (c) { return c.iso === 'CU'; }) || allCountries[0];
-    if (state.fixedCountryIso) {
-        defaultCountry = allCountries.find(function (c) { return c.iso === state.fixedCountryIso; }) || defaultCountry;
-        countryBtn.setAttribute('aria-disabled', 'true');
-        countryBtn.title = 'País fijo configurado para esta landing';
+    if (defaultCountryIso) {
+        defaultCountry = allCountries.find(function (c) { return c.iso === defaultCountryIso; }) || defaultCountry;
     }
     if (defaultCountry) selectCountry(defaultCountry);
-
-    if (state.fixedCountryIso) {
-        countryBtn.classList.add('is-fixed-country');
-    }
 })();

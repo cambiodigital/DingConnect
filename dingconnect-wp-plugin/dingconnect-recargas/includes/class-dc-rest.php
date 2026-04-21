@@ -48,6 +48,10 @@ class DC_Recargas_REST {
                     'required' => false,
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
+                'allowed_bundle_ids' => [
+                    'required' => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
             ],
         ]);
 
@@ -120,6 +124,7 @@ class DC_Recargas_REST {
 
         $account_number = $this->sanitize_phone($request->get_param('account_number'));
         $country_iso = strtoupper(sanitize_text_field($request->get_param('country_iso') ?? ''));
+        $allowed_bundle_ids = $this->parse_bundle_ids((string) ($request->get_param('allowed_bundle_ids') ?? ''));
 
         if (empty($account_number) || strlen($account_number) < 8) {
             return new WP_REST_Response([
@@ -128,8 +133,9 @@ class DC_Recargas_REST {
             ], 400);
         }
 
-        // Catálogo curado: si existen bundles activos para el país, mostrar solo esos.
-        $saved = $this->filter_bundles_by_country($country_iso);
+        // Catálogo curado: para shortcodes de landing, respetar bundles configurados;
+        // en modo general, usar bundles activos por país.
+        $saved = $this->filter_bundles_by_country($country_iso, $allowed_bundle_ids);
         if (!empty($saved)) {
             return rest_ensure_response([
                 'ok' => true,
@@ -304,10 +310,20 @@ class DC_Recargas_REST {
         return current_user_can('manage_options');
     }
 
-    private function filter_bundles_by_country($country_iso) {
+    private function filter_bundles_by_country($country_iso, $allowed_bundle_ids = []) {
         $bundles = get_option('dc_recargas_bundles', []);
-        $active = array_values(array_filter($bundles, function ($bundle) use ($country_iso) {
-            if (empty($bundle['is_active'])) {
+        $allowed_bundle_ids = array_values(array_unique(array_filter(array_map('strval', (array) $allowed_bundle_ids))));
+        $has_allowed_filter = !empty($allowed_bundle_ids);
+        $allowed_map = $has_allowed_filter ? array_fill_keys($allowed_bundle_ids, true) : [];
+
+        $active = array_values(array_filter($bundles, function ($bundle) use ($country_iso, $has_allowed_filter, $allowed_map) {
+            $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
+
+            if ($has_allowed_filter) {
+                if ($bundle_id === '' || !isset($allowed_map[$bundle_id])) {
+                    return false;
+                }
+            } elseif (empty($bundle['is_active'])) {
                 return false;
             }
 
@@ -332,6 +348,20 @@ class DC_Recargas_REST {
                 'IsRange' => false,
             ];
         }, $active);
+    }
+
+    private function parse_bundle_ids($raw_ids) {
+        $parts = array_map('trim', explode(',', (string) $raw_ids));
+        $clean = [];
+
+        foreach ($parts as $id) {
+            $id = sanitize_text_field($id);
+            if ($id !== '') {
+                $clean[] = $id;
+            }
+        }
+
+        return array_values(array_unique($clean));
     }
 
     private function normalize_products_for_frontend($items, $country_iso) {

@@ -70,9 +70,9 @@ class DC_Recargas_Frontend {
             $bundle_ids = array_values(array_unique(array_merge($bundle_ids, $this->parse_bundle_ids(implode(',', $config['bundle_ids'])))));
         }
 
-        $country_iso = strtoupper(sanitize_text_field((string) $atts['country']));
-        if ($country_iso === '' && !empty($config['country_iso'])) {
-            $country_iso = strtoupper(sanitize_text_field((string) $config['country_iso']));
+        $default_country_iso = strtoupper(sanitize_text_field((string) $atts['country']));
+        if ($default_country_iso === '' && !empty($config['country_iso'])) {
+            $default_country_iso = strtoupper(sanitize_text_field((string) $config['country_iso']));
         }
 
         $title = sanitize_text_field((string) $atts['title']);
@@ -86,11 +86,14 @@ class DC_Recargas_Frontend {
         }
 
         $bundle_attr = implode(',', $bundle_ids);
-        $available_countries = $this->get_available_countries_for_shortcode($bundle_ids, $country_iso);
+        $available_countries = $this->get_available_countries_for_shortcode($bundle_ids);
+        if ($default_country_iso === '' && count($available_countries) === 1) {
+            $default_country_iso = strtoupper(sanitize_text_field((string) ($available_countries[0]['iso'] ?? '')));
+        }
 
         ob_start();
         ?>
-        <div class="dc-recargas" id="dc-recargas-app" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-fixed-country-iso="<?php echo esc_attr($country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
+        <div class="dc-recargas" id="dc-recargas-app" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
             <div class="dc-card">
                 <div class="dc-header">
                     <h2><?php echo esc_html($title); ?></h2>
@@ -104,6 +107,20 @@ class DC_Recargas_Frontend {
                         <svg class="dc-chevron-icon" viewBox="0 0 12 8" width="10" height="8"><path d="M1 1.5l5 5 5-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
                     </button>
                     <input id="dc-phone" type="tel" inputmode="numeric" maxlength="15" placeholder="Número móvil" autocomplete="tel-national">
+                </div>
+
+                <div id="dc-active-step" class="dc-active-step" hidden>
+                    <div class="dc-active-step-header">
+                        <span class="dc-active-step-kicker">Paquete activo</span>
+                        <button type="button" class="dc-change-bundle-btn" id="dc-change-bundle-btn">Cambiar paquete</button>
+                    </div>
+                    <select id="dc-active-bundle-select" class="dc-active-bundle-select" aria-label="Seleccionar paquete activo"></select>
+                    <div id="dc-active-bundle-info" class="dc-active-bundle-info"></div>
+                </div>
+
+                <div id="dc-confirm" class="dc-confirm" hidden>
+                    <div class="dc-confirm-summary" id="dc-confirm-summary"></div>
+                    <button type="button" class="dc-confirm-btn" id="dc-confirm-btn">Confirmar recarga</button>
                 </div>
 
                 <div class="dc-country-overlay" id="dc-country-overlay" hidden>
@@ -128,11 +145,6 @@ class DC_Recargas_Frontend {
                 </div>
 
                 <div id="dc-bundles" class="dc-bundles" hidden></div>
-
-                <div id="dc-confirm" class="dc-confirm" hidden>
-                    <div class="dc-confirm-summary" id="dc-confirm-summary"></div>
-                    <button type="button" class="dc-confirm-btn" id="dc-confirm-btn">Confirmar recarga</button>
-                </div>
 
                 <div id="dc-feedback" class="dc-feedback" aria-live="polite"></div>
                 <div id="dc-result" class="dc-result" hidden></div>
@@ -180,7 +192,7 @@ class DC_Recargas_Frontend {
         return array_values(array_unique($clean));
     }
 
-    private function get_available_countries_for_shortcode($bundle_ids, $fixed_country_iso = '') {
+    private function get_available_countries_for_shortcode($bundle_ids) {
         $reference_map = self::get_country_reference_map();
         $selected_isos = [];
         $bundle_ids = array_values(array_unique(array_filter(array_map('strval', (array) $bundle_ids))));
@@ -207,11 +219,6 @@ class DC_Recargas_Frontend {
             }
         }
 
-        $fixed_country_iso = strtoupper(sanitize_text_field((string) $fixed_country_iso));
-        if ($fixed_country_iso !== '') {
-            $selected_isos[$fixed_country_iso] = true;
-        }
-
         if (empty($selected_isos)) {
             return self::get_country_reference_list();
         }
@@ -229,16 +236,7 @@ class DC_Recargas_Frontend {
             }
         }
 
-        usort($countries, function ($left, $right) use ($fixed_country_iso) {
-            if ($fixed_country_iso !== '') {
-                if (($left['iso'] ?? '') === $fixed_country_iso) {
-                    return -1;
-                }
-                if (($right['iso'] ?? '') === $fixed_country_iso) {
-                    return 1;
-                }
-            }
-
+        usort($countries, function ($left, $right) {
             return strcasecmp((string) ($left['name'] ?? ''), (string) ($right['name'] ?? ''));
         });
 

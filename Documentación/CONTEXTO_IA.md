@@ -127,6 +127,12 @@ Namespace actual: `dingconnect/v1`
 43. Mejora UX en `Buscar en API`: el warning `Selecciona un país antes de buscar.` dejó de reutilizar el bloque de ayuda de resultados y ahora aparece sobre el selector de país con estilo visual naranja para señalar mejor la acción requerida.
 44. Persistencia local en `Buscar en API`: la última consulta exitosa del admin queda guardada por navegador (`localStorage`) con país, filtro, texto y resultados restaurables para continuar catalogación sin reconsultar de inmediato a DingConnect.
 45. Mejora UX en `Alta manual`: cuando un paquete se carga con doble click desde `Buscar en API`, ahora se muestra junto a `Datos del bundle` una etiqueta con el nombre limpio del paquete seleccionado (`label` API) para dar trazabilidad visual durante la edición manual.
+46. Corrección de navegación en `Catálogo y alta`: la subpestaña `Alta manual` ahora se activa de forma explícita y consistente, tanto al hacer click directo como al mover un paquete desde `Buscar en API` por doble click, evitando depender solo de eventos `click()` simulados.
+47. Mejora UX en `Wizard y landings`: la selección de `Bundles de la landing` ahora usa checklist con checkboxes en alta y en el modal de edición, reemplazando el selector múltiple con `Ctrl/Cmd` para hacer explícito qué bundles se agregan o quitan.
+48. Mejora UX en frontend público (`dingconnect_recargas`): el formulario ahora incorpora bloque `Paquete activo` bajo el número con selector y detalle del bundle (Beneficios recibidos, Operador, Monto y moneda); al seleccionar paquete, la confirmación pasa al bloque superior y se ocultan los pasos inferiores hasta solicitar `Cambiar paquete`.
+49. Corrección UX en panel admin para inputs con buscador (combobox sobre datalist): se completó la inicialización JavaScript compartida (`datalistMap`, `comboboxRegistry`, `addToDatalist`) y se ajustó el tamaño visual del campo `País fijo (ISO, opcional)` en alta/edición de landings, eliminando el render estrecho y comportamiento inconsistente del dropdown.
+50. Simplificación operativa de landings: el panel admin dejó de pedir `País fijo (ISO, opcional)` en alta/edición de shortcodes dinámicos; el país se infiere desde los bundles seleccionados para evitar configuración duplicada.
+51. Regla de país en frontend de landings: el selector de país ya no se bloquea por configuración fija y se alimenta con los `country_iso` de los bundles permitidos en esa landing.
 
 ## Hallazgos clave para futuras IA
 

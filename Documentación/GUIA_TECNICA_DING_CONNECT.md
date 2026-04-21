@@ -139,9 +139,9 @@ Flujo recomendado:
 ### Nota operativa Landings dinámicas (abril 2026)
 
 - El panel admin incluye gestión de shortcodes dinámicos por objetivo de campaña/landing.
-- Cada landing puede seleccionar bundles específicos y opcionalmente fijar país, título y subtítulo del formulario.
+- Cada landing selecciona bundles específicos y opcionalmente define título y subtítulo del formulario.
 - La configuración de cada landing se administra inline en el panel (alta, edición y baja) sin salir de la pantalla de configuración del plugin.
-- El campo `País fijo (ISO, opcional)` del admin opera como buscador/select sobre países disponibles en sistema (`bundles + landings existentes + catálogo CSV`) y valida que el ISO fijo pertenezca a los bundles seleccionados.
+- El país operativo de la landing se deriva automáticamente de los `country_iso` presentes en los bundles seleccionados.
 - El shortcode base soporta `landing_key` para resolver configuración guardada en admin:
   - Ejemplo: `[dingconnect_recargas landing_key="cuba-mayo-2026"]`
 - También soporta filtros directos por atributos cuando se requiera configuración manual:
@@ -149,6 +149,8 @@ Flujo recomendado:
   - `country="CU"`
   - `title="Recargas Cuba"`
   - `subtitle="Selecciona tu paquete y confirma"`
+- Contrato de catálogo para landing: el frontend del shortcode envía `allowed_bundle_ids` al endpoint `/products` y backend prioriza esos bundles explícitos de la landing. Esto evita que se mezclen bundles activos globales del país cuando el objetivo tiene su propio catálogo curado.
+- Selector de país en frontend: ya no depende de una configuración fija; se muestra con los países detectados en los bundles permitidos de esa landing.
 
 ### Nota operativa Catálogo y alta (abril 2026)
 
