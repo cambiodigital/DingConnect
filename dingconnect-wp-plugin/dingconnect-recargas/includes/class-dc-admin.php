@@ -2071,16 +2071,16 @@ class DC_Recargas_Admin {
 
             <div class="dc-catalog-subtabs">
                 <nav class="dc-catalog-subnav" aria-label="Métodos de alta de bundles">
-                    <button type="button" class="dc-catalog-subnav__btn is-active" data-catalog-subtab="api">
+                    <button type="button" class="dc-catalog-subnav__btn is-active" data-catalog-subtab="api" aria-pressed="true">
                         🔌 Buscar en API
                     </button>
-                    <button type="button" class="dc-catalog-subnav__btn" data-catalog-subtab="manual">
+                    <button type="button" class="dc-catalog-subnav__btn" data-catalog-subtab="manual" aria-pressed="false">
                         ✏️ Alta manual
                     </button>
                 </nav>
 
                 <!-- ── Sub-panel 2: API ── -->
-                <div class="dc-catalog-subpanel is-active" data-catalog-panel="api">
+                <div class="dc-catalog-subpanel is-active" data-catalog-panel="api" aria-hidden="false">
 
             <p class="dc-catalog-subpanel__intro">Consulta los paquetes disponibles directamente desde DingConnect en tiempo real. No necesitas el CSV; los resultados se guardan en caché por <strong>10 minutos</strong> por país.</p>
 
@@ -2128,13 +2128,14 @@ class DC_Recargas_Admin {
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><label for="dc_api_results">Paquetes encontrados (doble click para alta manual)</label></th>
+                    <th scope="row"><label for="dc_api_results">Paquetes encontrados</label></th>
                     <td>
                         <input type="text" id="dc_api_search" class="regular-text" placeholder="Buscar por operador, beneficio o SKU..." disabled style="margin-bottom:6px;width:100%;box-sizing:border-box;">
                         <select id="dc_api_results" size="10" class="large-text"></select>
-                        <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API». Luego puedes hacer doble click en un paquete para cargarlo en «Alta manual».</p>
+                        <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API». Luego selecciona un paquete y usa los botones abajo.</p>
                         <p>
                             <button type="button" class="button button-primary" id="dc_api_create_btn" disabled>Crear bundle desde API</button>
+                            <button type="button" class="button" id="dc_api_load_manual_btn" disabled>Cargar en Alta manual</button>
                         </p>
                     </td>
                 </tr>
@@ -2150,6 +2151,7 @@ class DC_Recargas_Admin {
                 var apiResultsEl = document.getElementById('dc_api_results');
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiCreateBtn = document.getElementById('dc_api_create_btn');
+                var apiLoadManualBtn = document.getElementById('dc_api_load_manual_btn');
                 var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
                 var manualCountryIsoEl = document.getElementById('dc_country_iso');
                 var manualLabelEl = document.getElementById('dc_label');
@@ -2347,6 +2349,32 @@ class DC_Recargas_Admin {
                     manualBundleSourceEl.hidden = false;
                 }
 
+                function bindCatalogSubtabButtons() {
+                    if (!catalogSubtabsEl) {
+                        return false;
+                    }
+
+                    var subBtns = catalogSubtabsEl.querySelectorAll('[data-catalog-subtab]');
+                    if (!subBtns.length) {
+                        return false;
+                    }
+
+                    subBtns.forEach(function (btn) {
+                        if (btn.getAttribute('data-dc-catalog-bound') === '1') {
+                            return;
+                        }
+
+                        btn.addEventListener('click', function (event) {
+                            event.preventDefault();
+                            setCatalogSubtabState(btn.getAttribute('data-catalog-subtab'));
+                        });
+
+                        btn.setAttribute('data-dc-catalog-bound', '1');
+                    });
+
+                    return true;
+                }
+
                 function setCatalogSubtabState(tabId) {
                     if (!catalogSubtabsEl || !tabId) {
                         return false;
@@ -2360,22 +2388,47 @@ class DC_Recargas_Admin {
                         var isTarget = btn.getAttribute('data-catalog-subtab') === tabId;
                         btn.classList.toggle('is-active', isTarget);
                         btn.setAttribute('aria-pressed', isTarget ? 'true' : 'false');
+                        btn.setAttribute('tabindex', isTarget ? '0' : '-1');
                         if (isTarget) {
                             tabFound = true;
                         }
                     });
+
+                    if (!tabFound) {
+                        return false;
+                    }
 
                     subPanels.forEach(function (panel) {
                         var isTarget = panel.getAttribute('data-catalog-panel') === tabId;
                         panel.classList.toggle('is-active', isTarget);
                         panel.hidden = !isTarget;
                         panel.setAttribute('aria-hidden', isTarget ? 'false' : 'true');
+                        panel.setAttribute('tabindex', isTarget ? '0' : '-1');
                     });
 
-                    return tabFound;
+                    catalogSubtabsEl.setAttribute('data-active-catalog-subtab', tabId);
+
+                    return true;
+                }
+
+                function ensureCatalogSubtabsReady(preferredTabId) {
+                    if (!catalogSubtabsEl) {
+                        return false;
+                    }
+
+                    bindCatalogSubtabButtons();
+
+                    var activeTabId = preferredTabId || catalogSubtabsEl.getAttribute('data-active-catalog-subtab');
+                    if (!activeTabId) {
+                        var activeBtn = catalogSubtabsEl.querySelector('[data-catalog-subtab].is-active');
+                        activeTabId = activeBtn ? activeBtn.getAttribute('data-catalog-subtab') : 'api';
+                    }
+
+                    return setCatalogSubtabState(activeTabId || 'api');
                 }
 
                 window.dcSetCatalogSubtab = setCatalogSubtabState;
+                window.dcEnsureCatalogSubtabs = ensureCatalogSubtabsReady;
 
                 function fillManualForm(item) {
                     if (manualCountryIsoEl) manualCountryIsoEl.value = item.country_iso || '';
@@ -2391,7 +2444,9 @@ class DC_Recargas_Admin {
                 function openManualSubtab() {
                     var opened = false;
 
-                    if (typeof window.dcSetCatalogSubtab === 'function') {
+                    if (typeof window.dcEnsureCatalogSubtabs === 'function') {
+                        opened = window.dcEnsureCatalogSubtabs('manual');
+                    } else if (typeof window.dcSetCatalogSubtab === 'function') {
                         opened = window.dcSetCatalogSubtab('manual');
                     }
 
@@ -2417,6 +2472,7 @@ class DC_Recargas_Admin {
                     apiSelected = null;
                     apiResultsEl.innerHTML = '';
                     apiCreateBtn.disabled = true;
+                    apiLoadManualBtn.disabled = true;
 
                     if (apiFilterEl) {
                         apiFilterEl.innerHTML = '<option value="all">Todos los tipos</option>';
@@ -2491,11 +2547,11 @@ class DC_Recargas_Admin {
                         });
 
                     if (apiFilterEl && apiFilterEl.value !== 'all') {
-                        apiHelpEl.textContent = items.length + ' paquete(s) en «' + (apiGroupLabels[apiFilterEl.value] || apiFilterEl.value) + '». Selecciona uno para crear el bundle o haz doble click para cargarlo en alta manual.';
+                        apiHelpEl.textContent = items.length + ' paquete(s) en «' + (apiGroupLabels[apiFilterEl.value] || apiFilterEl.value) + '». Selecciona uno para crear el bundle o cargarlo en alta manual.';
                         return;
                     }
 
-                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s), agrupados por tipo. Selecciona uno para crear el bundle o haz doble click para cargarlo en alta manual.';
+                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s), agrupados por tipo. Selecciona uno para crear el bundle o cargarlo en alta manual.';
                 }
 
                 function refreshApiResults() {
@@ -2569,26 +2625,25 @@ class DC_Recargas_Admin {
                     if (!opt) {
                         apiSelected = null;
                         apiCreateBtn.disabled = true;
+                        apiLoadManualBtn.disabled = true;
                         return;
                     }
                     try {
                         apiSelected = JSON.parse(opt.dataset.item);
                         apiCreateBtn.disabled = false;
+                        apiLoadManualBtn.disabled = false;
                     } catch (e) {
                         apiSelected = null;
                         apiCreateBtn.disabled = true;
+                        apiLoadManualBtn.disabled = true;
                     }
                 });
 
-                apiResultsEl.addEventListener('dblclick', function () {
-                    var opt = apiResultsEl.options[apiResultsEl.selectedIndex];
-                    if (!opt) {
-                        return;
-                    }
+                apiLoadManualBtn.addEventListener('click', function () {
+                    if (!apiSelected) { return; }
 
                     try {
-                        var item = JSON.parse(opt.dataset.item);
-                        fillManualForm(item);
+                        fillManualForm(apiSelected);
                         openManualSubtab();
                         apiHelpEl.textContent = 'Producto cargado en «Alta manual». Revisa los campos y guarda el bundle cuando quieras.';
                     } catch (e) {
@@ -2647,6 +2702,7 @@ class DC_Recargas_Admin {
                         });
                 });
 
+                ensureCatalogSubtabsReady();
                 restoreStoredApiState();
             })();
             </script>
@@ -2654,7 +2710,7 @@ class DC_Recargas_Admin {
                 </div><!-- /sub-panel api -->
 
                 <!-- ── Sub-panel 3: Alta manual ── -->
-                <div class="dc-catalog-subpanel" data-catalog-panel="manual">
+                <div class="dc-catalog-subpanel" data-catalog-panel="manual" aria-hidden="true" hidden>
 
             <p class="dc-catalog-subpanel__intro">Completa el formulario con los datos del bundle. Usa este método cuando conozcas el SKU exacto y quieras un control total sobre los valores que se muestran al usuario.</p>
 
@@ -4054,39 +4110,53 @@ class DC_Recargas_Admin {
 
             // -- Sub-pestañas del Catálogo --------------------------------
             (function () {
+                if (typeof window.dcEnsureCatalogSubtabs === 'function') {
+                    window.dcEnsureCatalogSubtabs();
+                    return;
+                }
+
                 var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
-                var subBtns = catalogSubtabsEl ? catalogSubtabsEl.querySelectorAll('[data-catalog-subtab]') : [];
-                var subPanels = catalogSubtabsEl ? catalogSubtabsEl.querySelectorAll('[data-catalog-panel]') : [];
+                if (!catalogSubtabsEl) {
+                    return;
+                }
+
+                var subBtns = catalogSubtabsEl.querySelectorAll('[data-catalog-subtab]');
+                var subPanels = catalogSubtabsEl.querySelectorAll('[data-catalog-panel]');
 
                 if (!subBtns.length || !subPanels.length) {
                     return;
                 }
 
-                var setSubTab = typeof window.dcSetCatalogSubtab === 'function'
-                    ? window.dcSetCatalogSubtab
-                    : function (tabId) {
-                        subBtns.forEach(function (btn) {
-                            var isTarget = btn.getAttribute('data-catalog-subtab') === tabId;
-                            btn.classList.toggle('is-active', isTarget);
-                            btn.setAttribute('aria-pressed', isTarget ? 'true' : 'false');
-                        });
+                function fallbackSetSubTab(tabId) {
+                    subBtns.forEach(function (btn) {
+                        var isTarget = btn.getAttribute('data-catalog-subtab') === tabId;
+                        btn.classList.toggle('is-active', isTarget);
+                        btn.setAttribute('aria-pressed', isTarget ? 'true' : 'false');
+                    });
 
-                        subPanels.forEach(function (panel) {
-                            var isTarget = panel.getAttribute('data-catalog-panel') === tabId;
-                            panel.classList.toggle('is-active', isTarget);
-                            panel.hidden = !isTarget;
-                            panel.setAttribute('aria-hidden', isTarget ? 'false' : 'true');
-                        });
-                    };
+                    subPanels.forEach(function (panel) {
+                        var isTarget = panel.getAttribute('data-catalog-panel') === tabId;
+                        panel.classList.toggle('is-active', isTarget);
+                        panel.hidden = !isTarget;
+                        panel.setAttribute('aria-hidden', isTarget ? 'false' : 'true');
+                    });
+                }
 
                 subBtns.forEach(function (btn) {
-                    btn.addEventListener('click', function () {
-                        setSubTab(btn.getAttribute('data-catalog-subtab'));
+                    if (btn.getAttribute('data-dc-catalog-bound') === '1') {
+                        return;
+                    }
+
+                    btn.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        fallbackSetSubTab(btn.getAttribute('data-catalog-subtab'));
                     });
+
+                    btn.setAttribute('data-dc-catalog-bound', '1');
                 });
 
                 var activeBtn = catalogSubtabsEl.querySelector('[data-catalog-subtab].is-active');
-                setSubTab(activeBtn ? activeBtn.getAttribute('data-catalog-subtab') : 'api');
+                fallbackSetSubTab(activeBtn ? activeBtn.getAttribute('data-catalog-subtab') : 'api');
             })();
         </script>
         <?php

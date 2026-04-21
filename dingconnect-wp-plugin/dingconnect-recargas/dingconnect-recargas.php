@@ -27,7 +27,7 @@ if (defined('DC_RECARGAS_FILE') && realpath(DC_RECARGAS_FILE) !== realpath($dc_r
 }
 
 if (!defined('DC_RECARGAS_VERSION')) {
-    define('DC_RECARGAS_VERSION', '1.2.5');
+    define('DC_RECARGAS_VERSION', '1.3.0');
 }
 
 if (!defined('DC_RECARGAS_FILE')) {

@@ -17,19 +17,35 @@ class DC_Recargas_Frontend {
         add_action('wp_enqueue_scripts', [$this, 'register_assets']);
     }
 
+    private function get_asset_version($relative_path) {
+        $full_path = DC_RECARGAS_PATH . ltrim((string) $relative_path, '/\\');
+
+        if (file_exists($full_path)) {
+            $modified_at = filemtime($full_path);
+            if ($modified_at) {
+                return (string) $modified_at;
+            }
+        }
+
+        return DC_RECARGAS_VERSION;
+    }
+
     public function register_assets() {
+        $style_version = $this->get_asset_version('assets/css/frontend.css');
+        $script_version = $this->get_asset_version('assets/js/frontend.js');
+
         wp_register_style(
             'dc-recargas-frontend',
             DC_RECARGAS_URL . 'assets/css/frontend.css',
             [],
-            DC_RECARGAS_VERSION
+            $style_version
         );
 
         wp_register_script(
             'dc-recargas-frontend',
             DC_RECARGAS_URL . 'assets/js/frontend.js',
             [],
-            DC_RECARGAS_VERSION,
+            $script_version,
             true
         );
 
@@ -214,7 +230,7 @@ class DC_Recargas_Frontend {
         $bg_color = sanitize_text_field($customization['bg_color'] ?? '#ffffff');
         $primary_color = sanitize_text_field($customization['primary_color'] ?? '#2563eb');
         $text_color = sanitize_text_field($customization['text_color'] ?? '#0f172a');
-        $border_radius = intval($customization['border_radius'] ?? 16);
+        $border_radius = max(6, intval($customization['border_radius'] ?? 16));
         $padding = intval($customization['padding'] ?? 24);
         $shadow_intensity = sanitize_text_field($customization['shadow_intensity'] ?? 'light');
 
@@ -230,7 +246,7 @@ class DC_Recargas_Frontend {
         ob_start();
         ?>
         <style>
-            #<?php echo esc_attr($instance_id); ?> .dc-recargas {
+            #<?php echo esc_attr($instance_id); ?> {
                 max-width: <?php echo intval($max_width); ?>px;
             }
 
@@ -242,25 +258,18 @@ class DC_Recargas_Frontend {
             }
 
             #<?php echo esc_attr($instance_id); ?> .dc-pane-header h2,
-            #<?php echo esc_attr($instance_id); ?> .dc-step-dot,
-            #<?php echo esc_attr($instance_id); ?> button.button-primary,
-            #<?php echo esc_attr($instance_id); ?> [style*="background"] {
+            #<?php echo esc_attr($instance_id); ?> .dc-context-strip strong {
                 color: <?php echo esc_attr($text_color); ?> !important;
             }
 
-            #<?php echo esc_attr($instance_id); ?> button,
+            #<?php echo esc_attr($instance_id); ?> .dc-confirm-btn,
             #<?php echo esc_attr($instance_id); ?> .dc-step.is-active .dc-step-dot,
-            #<?php echo esc_attr($instance_id); ?> a.button {
+            #<?php echo esc_attr($instance_id); ?> .dc-provider-btn.active {
                 background-color: <?php echo esc_attr($primary_color); ?>;
                 border-color: <?php echo esc_attr($primary_color); ?>;
                 color: #ffffff;
                 border-radius: <?php echo intval($border_radius - 4); ?>px;
                 box-shadow: 0 0 0 4px <?php echo esc_attr($primary_color); ?>22;
-            }
-
-            #<?php echo esc_attr($instance_id); ?> .dc-pane-header h2,
-            #<?php echo esc_attr($instance_id); ?> .dc-context-strip strong {
-                color: <?php echo esc_attr($text_color); ?>;
             }
 
             #<?php echo esc_attr($instance_id); ?> input,

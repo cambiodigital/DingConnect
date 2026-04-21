@@ -137,6 +137,9 @@ Una iniciativa se considera lista cuando cumple:
 71. Simplificación operativa en `Landings`: se eliminó del admin el campo `País fijo (ISO, opcional)` para alta/edición de shortcodes dinámicos; el país de la landing ahora se deriva automáticamente de los bundles seleccionados.
 72. Ajuste funcional en frontend de `dingconnect_recargas`: el selector de país siempre queda editable y la lista de países se construye a partir de los `country_iso` presentes en los bundles permitidos de la landing.
 73. Control de pasarelas WooCommerce para recargas: en `Credenciales` se añadió selección de `Pasarelas permitidas` y, cuando el carrito contiene recargas DingConnect en modo WooCommerce, checkout filtra métodos de pago a los IDs configurados (si no se selecciona ninguno, se mantienen todas las pasarelas activas).
+74. Estabilización de subpestañas en `Catálogo y alta`: la navegación entre `Buscar en API` y `Alta manual` ahora usa un único controlador de estado y binding, evitando bloqueos intermitentes por doble inicialización del cambio de subpestaña.
+75. Corrección visual en paso final del frontend (`dingconnect_recargas`): se ajustó la generación de CSS de personalización por landing para limitar su alcance a componentes primarios del wizard y evitar que se sobrescribieran estilos del resultado final; además se corrigió el selector del contenedor por instancia para mantener el layout esperado.
+76. Endurecimiento de despliegue del frontend público: los assets `assets/css/frontend.css` y `assets/js/frontend.js` ahora se versionan por `filemtime` desde el plugin para evitar mezclar markup nuevo con CSS/JS cacheados de versiones anteriores tras una actualización.
 
 ## Backlog actualizado por impacto
 

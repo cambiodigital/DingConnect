@@ -133,6 +133,7 @@ Namespace actual: `dingconnect/v1`
 49. Corrección UX en panel admin para inputs con buscador (combobox sobre datalist): se completó la inicialización JavaScript compartida (`datalistMap`, `comboboxRegistry`, `addToDatalist`) y se ajustó el tamaño visual del campo `País fijo (ISO, opcional)` en alta/edición de landings, eliminando el render estrecho y comportamiento inconsistente del dropdown.
 50. Simplificación operativa de landings: el panel admin dejó de pedir `País fijo (ISO, opcional)` en alta/edición de shortcodes dinámicos; el país se infiere desde los bundles seleccionados para evitar configuración duplicada.
 51. Regla de país en frontend de landings: el selector de país ya no se bloquea por configuración fija y se alimenta con los `country_iso` de los bundles permitidos en esa landing.
+52. Estabilidad reforzada en `Catálogo y alta`: el cambio entre `Buscar en API` y `Alta manual` quedó centralizado en un único controlador JS con estado explícito, para evitar bloqueos o navegación inconsistente al alternar subpestañas.
 
 ## Hallazgos clave para futuras IA
 
