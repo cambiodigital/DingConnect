@@ -648,6 +648,7 @@ class DC_Recargas_Admin {
         }
 
         $items = [];
+        $provider_map = $this->get_api_provider_name_map($raw_items, $country_iso);
         $group_counts = [];
         $group_labels = $this->get_api_package_group_labels();
         foreach ($raw_items as $product) {
@@ -662,6 +663,8 @@ class DC_Recargas_Admin {
                 }
             }
 
+            $provider_code = sanitize_text_field((string) ($product['ProviderCode'] ?? ''));
+            $provider_name = sanitize_text_field((string) ($product['ProviderName'] ?? ($provider_map[$provider_code] ?? $provider_code)));
             $receive = !empty($benefits) ? implode(', ', $benefits) : ($product['DefaultDisplayText'] ?? '');
             $label   = ($product['DefaultDisplayText'] ?? '') ?: ($product['SkuCode'] ?? '');
             $package_group = $this->classify_api_package_group($product, $receive, $label);
@@ -674,7 +677,8 @@ class DC_Recargas_Admin {
             $items[] = [
                 'country_iso'       => $country_iso,
                 'sku_code'          => $product['SkuCode'] ?? '',
-                'operator'          => $product['ProviderCode'] ?? '',
+                'operator'          => $provider_name,
+                'operator_code'     => $provider_code,
                 'label'             => $label,
                 'send_value'        => isset($product['Minimum']['SendValue']) ? (float) $product['Minimum']['SendValue'] : 0,
                 'send_currency_iso' => $product['Minimum']['SendCurrencyIso'] ?? 'USD',
@@ -692,6 +696,55 @@ class DC_Recargas_Admin {
             'group_counts' => $group_counts,
             'group_labels' => $group_labels,
         ]);
+    }
+
+    private function get_api_provider_name_map($items, $country_iso) {
+        $provider_codes = [];
+
+        foreach ((array) $items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $provider_code = sanitize_text_field((string) ($item['ProviderCode'] ?? ''));
+            if ('' !== $provider_code) {
+                $provider_codes[] = $provider_code;
+            }
+        }
+
+        $provider_codes = array_values(array_unique($provider_codes));
+        if (empty($provider_codes)) {
+            return [];
+        }
+
+        $response = $this->api->get_providers_by_codes($provider_codes);
+
+        if (is_wp_error($response) && !empty($country_iso)) {
+            $response = $this->api->get_providers_by_country($country_iso);
+        }
+
+        if (is_wp_error($response)) {
+            return [];
+        }
+
+        $providers = $response['Result'] ?? $response['Items'] ?? [];
+        $map = [];
+
+        foreach ((array) $providers as $provider) {
+            if (!is_array($provider)) {
+                continue;
+            }
+
+            $provider_code = sanitize_text_field((string) ($provider['ProviderCode'] ?? ''));
+            if ('' === $provider_code) {
+                continue;
+            }
+
+            $provider_name = sanitize_text_field((string) ($provider['Name'] ?? ($provider['ShortName'] ?? $provider_code)));
+            $map[$provider_code] = $provider_name;
+        }
+
+        return $map;
     }
 
     private function get_api_package_group_labels() {
@@ -2117,7 +2170,7 @@ class DC_Recargas_Admin {
 
                 function fillManualForm(item) {
                     if (manualCountryIsoEl) manualCountryIsoEl.value = item.country_iso || '';
-                    if (manualLabelEl) manualLabelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.label || item.sku_code || '');
+                    if (manualLabelEl) manualLabelEl.value = item.label || ((item.operator || 'Producto') + ' - ' + (item.receive || item.sku_code || ''));
                     if (manualSkuEl) manualSkuEl.value = item.sku_code || '';
                     if (manualSendValueEl) manualSendValueEl.value = item.send_value != null ? item.send_value : '';
                     if (manualSendCurrencyEl) manualSendCurrencyEl.value = item.send_currency_iso || 'USD';
@@ -2318,10 +2371,17 @@ class DC_Recargas_Admin {
                     }
                 });
 
-                apiResultsEl.addEventListener('dblclick', function () {
+                apiResultsEl.addEventListener('dblclick', function (event) {
                     var opt = apiResultsEl.options[apiResultsEl.selectedIndex];
+                    if (!opt && event && event.target && event.target.tagName === 'OPTION') {
+                        opt = event.target;
+                    }
                     if (!opt) {
                         return;
+                    }
+
+                    if (typeof opt.index === 'number') {
+                        apiResultsEl.selectedIndex = opt.index;
                     }
 
                     try {
