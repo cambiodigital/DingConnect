@@ -122,6 +122,7 @@ register_activation_hook(DC_RECARGAS_FILE, function () {
         'api_base' => 'https://www.dingconnect.com/api/V1',
         'api_key' => '',
         'payment_mode' => 'direct',
+        'recharge_mode' => 'test_simulate',
         'validate_only' => 1,
         'allow_real_recharge' => 0,
         'wizard_enabled' => 0,

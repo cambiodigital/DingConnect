@@ -1,0 +1,8 @@
+# Stack de scraping — 10-20 páginas
+# Instalar: pip install -r scripts/requirements.txt
+# Después: python -m playwright install chromium
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+markdownify>=0.13.0
+lxml>=5.0.0
+playwright>=1.44.0   # Para páginas con JavaScript (SPAs)

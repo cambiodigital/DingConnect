@@ -3,22 +3,24 @@
 > **Fuente:** [https://www.dingconnect.com/Api/#tag/V1](https://www.dingconnect.com/Api/#tag/V1)  
 > **Documentación adicional:** [https://www.dingconnect.com/Api/Description](https://www.dingconnect.com/Api/Description)  
 > **FAQ:** [https://www.dingconnect.com/Api/Faq](https://www.dingconnect.com/Api/Faq)  
-> **Última actualización de este documento:** Abril 2026
+> **Base consolidada del repo:** [BASE_CONOCIMIENTO_API_DINGCONNECT_COMPLETA.md](BASE_CONOCIMIENTO_API_DINGCONNECT_COMPLETA.md)  
+> **Última actualización de este documento:** 21-04-2026
 
 ---
 
 ## Tabla de Contenidos
 
 1. [Introducción](#introducción)
-2. [Autenticación](#autenticación)
-3. [Conceptos Generales](#conceptos-generales)
+2. [Cobertura auditada de páginas internas](#cobertura-auditada-de-páginas-internas)
+3. [Autenticación](#autenticación)
+4. [Conceptos Generales](#conceptos-generales)
    - [Respuestas y Códigos de Error](#respuestas-y-códigos-de-error)
    - [Datos de Referencia](#datos-de-referencia)
    - [Localización](#localización)
    - [Consultas y Filtrado](#consultas-y-filtrado)
    - [Paginación](#paginación)
    - [Batching (Procesamiento por Lotes)](#batching-procesamiento-por-lotes)
-4. [Endpoints](#endpoints)
+5. [Endpoints](#endpoints)
    - [GetBalance](#1-getbalance)
    - [GetCountries](#2-getcountries)
    - [GetCurrencies](#3-getcurrencies)
@@ -51,6 +53,22 @@ La Ding API es un servicio web REST de Nivel 0. Ding utiliza el estándar [Swagg
 La definición Swagger está disponible en la URL que termina con `/swagger/docs/v1`, visible en la página de Methods.
 
 ---
+
+## Cobertura auditada de páginas internas
+
+Durante la actualización del 21-04-2026 se verificó navegación y extracción sobre estas rutas internas de `https://www.dingconnect.com/api`:
+
+1. `https://www.dingconnect.com/Api`
+2. `https://www.dingconnect.com/Api/Index`
+3. `https://www.dingconnect.com/Api/Description`
+4. `https://www.dingconnect.com/Api/Faq`
+5. Anclas internas de `Description` (`#responses`, `#reference-data`, `#localization`, `#querying`, `#paging`, `#batching`).
+
+Notas técnicas de cobertura:
+
+- `Methods` contiene el inventario completo de operaciones V1 y schemas operativos.
+- La referencia pública al swagger con sufijo `/swagger/docs/v1` se menciona en la documentación, pero en esta auditoría no estuvo disponible por URL directa abierta.
+- Este archivo se mantiene como referencia de integración diaria; la base extensa y de arquitectura aplicada para el plugin vive en `Documentación/BASE_CONOCIMIENTO_API_DINGCONNECT_COMPLETA.md`.
 
 ## Autenticación
 
@@ -1253,4 +1271,25 @@ Devuelve descripciones legibles para los códigos de error.
 
 ---
 
-*Documentación generada a partir de [https://www.dingconnect.com/Api/#tag/V1](https://www.dingconnect.com/Api/#tag/V1) — Abril 2026.*
+## FAQ operativa de alto impacto (resumen)
+
+Estas preguntas aparecen de forma recurrente en `https://www.dingconnect.com/Api/Faq` y afectan directamente el diseño del plugin:
+
+1. Diferencia exacta entre `ValidateOnly: true` y `ValidateOnly: false`.
+2. Uso de `Settings` y `DistributorRef` para trazabilidad e idempotencia.
+3. Uso de `BatchItemRef` en requests por lotes (`EstimatePrices`, `CancelTransfers`).
+4. Qué campos deben mapearse en frontend para completar integración y sign-off.
+5. Qué hacer ante timeout/no respuesta de `SendTransfer` (usar `ListTransferRecords`).
+6. Cómo ejecutar UAT y casos de error controlados.
+7. Si se puede guardar catálogo localmente y con qué frecuencia actualizarlo.
+8. Dónde consultar códigos de error/contexto y logos de operadores.
+9. Cómo aplicar whitelisting de IP/DNS a credenciales de API.
+
+Para respuestas amplias con contexto de implementación WordPress ver:
+
+- `Documentación/BASE_CONOCIMIENTO_API_DINGCONNECT_COMPLETA.md`
+- `Documentación/GUIA_TECNICA_DING_CONNECT.md`
+
+---
+
+*Documentación actualizada y validada contra Methods/Description/FAQ de DingConnect (21-04-2026).*

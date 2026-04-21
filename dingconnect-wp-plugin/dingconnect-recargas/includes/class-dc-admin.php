@@ -91,12 +91,29 @@ class DC_Recargas_Admin {
             $retry_delay_minutes = 240;
         }
 
+        // Convert recharge mode select to validate_only and allow_real_recharge flags
+        $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
+        if (!in_array($recharge_mode, ['test_simulate', 'test_allow_change', 'production'], true)) {
+            $recharge_mode = 'test_simulate';
+        }
+
+        $validate_only = 1;
+        $allow_real_recharge = 0;
+        if ($recharge_mode === 'test_allow_change') {
+            $validate_only = 1;
+            $allow_real_recharge = 1;
+        } elseif ($recharge_mode === 'production') {
+            $validate_only = 0;
+            $allow_real_recharge = 1;
+        }
+
         return [
             'api_base' => esc_url_raw(trim((string) ($input['api_base'] ?? 'https://www.dingconnect.com/api/V1'))),
             'api_key' => sanitize_text_field((string) ($input['api_key'] ?? '')),
             'payment_mode' => $mode,
-            'validate_only' => empty($input['validate_only']) ? 0 : 1,
-            'allow_real_recharge' => empty($input['allow_real_recharge']) ? 0 : 1,
+            'recharge_mode' => $recharge_mode,
+            'validate_only' => $validate_only,
+            'allow_real_recharge' => $allow_real_recharge,
             'wizard_enabled' => empty($input['wizard_enabled']) ? 0 : 1,
             'wizard_max_offers_per_category' => $wizard_max_offers,
             'wizard_default_entry_mode' => $wizard_entry_mode,
@@ -1047,22 +1064,24 @@ class DC_Recargas_Admin {
                         </td>
                     </tr>
                     <tr>
-                        <th scope="row">ValidateOnly por defecto</th>
+                        <th scope="row"><label for="dc_recharge_mode">Modo de recargas</label></th>
                         <td>
-                            <label>
-                                <input type="checkbox" name="dc_recargas_options[validate_only]" value="1" <?php checked(!empty($options['validate_only'])); ?>>
-                                Activar modo seguro (simulación) por defecto.
-                            </label>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Permitir recarga real</th>
-                        <td>
-                            <label>
-                                <input type="checkbox" name="dc_recargas_options[allow_real_recharge]" value="1" <?php checked(!empty($options['allow_real_recharge'])); ?>>
-                                Permitir usar <code>ValidateOnly: false</code> en el frontend.
-                            </label>
-                            <p class="description">Deja esta opción desactivada mientras haces pruebas.</p>
+                            <select id="dc_recharge_mode" name="dc_recargas_options[recharge_mode]">
+                                <option value="test_simulate" <?php selected(($options['recharge_mode'] ?? 'test_simulate'), 'test_simulate'); ?>>
+                                    🔒 Pruebas (Simular siempre)
+                                </option>
+                                <option value="test_allow_change" <?php selected(($options['recharge_mode'] ?? ''), 'test_allow_change'); ?>>
+                                    ⚙️ Pruebas (Permitir cambio desde frontend)
+                                </option>
+                                <option value="production" <?php selected(($options['recharge_mode'] ?? ''), 'production'); ?>>
+                                    ⚡ Producción (Reales)
+                                </option>
+                            </select>
+                            <p class="description">
+                                <strong>Simular siempre:</strong> Todas las transacciones son simuladas, sin opción de cambio.<br>
+                                <strong>Permitir cambio:</strong> Por defecto simula, pero frontend puede enviar <code>ValidateOnly: false</code> para probar reales.<br>
+                                <strong>Producción:</strong> Transacciones reales sin simulación.
+                            </p>
                         </td>
                     </tr>
                     <tr>
