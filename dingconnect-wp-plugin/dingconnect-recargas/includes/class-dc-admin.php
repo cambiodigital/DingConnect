@@ -1942,14 +1942,6 @@ class DC_Recargas_Admin {
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiCreateBtn = document.getElementById('dc_api_create_btn');
                 var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
-                var manualCountryIsoEl = document.getElementById('dc_country_iso');
-                var manualLabelEl = document.getElementById('dc_label');
-                var manualSkuEl = document.getElementById('dc_sku_code');
-                var manualSendValueEl = document.getElementById('dc_send_value');
-                var manualSendCurrencyEl = document.getElementById('dc_send_currency_iso');
-                var manualProviderEl = document.getElementById('dc_provider_name');
-                var manualDescriptionEl = document.getElementById('dc_description');
-                var manualBundleSourceEl = document.getElementById('dc_manual_bundle_source');
                 var apiSelected  = null;
                 var apiItems = [];
                 var apiGroupCounts = {};
@@ -2122,7 +2114,12 @@ class DC_Recargas_Admin {
                     return String(text || '').trim();
                 }
 
+                function getManualField(id) {
+                    return document.getElementById(id);
+                }
+
                 function updateManualBundleSource(item) {
+                    var manualBundleSourceEl = getManualField('dc_manual_bundle_source');
                     if (!manualBundleSourceEl) {
                         return;
                     }
@@ -2169,6 +2166,14 @@ class DC_Recargas_Admin {
                 window.dcSetCatalogSubtab = setCatalogSubtabState;
 
                 function fillManualForm(item) {
+                    var manualCountryIsoEl = getManualField('dc_country_iso');
+                    var manualLabelEl = getManualField('dc_label');
+                    var manualSkuEl = getManualField('dc_sku_code');
+                    var manualSendValueEl = getManualField('dc_send_value');
+                    var manualSendCurrencyEl = getManualField('dc_send_currency_iso');
+                    var manualProviderEl = getManualField('dc_provider_name');
+                    var manualDescriptionEl = getManualField('dc_description');
+
                     if (manualCountryIsoEl) manualCountryIsoEl.value = item.country_iso || '';
                     if (manualLabelEl) manualLabelEl.value = item.label || ((item.operator || 'Producto') + ' - ' + (item.receive || item.sku_code || ''));
                     if (manualSkuEl) manualSkuEl.value = item.sku_code || '';
@@ -2181,6 +2186,7 @@ class DC_Recargas_Admin {
 
                 function openManualSubtab() {
                     var opened = false;
+                    var manualCountryIsoEl = getManualField('dc_country_iso');
 
                     if (typeof window.dcSetCatalogSubtab === 'function') {
                         opened = window.dcSetCatalogSubtab('manual');
