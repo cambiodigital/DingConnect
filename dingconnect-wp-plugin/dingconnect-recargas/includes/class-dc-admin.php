@@ -701,6 +701,7 @@ class DC_Recargas_Admin {
                 'country_iso'       => $country_iso,
                 'sku_code'          => $product['SkuCode'] ?? '',
                 'operator'          => $product['ProviderCode'] ?? '',
+                'product_type'      => $product['ProductType'] ?? '',
                 'label'             => $label,
                 'send_value'        => isset($product['Minimum']['SendValue']) ? (float) $product['Minimum']['SendValue'] : 0,
                 'send_currency_iso' => $product['Minimum']['SendCurrencyIso'] ?? 'USD',

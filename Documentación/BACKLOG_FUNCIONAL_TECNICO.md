@@ -141,6 +141,7 @@ Una iniciativa se considera lista cuando cumple:
 75. Corrección visual en paso final del frontend (`dingconnect_recargas`): se ajustó la generación de CSS de personalización por landing para limitar su alcance a componentes primarios del wizard y evitar que se sobrescribieran estilos del resultado final; además se corrigió el selector del contenedor por instancia para mantener el layout esperado.
 76. Endurecimiento de despliegue del frontend público: los assets `assets/css/frontend.css` y `assets/js/frontend.js` ahora se versionan por `filemtime` desde el plugin para evitar mezclar markup nuevo con CSS/JS cacheados de versiones anteriores tras una actualización.
 77. Corrección del modal de país en frontend público: el overlay `.dc-country-overlay` ahora respeta el atributo `hidden` mediante una regla CSS explícita, evitando que el modal inicial quede visible y bloquee toda interacción en la landing.
+78. Contrato REST enriquecido para catálogo live: el endpoint `/wp-json/dingconnect/v1/products` ahora expone `ProductType` por ítem (además de `SkuCode`, operador y precios), y el flujo AJAX de `Buscar en API` en admin también devuelve `product_type` para clasificación y reglas futuras basadas en tipo real de DingConnect.
 
 ## Backlog actualizado por impacto
 

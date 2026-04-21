@@ -357,6 +357,7 @@ class DC_Recargas_REST {
                 'BundleId' => $bundle['id'] ?? '',
                 'SkuCode' => $bundle['sku_code'] ?? '',
                 'ProviderName' => $bundle['provider_name'] ?? '',
+                'ProductType' => sanitize_text_field((string) ($bundle['product_type'] ?? '')),
                 'SendValue' => (float) ($bundle['send_value'] ?? 0),
                 'SendCurrencyIso' => $bundle['send_currency_iso'] ?? 'USD',
                 'DefaultDisplayText' => $bundle['label'] ?? '',
@@ -408,6 +409,7 @@ class DC_Recargas_REST {
                 'ProviderCode' => $provider_code,
                 'ProviderName' => $provider_name,
                 'SkuCode' => $sku_code,
+                'ProductType' => sanitize_text_field($item['ProductType'] ?? ''),
                 'SendValue' => $price['SendValue'],
                 'SendCurrencyIso' => $price['SendCurrencyIso'],
                 'ReceiveValue' => $price['ReceiveValue'],
@@ -548,6 +550,10 @@ class DC_Recargas_REST {
                 if ((empty($merged[$sku_code][$field]) && !empty($item[$field])) || (!isset($merged[$sku_code][$field]) && isset($item[$field]))) {
                     $merged[$sku_code][$field] = $item[$field];
                 }
+            }
+
+            if ((empty($merged[$sku_code]['ProductType']) && !empty($item['ProductType'])) || (!isset($merged[$sku_code]['ProductType']) && isset($item['ProductType']))) {
+                $merged[$sku_code]['ProductType'] = $item['ProductType'];
             }
         }
 

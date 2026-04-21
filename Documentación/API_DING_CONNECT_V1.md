@@ -406,6 +406,9 @@ Estado operacional actual de los proveedores.
 
 Lista de productos disponibles para usar en `SendTransfer`.
 
+**Nota de integración en este repo (plugin WordPress):**
+- El campo `ProductType` se usa para clasificación operativa y se expone en el contrato REST interno `GET /wp-json/dingconnect/v1/products` dentro de cada ítem normalizado.
+
 **Query Parameters:**
 
 | Parámetro | Tipo | Descripción |
