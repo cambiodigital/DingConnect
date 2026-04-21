@@ -119,6 +119,7 @@ Una iniciativa se considera lista cuando cumple:
 52. Shortcode `dingconnect_recargas` ampliado para objetivos: soporta `landing_key`, `bundles`, `country`, `title` y `subtitle`, permitiendo variantes por campaña con país fijo y catálogo restringido.
 53. Edición inline de shortcodes dinámicos en admin: el listado de landings ahora permite abrir modal de edición, actualizar objetivo/clave/país/bundles y guardar cambios sin salir del panel.
 54. Duplicado rápido de landings en admin: cada shortcode dinámico ahora incluye acción `Duplicar`, clonando configuración (título, subtítulo, país y bundles) con clave única automática para acelerar nuevas campañas y abriendo automáticamente el modal de edición de la copia.
+55. Reorganización funcional del panel admin por secciones: el bloque de wizard y landings se movió a pestaña dedicada `Wizard y landings`, se renombró el título operativo a `Wizard de pruebas internas` y se alineó la navegación (mensajes, edición y redirecciones) para caer en la sección correcta.
 
 ## Backlog actualizado por impacto
 

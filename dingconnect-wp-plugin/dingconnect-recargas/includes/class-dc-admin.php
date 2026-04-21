@@ -265,7 +265,7 @@ class DC_Recargas_Admin {
             'page' => 'dc-recargas',
             'dc_msg' => 'landing_shortcode_cloned',
             'dc_edit_landing' => $clone['id'],
-            'dc_tab' => 'tab_setup',
+            'dc_tab' => 'tab_wizard',
         ], admin_url('admin.php')));
         exit;
     }
@@ -890,8 +890,17 @@ class DC_Recargas_Admin {
         sort($dl_send_currency);
         sort($dl_provider_name);
 
+        $total_bundles = count($bundles);
+        $active_bundles = count(array_filter($bundles, function ($bundle) {
+            return !empty($bundle['is_active']);
+        }));
+        $inactive_bundles = max(0, $total_bundles - $active_bundles);
+        $landing_count = count($landing_shortcodes);
+        $payment_mode_label = (($options['payment_mode'] ?? 'direct') === 'woocommerce') ? 'WooCommerce' : 'Directo';
+        $csv_status_label = $csv_found ? 'CSV operativo' : 'CSV pendiente';
+
         $requested_tab = sanitize_key($_GET['dc_tab'] ?? '');
-        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_logs'], true)) {
+        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_wizard', 'tab_logs'], true)) {
             $active_tab = $requested_tab;
         }
 
@@ -908,17 +917,44 @@ class DC_Recargas_Admin {
         }
 
         if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error'], true)) {
-            $active_tab = 'tab_setup';
+            $active_tab = 'tab_wizard';
         }
 
         if (!empty($editing_landing)) {
-            $active_tab = 'tab_setup';
+            $active_tab = 'tab_wizard';
         }
         ?>
         <div class="wrap dc-admin-wrap">
-            <h1>DingConnect Recargas - Configuración</h1>
-            <p>Configura tu cuenta de DingConnect, define el modo de prueba y administra bundles visibles en el frontend.</p>
-            <p><em>Hecho por Cambiodigital.net, personalizado para cubakilos.com.</em></p>
+            <div class="dc-admin-hero">
+                <div class="dc-admin-hero__content">
+                    <h1>DingConnect Recargas - Configuración</h1>
+                    <p>Configura tu cuenta de DingConnect, define el modo de prueba y administra bundles visibles en el frontend.</p>
+                    <p><em>Hecho por Cambiodigital.net, personalizado para cubakilos.com.</em></p>
+                </div>
+                <div class="dc-admin-hero__meta">
+                    <span class="dc-admin-chip"><?php echo esc_html($payment_mode_label); ?></span>
+                    <span class="dc-admin-chip"><?php echo esc_html($csv_status_label); ?></span>
+                </div>
+            </div>
+
+            <div class="dc-admin-kpis" aria-label="Resumen rápido de operación">
+                <article class="dc-admin-kpi">
+                    <p class="dc-admin-kpi__label">Bundles totales</p>
+                    <p class="dc-admin-kpi__value"><?php echo esc_html((string) $total_bundles); ?></p>
+                </article>
+                <article class="dc-admin-kpi">
+                    <p class="dc-admin-kpi__label">Bundles activos</p>
+                    <p class="dc-admin-kpi__value"><?php echo esc_html((string) $active_bundles); ?></p>
+                </article>
+                <article class="dc-admin-kpi">
+                    <p class="dc-admin-kpi__label">Bundles inactivos</p>
+                    <p class="dc-admin-kpi__value"><?php echo esc_html((string) $inactive_bundles); ?></p>
+                </article>
+                <article class="dc-admin-kpi">
+                    <p class="dc-admin-kpi__label">Landings dinámicas</p>
+                    <p class="dc-admin-kpi__value"><?php echo esc_html((string) $landing_count); ?></p>
+                </article>
+            </div>
 
             <?php $this->render_notice($msg); ?>
 
@@ -926,36 +962,104 @@ class DC_Recargas_Admin {
                 .dc-admin-wrap {
                     --dc-bg: #f4f7fc;
                     --dc-card: #ffffff;
-                    --dc-text: #0f172a;
-                    --dc-muted: #64748b;
+                    --dc-text: #111827;
+                    --dc-muted: #667085;
                     --dc-primary: #0f4aa3;
-                    --dc-primary-soft: #e6efff;
-                    --dc-border: #d9e1ef;
-                    --dc-shadow: none;
-                    background: radial-gradient(circle at top left, #eaf3ff 0%, #f7fafe 35%, #f4f7fc 100%);
-                    padding: 14px 18px 22px;
-                    border-radius: 14px;
+                    --dc-primary-soft: #eaf2ff;
+                    --dc-border: #d7e2f2;
+                    --dc-shadow: 0 18px 42px rgba(15, 23, 42, 0.07);
+                    background:
+                        radial-gradient(circle at 0% 0%, #e8f2ff 0%, rgba(232, 242, 255, 0.08) 42%),
+                        linear-gradient(180deg, #f8fbff 0%, #f3f7fd 100%);
+                    padding: 18px 20px 24px;
+                    border-radius: 18px;
+                    border: 1px solid #dbe7f8;
                 }
 
-                .dc-admin-wrap > h1 {
+                .dc-admin-hero {
+                    display: flex;
+                    justify-content: space-between;
+                    gap: 18px;
+                    align-items: flex-start;
+                    margin-bottom: 14px;
+                }
+
+                .dc-admin-wrap h1 {
                     margin: 0;
-                    font-size: 30px;
-                    line-height: 1.2;
+                    font-size: 31px;
+                    line-height: 1.18;
+                    letter-spacing: -0.02em;
                     color: var(--dc-text);
-                    letter-spacing: -0.01em;
                 }
 
-                .dc-admin-wrap > p {
-                    margin: 10px 0 0;
+                .dc-admin-hero__content {
+                    max-width: 920px;
+                }
+
+                .dc-admin-wrap > .dc-admin-hero p {
+                    margin: 8px 0 0;
                     max-width: 860px;
                     color: #334155;
                     font-size: 14px;
                 }
 
-                .dc-admin-wrap > p em {
+                .dc-admin-wrap > .dc-admin-hero p em {
                     color: var(--dc-muted);
                     font-style: normal;
                     font-weight: 500;
+                }
+
+                .dc-admin-hero__meta {
+                    display: flex;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                    gap: 8px;
+                    min-width: 210px;
+                }
+
+                .dc-admin-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    border-radius: 999px;
+                    border: 1px solid #cddcf3;
+                    background: #ffffff;
+                    color: #1d4c95;
+                    font-size: 12px;
+                    font-weight: 700;
+                    letter-spacing: 0.01em;
+                    padding: 6px 12px;
+                }
+
+                .dc-admin-kpis {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+                    gap: 10px;
+                    margin: 0 0 18px;
+                }
+
+                .dc-admin-kpi {
+                    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+                    border: 1px solid var(--dc-border);
+                    border-radius: 12px;
+                    padding: 12px 14px;
+                    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+                }
+
+                .dc-admin-kpi__label {
+                    margin: 0;
+                    color: #64748b;
+                    font-size: 12px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    font-weight: 700;
+                }
+
+                .dc-admin-kpi__value {
+                    margin: 8px 0 0;
+                    color: #0f172a;
+                    font-size: 26px;
+                    line-height: 1;
+                    font-weight: 700;
                 }
 
                 .dc-admin-tabs {
@@ -969,23 +1073,28 @@ class DC_Recargas_Admin {
                     border-bottom: 0 !important;
                     padding: 0;
                     margin: 0;
+                    position: sticky;
+                    top: 32px;
+                    z-index: 10;
+                    backdrop-filter: blur(4px);
                 }
 
                 .dc-admin-wrap .nav-tab {
                     float: none;
                     border: 1px solid var(--dc-border);
-                    background: #ffffff;
+                    background: rgba(255, 255, 255, 0.95);
                     color: #334155;
                     border-radius: 999px;
                     padding: 9px 14px;
                     margin: 0;
                     font-weight: 600;
-                    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+                    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
                 }
 
                 .dc-admin-wrap .nav-tab:hover {
                     color: var(--dc-primary);
                     border-color: #bdd0ef;
+                    transform: translateY(-1px);
                 }
 
                 .dc-admin-wrap .nav-tab.nav-tab-active,
@@ -997,13 +1106,25 @@ class DC_Recargas_Admin {
                     color: #ffffff;
                 }
 
+                .dc-admin-wrap .nav-tab:focus-visible,
+                .dc-admin-wrap .button:focus-visible,
+                .dc-admin-wrap button:focus-visible,
+                .dc-admin-wrap input:focus-visible,
+                .dc-admin-wrap select:focus-visible,
+                .dc-admin-wrap textarea:focus-visible {
+                    outline: 2px solid #2563eb;
+                    outline-offset: 1px;
+                    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+                }
+
                 .dc-tab-panel {
                     display: none;
                     margin-top: 12px;
                     background: var(--dc-card);
                     border: 1px solid var(--dc-border);
-                    border-radius: 14px;
+                    border-radius: 16px;
                     padding: 20px 22px 22px;
+                    box-shadow: var(--dc-shadow);
                 }
 
                 .dc-tab-panel.is-active {
@@ -1045,6 +1166,7 @@ class DC_Recargas_Admin {
                 .dc-admin-wrap .form-table th {
                     color: #1f2937;
                     font-weight: 600;
+                    width: 260px;
                 }
 
                 .dc-admin-wrap .form-table input[type="text"],
@@ -1067,9 +1189,57 @@ class DC_Recargas_Admin {
                     border-color: #0d3f8b;
                 }
 
+                .dc-admin-wrap .button,
+                .dc-admin-wrap .button-primary,
+                .dc-admin-wrap .button-secondary {
+                    border-radius: 10px;
+                    min-height: 34px;
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    transition: transform 0.14s ease, box-shadow 0.14s ease;
+                }
+
+                .dc-admin-wrap .button:hover,
+                .dc-admin-wrap .button-primary:hover,
+                .dc-admin-wrap .button-secondary:hover {
+                    transform: translateY(-1px);
+                }
+
+                .dc-admin-wrap .widefat {
+                    border: 1px solid var(--dc-border);
+                    border-radius: 12px;
+                    overflow: hidden;
+                    box-shadow: 0 8px 16px rgba(15, 23, 42, 0.04);
+                }
+
+                .dc-admin-wrap .widefat thead th {
+                    background: #f8fbff;
+                    color: #334155;
+                    font-weight: 700;
+                }
+
+                .dc-admin-wrap .widefat td,
+                .dc-admin-wrap .widefat th {
+                    padding-top: 11px;
+                    padding-bottom: 11px;
+                }
+
+                .dc-admin-wrap .notice.inline {
+                    border-radius: 10px;
+                    border-width: 1px;
+                }
+
                 @media (max-width: 782px) {
                     .dc-admin-wrap {
                         padding: 12px;
+                    }
+
+                    .dc-admin-hero {
+                        flex-direction: column;
+                    }
+
+                    .dc-admin-hero__meta {
+                        justify-content: flex-start;
                     }
 
                     .dc-tab-panel {
@@ -1442,6 +1612,7 @@ class DC_Recargas_Admin {
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_setup">Credenciales</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_catalog">Catálogo y alta</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_saved">Bundles guardados</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_wizard">Wizard y landings</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_logs">Registros</button>
                 </h2>
 
@@ -1587,9 +1758,13 @@ class DC_Recargas_Admin {
             <p>Crea una página y coloca el shortcode:</p>
             <p><code>[dingconnect_recargas]</code></p>
 
+                </section>
+
+                <section id="dc-tab-wizard" class="dc-tab-panel" data-dc-tab-panel="tab_wizard">
+
             <hr>
-            <h2>Wizard en panel admin</h2>
-            <p>El flujo paso a paso también queda disponible aquí para pruebas operativas internas, sin depender de una landing pública.</p>
+            <h2>Wizard de pruebas internas</h2>
+            <p>Ejecuta el flujo paso a paso dentro del panel admin para validar operación sin depender de una landing pública.</p>
             <?php if (empty($options['wizard_enabled'])) : ?>
                 <div class="notice notice-warning inline"><p>El wizard está desactivado. Activa <strong>Wizard paso a paso</strong> para usar esta vista.</p></div>
             <?php else : ?>
@@ -1599,7 +1774,7 @@ class DC_Recargas_Admin {
             <?php endif; ?>
 
             <hr>
-            <h2>Landing pages y shortcodes dinámicos</h2>
+            <h2>Landings y shortcodes dinámicos</h2>
             <p>Define objetivos de landing y asocia bundles concretos para generar shortcodes reutilizables.</p>
 
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -1759,8 +1934,6 @@ class DC_Recargas_Admin {
                     </form>
                 </div>
             </div>
-
-                </section>
 
                 <section id="dc-tab-catalog" class="dc-tab-panel" data-dc-tab-panel="tab_catalog">
 
@@ -2992,12 +3165,12 @@ class DC_Recargas_Admin {
 
                     landingEditModalEl.hidden = false;
                     document.body.classList.add('modal-open');
-                    setActiveTab('tab_setup', true);
+                    setActiveTab('tab_wizard', true);
 
                     var url = new URL(window.location.href);
                     if (landing.id) {
                         url.searchParams.set('dc_edit_landing', landing.id);
-                        url.searchParams.set('dc_tab', 'tab_setup');
+                        url.searchParams.set('dc_tab', 'tab_wizard');
                         window.history.replaceState({}, '', url.toString());
                     }
 

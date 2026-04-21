@@ -119,6 +119,8 @@ Namespace actual: `dingconnect/v1`
 35. Entorno de staging reproducible agregado en repositorio para verificación runtime: `staging/docker-compose.yml`, `staging/scripts/bootstrap-staging.sh`, `scripts/staging-up.ps1` y `scripts/run-matrix-6.ps1`.
 36. Matriz 6.1-6.7 preparada para ejecución automática tipo smoke sobre WordPress/WooCommerce local con gateways de prueba internos (BACS/Cheque/COD).
 37. Bloqueo actual de ejecución en esta estación: binario `docker` no disponible en PowerShell, impidiendo levantar contenedores y recolectar evidencia E2E runtime.
+38. Refresh visual del panel admin del plugin: nueva cabecera operativa con chips de estado y KPIs rápidos (bundles/landings), mejoras de jerarquía visual en tarjetas y tablas, tabs con comportamiento sticky y foco accesible en controles para una experiencia de operación más clara y moderna.
+39. Re-categorización del panel admin por responsabilidad: `Wizard y landings` ahora vive en pestaña propia, con nombre operativo corregido (`Wizard de pruebas internas`) y flujo de navegación ajustado para que edición/acciones de landings abran siempre en su sección.
 
 ## Hallazgos clave para futuras IA
 
