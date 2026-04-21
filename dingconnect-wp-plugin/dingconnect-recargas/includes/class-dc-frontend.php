@@ -116,28 +116,10 @@ class DC_Recargas_Frontend {
         <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
             <div class="dc-card">
 
-                <!-- Stepper de progreso -->
-                <nav class="dc-stepper" id="dc-stepper" aria-label="Progreso del proceso">
-                    <div class="dc-step is-active" data-step="1">
-                        <div class="dc-step-dot"><span>1</span></div>
-                        <div class="dc-step-label">Número</div>
-                    </div>
-                    <div class="dc-step-bar" data-bar="1"></div>
-                    <div class="dc-step" data-step="2">
-                        <div class="dc-step-dot"><span>2</span></div>
-                        <div class="dc-step-label">Paquete</div>
-                    </div>
-                    <div class="dc-step-bar" data-bar="2"></div>
-                    <div class="dc-step" data-step="3">
-                        <div class="dc-step-dot"><span>3</span></div>
-                        <div class="dc-step-label">Confirmar</div>
-                    </div>
-                </nav>
-
                 <!-- Viewport del wizard -->
                 <div class="dc-wizard" id="dc-wizard">
 
-                    <!-- Paso 1: Número -->
+                    <!-- Paso 1: Número y paquete -->
                     <div class="dc-pane" id="dc-pane-phone">
                         <div class="dc-pane-header">
                             <h2><?php echo esc_html($title); ?></h2>
@@ -156,33 +138,34 @@ class DC_Recargas_Frontend {
                             <span>Buscando paquetes disponibles...</span>
                         </div>
                         <div id="dc-feedback" class="dc-feedback" aria-live="polite"></div>
-                    </div>
-
-                    <!-- Paso 2: Paquete -->
-                    <div class="dc-pane" id="dc-pane-bundle" hidden>
-                        <div class="dc-context-strip" id="dc-context-phone"></div>
-                        <div id="dc-provider-filter" class="dc-provider-filter" hidden>
-                            <div class="dc-provider-label">Selecciona un operador</div>
-                            <div id="dc-provider-buttons" class="dc-provider-buttons"></div>
-                        </div>
-                        <div id="dc-bundles" class="dc-bundles" hidden></div>
-                        <div class="dc-pane-nav">
-                            <button type="button" class="dc-nav-back-btn" id="dc-btn-back-bundle">
-                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                Atrás
-                            </button>
+                        <div id="dc-package-stage" class="dc-package-stage" hidden>
+                            <div class="dc-context-strip" id="dc-context-phone"></div>
+                            <div class="dc-package-stage-header">
+                                <h3>Elige un paquete</h3>
+                                <p>Selecciona el paquete disponible para este número y revisa sus beneficios antes de confirmar.</p>
+                            </div>
+                            <label class="dc-package-select-label" for="dc-package-select">Paquetes disponibles</label>
+                            <select id="dc-package-select" class="dc-package-select"></select>
+                            <div id="dc-package-card" class="dc-package-card"></div>
+                            <div class="dc-pane-nav dc-pane-nav--end">
+                                <button type="button" class="dc-confirm-btn" id="dc-btn-continue-confirm">Continuar</button>
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Paso 3: Confirmar -->
+                    <!-- Paso 2: Confirmar -->
                     <div class="dc-pane" id="dc-pane-confirm" hidden>
+                        <div class="dc-pane-header dc-pane-header--compact">
+                            <h2>Confirma tu recarga</h2>
+                            <p>Revisa los datos antes de enviarlos al flujo de pago o a la recarga directa.</p>
+                        </div>
                         <div class="dc-context-strip" id="dc-context-bundle"></div>
                         <div id="dc-confirm-card" class="dc-confirm-card"></div>
                         <div id="dc-feedback-confirm" class="dc-feedback" aria-live="polite"></div>
                         <div class="dc-pane-nav dc-pane-nav--split">
                             <button type="button" class="dc-nav-back-btn" id="dc-btn-back-confirm">
                                 <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                                Cambiar
+                                Cambiar paquete
                             </button>
                             <button type="button" class="dc-confirm-btn" id="dc-confirm-btn">Confirmar recarga</button>
                         </div>

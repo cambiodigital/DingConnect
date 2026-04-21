@@ -157,9 +157,11 @@ Nota operativa WooCommerce (abril 2026):
   - `subtitle="Selecciona tu paquete y confirma"`
 - Contrato de catálogo para landing: el frontend del shortcode envía `allowed_bundle_ids` al endpoint `/products` y backend prioriza esos bundles explícitos de la landing. Esto evita que se mezclen bundles activos globales del país cuando el objetivo tiene su propio catálogo curado.
 - Selector de país en frontend: ya no depende de una configuración fija; se muestra con los países detectados en los bundles permitidos de esa landing.
+- Flujo público de la landing: el shortcode `dingconnect_recargas` ya no expone un índice numerado visible; resuelve el recorrido en dos pasos operativos. Paso 1: número + selector de paquetes disponibles para la landing, con ficha visual de Beneficios recibidos, Operador, Monto y País ISO. Paso 2: confirmación antes de derivar a WooCommerce o a la recarga directa.
 - Soporte multi-instancia en una misma página: el contenedor del shortcode usa ID único por render y el script inicializa cada bloque por clase (`.dc-recargas-app`), evitando conflictos cuando una landing publica dos o más formularios de recarga.
 - Endurecimiento de personalización visual por landing: el CSS dinámico generado desde admin debe mantenerse acotado a controles primarios del wizard (sin reglas globales de `button`) para no degradar estilos del paso final de resultado ni de navegación secundaria.
 - Regla de despliegue para assets del shortcode: `assets/css/frontend.css` y `assets/js/frontend.js` deben invalidar caché automáticamente por fecha de modificación (`filemtime`) para impedir que un HTML/JS nuevo conviva con una hoja CSS antigua servida por caché de plugin, CDN o LiteSpeed.
+- Regla de visibilidad del selector de país: el overlay `.dc-country-overlay` debe incluir una regla específica para `[hidden]` con `display: none !important;`, porque depende de ese atributo para no bloquear la interacción inicial del shortcode.
 
 ### Nota operativa Catálogo y alta (abril 2026)
 

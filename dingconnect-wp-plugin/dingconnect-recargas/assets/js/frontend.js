@@ -18,23 +18,22 @@
     var countryClose      = findInApp('dc-country-close');
     var loadingEl         = findInApp('dc-loading');
     var feedbackEl        = findInApp('dc-feedback');
-    var providerFilter    = findInApp('dc-provider-filter');
-    var providerButtons   = findInApp('dc-provider-buttons');
-    var bundlesEl         = findInApp('dc-bundles');
+    var packageStage      = findInApp('dc-package-stage');
+    var packageSelect     = findInApp('dc-package-select');
+    var packageCard       = findInApp('dc-package-card');
     var confirmCard       = findInApp('dc-confirm-card');
     var feedbackConfirmEl = findInApp('dc-feedback-confirm');
+    var btnContinueConfirm = findInApp('dc-btn-continue-confirm');
     var confirmBtn        = findInApp('dc-confirm-btn');
     var resultEl          = findInApp('dc-result');
 
     /* Wizard panes & navigation */
     var panePhone         = findInApp('dc-pane-phone');
-    var paneBundle        = findInApp('dc-pane-bundle');
     var paneConfirm       = findInApp('dc-pane-confirm');
     var paneResult        = findInApp('dc-pane-result');
     var stepperEl         = findInApp('dc-stepper');
     var contextPhone      = findInApp('dc-context-phone');
     var contextBundle     = findInApp('dc-context-bundle');
-    var btnBackBundle     = findInApp('dc-btn-back-bundle');
     var btnBackConfirm    = findInApp('dc-btn-back-confirm');
     var btnRestart        = findInApp('dc-btn-restart');
 
@@ -42,10 +41,10 @@
         countryBtn, countryFlag, countryDial, phoneEl,
         overlay, countrySearch, countryList, countryClose,
         loadingEl, feedbackEl,
-        providerFilter, providerButtons, bundlesEl,
-        confirmCard, feedbackConfirmEl, confirmBtn, resultEl,
-        panePhone, paneBundle, paneConfirm, paneResult,
-        stepperEl, btnBackBundle, btnBackConfirm, btnRestart,
+        packageStage, packageSelect, packageCard,
+        confirmCard, feedbackConfirmEl, btnContinueConfirm, confirmBtn, resultEl,
+        panePhone, paneConfirm, paneResult,
+        btnBackConfirm, btnRestart,
     ];
 
     if (requiredNodes.some(function (n) { return !n; })) {
@@ -76,8 +75,6 @@
     var state = {
         country: null,
         bundles: [],
-        filteredBundles: [],
-        selectedProvider: '',
         selected: null,
         fullPhone: '',
         lastSearchKey: '',
@@ -85,18 +82,17 @@
         inFlightSearchKey: '',
         dataSource: '',
         allowedBundleMap: allowedBundleMap,
-        wizardStep: 'phone',  // phone | bundle | confirm | result
+        wizardStep: 'phone',  // phone | confirm | result
     };
 
     /* ===== Wizard navigation ===== */
     var paneMap = {
         phone: panePhone,
-        bundle: paneBundle,
         confirm: paneConfirm,
         result: paneResult,
     };
 
-    var stepNumbers = { phone: 1, bundle: 2, confirm: 3 };
+    var stepNumbers = { phone: 1, confirm: 2 };
 
     function goToStep(newStep, direction) {
         var currentPane = paneMap[state.wizardStep];
@@ -128,6 +124,8 @@
     }
 
     function updateStepper(step) {
+        if (!stepperEl) return;
+
         var currentNum = stepNumbers[step] || null;
 
         // Show/hide stepper on result step
@@ -169,6 +167,18 @@
         feedbackConfirmEl.textContent = msg || '';
     }
 
+    function resetPackageStage(clearBundles) {
+        state.selected = null;
+        if (clearBundles) {
+            state.bundles = [];
+        }
+        packageSelect.innerHTML = '';
+        packageCard.innerHTML = '';
+        packageStage.hidden = true;
+        confirmCard.innerHTML = '';
+        setFeedbackConfirm('', '');
+    }
+
     function escapeHtml(str) {
         var div = document.createElement('div');
         div.appendChild(document.createTextNode(str));
@@ -188,6 +198,7 @@
         state.country = c;
         countryFlag.textContent = isoToFlag(c.iso);
         countryDial.textContent = '+' + c.dial;
+        resetPackageStage(true);
         closeOverlay();
     }
 
@@ -264,7 +275,10 @@
         }, 500);
     }
 
-    phoneEl.addEventListener('input', scheduleAutoSearch);
+    phoneEl.addEventListener('input', function () {
+        resetPackageStage(true);
+        scheduleAutoSearch();
+    });
 
     /* ===== API ===== */
     async function fetchJson(path, options) {
@@ -298,10 +312,10 @@
 
         var searchKey = state.country.iso + '|' + fullPhone;
         var withinCache = (Date.now() - state.lastSearchAt) < SEARCH_CACHE_TTL_MS;
-        if (!opts.force && state.lastSearchKey === searchKey && withinCache) {
-            // Already have results — advance directly if on phone step
+        if (!opts.force && state.lastSearchKey === searchKey && withinCache && state.bundles.length > 0) {
+            // Already have results — rehydrate package stage without another request
             if (state.wizardStep === 'phone' && state.bundles.length > 0) {
-                advanceToBundle();
+                showPackageStage();
             }
             return;
         }
@@ -336,7 +350,6 @@
             }
 
             state.dataSource = res.source || 'unknown';
-            state.selectedProvider = '';
             state.lastSearchKey = searchKey;
             state.lastSearchAt = Date.now();
 
@@ -344,11 +357,11 @@
                 setFeedback('⚠️ Sin conexión a DingConnect. Mostrando catálogo guardado.', 'warning');
             }
 
-            populateProviderFilter();
-            advanceToBundle();
+            showPackageStage();
 
         } catch (err) {
             state.bundles = [];
+            resetPackageStage(true);
             setFeedback(err.message || 'No se pudo consultar DingConnect.', 'error');
         } finally {
             state.inFlightSearchKey = '';
@@ -356,14 +369,14 @@
         }
     }
 
-    /* ===== Advance to bundle step ===== */
-    function advanceToBundle() {
+    /* ===== Package stage ===== */
+    function showPackageStage() {
         if (state.bundles.length === 0) {
+            resetPackageStage(false);
             setFeedback('No hay paquetes disponibles para este número.', 'warning');
             return;
         }
 
-        // Update context strip in bundle pane
         if (contextPhone) {
             var flag = state.country ? isoToFlag(state.country.iso) : '';
             var dial = state.country ? '+' + state.country.dial : '';
@@ -372,169 +385,122 @@
                 + '&nbsp;· ' + escapeHtml(state.country ? state.country.name : '');
         }
 
-        // Reset bundle pane state
-        bundlesEl.innerHTML = '';
-        bundlesEl.hidden = true;
-        providerFilter.hidden = true;
-
-        goToStep('bundle', 'forward');
-
-        // Small delay so transition finishes before populating
-        setTimeout(function () {
-            showProviderStep();
-        }, 50);
+        setFeedback('', '');
+        packageStage.hidden = false;
+        populatePackageSelect();
     }
 
-    /* ===== Provider step ===== */
-    function populateProviderFilter() {
-        if (!providerButtons) return;
-        var providers = [];
-        var seen = {};
-        state.bundles.forEach(function (b) {
-            var name = getProviderLabel(b);
-            if (name && !seen[name]) { seen[name] = true; providers.push(name); }
-        });
-        providers.sort();
-        state._providers = providers;
+    function getBundleOptionLabel(bundle) {
+        var parts = [];
+        var title = String(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
+        var provider = getProviderLabel(bundle);
+        var amount = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
 
-        providerButtons.innerHTML = '';
-        providers.forEach(function (p) {
-            var count = state.bundles.filter(function (b) { return getProviderLabel(b) === p; }).length;
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'dc-provider-btn';
-            btn.dataset.provider = p;
-            btn.innerHTML = '<span class="dc-provider-btn-name">' + escapeHtml(p) + '</span>'
-                + '<span class="dc-provider-btn-count">' + count + '</span>';
-            btn.addEventListener('click', function () { selectProviderBtn(p); });
-            providerButtons.appendChild(btn);
-        });
+        parts.push(title);
+        if (provider) parts.push(provider);
+        parts.push(amount);
+
+        return parts.join(' · ');
     }
 
-    function showProviderStep() {
-        var providers = state._providers || [];
-        if (providers.length === 0) {
-            state.filteredBundles = state.bundles.slice();
-            renderBundles();
-            return;
-        }
-        if (providers.length === 1) {
-            providerFilter.hidden = true;
-            selectProviderBtn(providers[0]);
-            return;
-        }
-        // Multiple providers — show picker first, bundles after
-        providerFilter.hidden = false;
-        bundlesEl.hidden = true;
-    }
+    function populatePackageSelect() {
+        packageSelect.innerHTML = '';
 
-    function selectProviderBtn(provider) {
-        state.selectedProvider = provider;
-        if (providerButtons) {
-            providerButtons.querySelectorAll('.dc-provider-btn').forEach(function (b) {
-                b.classList.toggle('active', b.dataset.provider === provider);
-            });
-        }
-        state.filteredBundles = state.bundles.filter(function (b) { return getProviderLabel(b) === provider; });
-        state.selected = null;
-        renderBundles();
-    }
-
-    /* ===== Render bundles ===== */
-    function renderBundles() {
-        bundlesEl.innerHTML = '';
-        if (!state.filteredBundles.length) {
-            bundlesEl.innerHTML = '<div class="dc-empty-state"><p>No hay paquetes disponibles para este número.</p></div>';
-            bundlesEl.hidden = false;
+        if (!state.bundles.length) {
+            resetPackageStage(false);
             return;
         }
 
-        var label = document.createElement('div');
-        label.className = 'dc-bundles-label';
-        var badge = '';
-        if (state.dataSource === 'saved') badge = '<span class="dc-source-badge dc-source-saved">📋 Guardado</span>';
-        else if (state.dataSource === 'dingconnect') badge = '<span class="dc-source-badge dc-source-dingconnect">🌐 En vivo</span>';
-        else if (state.dataSource === 'fallback') badge = '<span class="dc-source-badge dc-source-fallback">⚠️ Respaldo</span>';
-        label.innerHTML = state.filteredBundles.length + ' paquetes disponibles ' + badge;
-        bundlesEl.appendChild(label);
-
-        state.filteredBundles.forEach(function (bundle) {
-            var card = document.createElement('div');
-            card.className = 'dc-bundle-card';
-            card.dataset.sku = String(bundle.SkuCode || '');
-
-            var benefit = bundle.Description || '';
-            var isUssd = benefit && /dial|\bUSSD\b|\*\d/i.test(benefit);
-            var providerLabel = getProviderLabel(bundle);
-            var benefitHtml = (benefit && !isUssd)
-                ? '<div class="dc-bundle-benefit">' + escapeHtml(benefit.length > 80 ? benefit.substring(0, 80) + '…' : benefit) + '</div>'
-                : '';
-
-            card.innerHTML = '<div class="dc-bundle-info">'
-                + '<div class="dc-bundle-operator">' + escapeHtml(providerLabel) + '</div>'
-                + '<div class="dc-bundle-name">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode) + '</div>'
-                + benefitHtml
-                + '</div>'
-                + '<div class="dc-bundle-price">'
-                + '<div class="dc-bundle-amount">' + Number(bundle.SendValue || 0).toFixed(2) + '</div>'
-                + '<div class="dc-bundle-currency">' + escapeHtml(bundle.SendCurrencyIso || 'USD') + '</div>'
-                + '</div>';
-
-            card.addEventListener('click', function () { selectBundle(bundle, card); });
-            bundlesEl.appendChild(card);
+        state.bundles.forEach(function (bundle, index) {
+            var option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = getBundleOptionLabel(bundle);
+            packageSelect.appendChild(option);
         });
 
-        bundlesEl.hidden = false;
+        if (!state.selected || state.bundles.indexOf(state.selected) === -1) {
+            state.selected = state.bundles[0];
+        }
+
+        packageSelect.value = String(state.bundles.indexOf(state.selected));
+        renderPackageCard(state.selected);
+        btnContinueConfirm.disabled = !state.selected;
     }
 
-    /* ===== Select bundle → Confirm step ===== */
-    function selectBundle(bundle, cardEl) {
-        state.selected = bundle;
+    function renderPackageCard(bundle) {
+        if (!bundle) {
+            packageCard.innerHTML = '';
+            btnContinueConfirm.disabled = true;
+            return;
+        }
 
-        // Visual selection
-        bundlesEl.querySelectorAll('.dc-bundle-card').forEach(function (c) { c.classList.remove('selected'); });
-        if (cardEl) cardEl.classList.add('selected');
-
-        // Build context strip for confirm pane
         var providerLabel = getProviderLabel(bundle);
-        var benefit = bundle.Description || '';
-        var isUssd = benefit && /dial|\bUSSD\b|\*\d/i.test(benefit);
+        var benefit = String(bundle.Description || bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
+        var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
+        var amount = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
+
+        packageCard.innerHTML = ''
+            + '<div class="dc-package-card-head">'
+            +   '<div class="dc-package-copy">'
+            +     '<div class="dc-package-copy-label">Beneficios recibidos</div>'
+            +     '<div class="dc-package-copy-title">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete') + '</div>'
+            +     '<div class="dc-package-copy-description">' + escapeHtml(benefit) + '</div>'
+            +   '</div>'
+            +   '<div class="dc-package-price-block">'
+            +     '<span class="dc-package-price-label">Monto</span>'
+            +     '<strong>' + escapeHtml(amount) + '</strong>'
+            +   '</div>'
+            +   '<div class="dc-package-iso-chip">' + escapeHtml(countryIso || 'N/A') + '</div>'
+            + '</div>'
+            + '<div class="dc-package-card-meta">'
+            +   '<span class="dc-package-meta-label">Operador</span>'
+            +   '<span class="dc-package-meta-value">' + escapeHtml(providerLabel) + '</span>'
+            + '</div>';
+
+        btnContinueConfirm.disabled = false;
+    }
+
+    function buildConfirmStep(bundle) {
+        var providerLabel = getProviderLabel(bundle);
+        var benefit = String(bundle.Description || bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
+        var countryName = state.country ? state.country.name : '';
+        var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
+        var dial = state.country ? '+' + state.country.dial : '';
+        var phone = phoneEl.value || '';
+        var price = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
 
         if (contextBundle) {
             var flag = state.country ? isoToFlag(state.country.iso) : '';
             contextBundle.innerHTML = '<span class="dc-ctx-flag">' + flag + '</span>'
-                + '<strong>' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode) + '</strong>'
+                + '<strong>' + escapeHtml(dial + ' ' + phone) + '</strong>'
                 + '&nbsp;· ' + escapeHtml(providerLabel);
         }
 
-        // Build confirm card
-        var countryName = state.country ? state.country.name : '';
-        var dial = state.country ? '+' + state.country.dial : '';
-        var phone = phoneEl.value || '';
-        var price = Number(bundle.SendValue || 0).toFixed(2) + ' ' + escapeHtml(bundle.SendCurrencyIso || 'USD');
-
         confirmCard.innerHTML = ''
-            + '<div class="dc-confirm-row">'
-            +   '<span class="dc-confirm-row-label">Número</span>'
-            +   '<span class="dc-confirm-row-value">' + escapeHtml(dial + ' ' + phone) + '<br><small style="font-weight:400;color:#64748b">' + escapeHtml(countryName) + '</small></span>'
-            + '</div>'
-            + '<div class="dc-confirm-row">'
-            +   '<span class="dc-confirm-row-label">Paquete</span>'
-            +   '<span class="dc-confirm-row-value">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode) + '</span>'
+            + '<div class="dc-confirm-hero">'
+            +   '<div class="dc-confirm-hero-copy">'
+            +     '<div class="dc-confirm-kicker">Beneficios recibidos</div>'
+            +     '<div class="dc-confirm-title">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete') + '</div>'
+            +     '<div class="dc-confirm-benefit">' + escapeHtml(benefit) + '</div>'
+            +   '</div>'
+            +   '<div class="dc-confirm-hero-side">'
+            +     '<span class="dc-confirm-iso">' + escapeHtml(countryIso || 'N/A') + '</span>'
+            +     '<strong class="dc-confirm-amount">' + escapeHtml(price) + '</strong>'
+            +   '</div>'
             + '</div>'
             + '<div class="dc-confirm-row">'
             +   '<span class="dc-confirm-row-label">Operador</span>'
             +   '<span class="dc-confirm-row-value">' + escapeHtml(providerLabel) + '</span>'
             + '</div>'
-            + (benefit && !isUssd
-                ? '<div class="dc-confirm-row"><span class="dc-confirm-row-label">Beneficios</span><span class="dc-confirm-row-value is-benefit">' + escapeHtml(benefit) + '</span></div>'
-                : '')
             + '<div class="dc-confirm-row">'
-            +   '<span class="dc-confirm-row-label">Costo</span>'
-            +   '<span class="dc-confirm-row-value is-price">' + price + '</span>'
+            +   '<span class="dc-confirm-row-label">Número</span>'
+            +   '<span class="dc-confirm-row-value">' + escapeHtml(dial + ' ' + phone) + '</span>'
+            + '</div>'
+            + '<div class="dc-confirm-row">'
+            +   '<span class="dc-confirm-row-label">País</span>'
+            +   '<span class="dc-confirm-row-value">' + escapeHtml(countryName + (countryIso ? ' (' + countryIso + ')' : '')) + '</span>'
             + '</div>';
 
-        // Update confirm button text
         if (DC_RECARGAS_DATA.woocommerce_active) {
             confirmBtn.textContent = 'Añadir al carrito';
         } else {
@@ -542,36 +508,34 @@
         }
         confirmBtn.disabled = false;
         setFeedbackConfirm('', '');
-
-        goToStep('confirm', 'forward');
     }
 
-    /* ===== Back navigation ===== */
-    btnBackBundle.addEventListener('click', function () {
-        goToStep('phone', 'back');
+    packageSelect.addEventListener('change', function () {
+        var selectedIndex = parseInt(packageSelect.value, 10);
+        state.selected = state.bundles[selectedIndex] || null;
+        renderPackageCard(state.selected);
+    });
+
+    btnContinueConfirm.addEventListener('click', function () {
+        if (!state.selected) return;
+        buildConfirmStep(state.selected);
+        goToStep('confirm', 'forward');
     });
 
     btnBackConfirm.addEventListener('click', function () {
-        goToStep('bundle', 'back');
+        goToStep('phone', 'back');
+        if (!packageStage.hidden) {
+            packageSelect.focus();
+        }
     });
 
     btnRestart.addEventListener('click', function () {
-        // Reset state
-        state.selected = null;
-        state.bundles = [];
-        state.filteredBundles = [];
-        state.selectedProvider = '';
         state.fullPhone = '';
         state.lastSearchKey = '';
         state.lastSearchAt = 0;
-        // Clear panes
-        bundlesEl.innerHTML = '';
-        bundlesEl.hidden = true;
-        providerFilter.hidden = true;
-        confirmCard.innerHTML = '';
+        resetPackageStage(true);
         resultEl.innerHTML = '';
         setFeedback('', '');
-        setFeedbackConfirm('', '');
         goToStep('phone', 'back');
         phoneEl.focus();
     });

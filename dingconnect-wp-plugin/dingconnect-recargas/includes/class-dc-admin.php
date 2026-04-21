@@ -2153,14 +2153,14 @@ class DC_Recargas_Admin {
                 var apiCreateBtn = document.getElementById('dc_api_create_btn');
                 var apiLoadManualBtn = document.getElementById('dc_api_load_manual_btn');
                 var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
-                var manualCountryIsoEl = document.getElementById('dc_country_iso');
-                var manualLabelEl = document.getElementById('dc_label');
-                var manualSkuEl = document.getElementById('dc_sku_code');
-                var manualSendValueEl = document.getElementById('dc_send_value');
-                var manualSendCurrencyEl = document.getElementById('dc_send_currency_iso');
-                var manualProviderEl = document.getElementById('dc_provider_name');
-                var manualDescriptionEl = document.getElementById('dc_description');
-                var manualBundleSourceEl = document.getElementById('dc_manual_bundle_source');
+                var manualCountryIsoEl = null;
+                var manualLabelEl = null;
+                var manualSkuEl = null;
+                var manualSendValueEl = null;
+                var manualSendCurrencyEl = null;
+                var manualProviderEl = null;
+                var manualDescriptionEl = null;
+                var manualBundleSourceEl = null;
                 var apiSelected  = null;
                 var apiItems = [];
                 var apiGroupCounts = {};
@@ -2334,19 +2334,21 @@ class DC_Recargas_Admin {
                 }
 
                 function updateManualBundleSource(item) {
-                    if (!manualBundleSourceEl) {
+                    // Búsqueda lazy del elemento
+                    var sourceEl = document.getElementById('dc_manual_bundle_source');
+                    if (!sourceEl) {
                         return;
                     }
 
                     var text = getManualBundleSourceText(item);
                     if (!text) {
-                        manualBundleSourceEl.textContent = '';
-                        manualBundleSourceEl.hidden = true;
+                        sourceEl.textContent = '';
+                        sourceEl.hidden = true;
                         return;
                     }
 
-                    manualBundleSourceEl.textContent = 'Paquete API: ' + text;
-                    manualBundleSourceEl.hidden = false;
+                    sourceEl.textContent = 'Paquete API: ' + text;
+                    sourceEl.hidden = false;
                 }
 
                 function bindCatalogSubtabButtons() {
@@ -2431,13 +2433,22 @@ class DC_Recargas_Admin {
                 window.dcEnsureCatalogSubtabs = ensureCatalogSubtabsReady;
 
                 function fillManualForm(item) {
-                    if (manualCountryIsoEl) manualCountryIsoEl.value = item.country_iso || '';
-                    if (manualLabelEl) manualLabelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.label || item.sku_code || '');
-                    if (manualSkuEl) manualSkuEl.value = item.sku_code || '';
-                    if (manualSendValueEl) manualSendValueEl.value = item.send_value != null ? item.send_value : '';
-                    if (manualSendCurrencyEl) manualSendCurrencyEl.value = item.send_currency_iso || 'USD';
-                    if (manualProviderEl) manualProviderEl.value = item.operator || '';
-                    if (manualDescriptionEl) manualDescriptionEl.value = item.receive || item.label || '';
+                    // Búsqueda lazy de elementos: se buscan en el momento en que se necesitan
+                    var countryEl = document.getElementById('dc_country_iso');
+                    var labelEl = document.getElementById('dc_label');
+                    var skuEl = document.getElementById('dc_sku_code');
+                    var sendValueEl = document.getElementById('dc_send_value');
+                    var sendCurrencyEl = document.getElementById('dc_send_currency_iso');
+                    var providerEl = document.getElementById('dc_provider_name');
+                    var descriptionEl = document.getElementById('dc_description');
+
+                    if (countryEl) countryEl.value = item.country_iso || '';
+                    if (labelEl) labelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.label || item.sku_code || '');
+                    if (skuEl) skuEl.value = item.sku_code || '';
+                    if (sendValueEl) sendValueEl.value = item.send_value != null ? item.send_value : '';
+                    if (sendCurrencyEl) sendCurrencyEl.value = item.send_currency_iso || 'USD';
+                    if (providerEl) providerEl.value = item.operator || '';
+                    if (descriptionEl) descriptionEl.value = item.receive || item.label || '';
                     updateManualBundleSource(item);
                 }
 
@@ -2458,10 +2469,14 @@ class DC_Recargas_Admin {
                         }
                     }
 
-                    if (opened && manualCountryIsoEl && typeof manualCountryIsoEl.focus === 'function') {
-                        manualCountryIsoEl.focus();
-                        if (typeof manualCountryIsoEl.scrollIntoView === 'function') {
-                            manualCountryIsoEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    if (opened) {
+                        // Búsqueda lazy del elemento para focus
+                        var countryEl = document.getElementById('dc_country_iso');
+                        if (countryEl && typeof countryEl.focus === 'function') {
+                            countryEl.focus();
+                            if (typeof countryEl.scrollIntoView === 'function') {
+                                countryEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
                         }
                     }
                 }
@@ -2643,9 +2658,14 @@ class DC_Recargas_Admin {
                     if (!apiSelected) { return; }
 
                     try {
-                        fillManualForm(apiSelected);
+                        // Abrir la pestaña primero para que los elementos estén en el DOM
                         openManualSubtab();
-                        apiHelpEl.textContent = 'Producto cargado en «Alta manual». Revisa los campos y guarda el bundle cuando quieras.';
+                        
+                        // Luego llenar el formulario (con un pequeño delay para permitir que el DOM se estabilice)
+                        setTimeout(function () {
+                            fillManualForm(apiSelected);
+                            apiHelpEl.textContent = 'Producto cargado en «Alta manual». Revisa los campos y guarda el bundle cuando quieras.';
+                        }, 50);
                     } catch (e) {
                         apiHelpEl.textContent = 'No se pudo cargar el producto seleccionado en el formulario manual.';
                     }
@@ -3964,6 +3984,7 @@ class DC_Recargas_Admin {
                 var shadowIntensitySelect = document.getElementById('dc_customize_shadow_intensity');
                 var preview = document.getElementById('dc_customize_preview');
                 var customizeStatus = document.getElementById('dc_customize_status');
+                var customizeInputs = [maxWidthInput, bgColorInput, primaryColorInput, textColorInput, borderRadiusInput, paddingInput, shadowIntensitySelect];
                 var currentShortcodeKey = '';
 
                 function closeCustomizeModal() {
