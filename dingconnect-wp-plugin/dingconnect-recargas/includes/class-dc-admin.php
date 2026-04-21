@@ -344,6 +344,31 @@ class DC_Recargas_Admin {
             $mode = 'direct';
         }
 
+        $raw_allowed_gateways = wp_unslash($input['woo_allowed_gateways'] ?? []);
+        if (!is_array($raw_allowed_gateways)) {
+            $raw_allowed_gateways = [];
+        }
+
+        $allowed_gateway_map = [];
+        if (class_exists('WC_Payment_Gateways')) {
+            $registered_gateways = WC_Payment_Gateways::instance()->payment_gateways();
+            foreach ($registered_gateways as $gateway_id => $gateway) {
+                $clean_gateway_id = sanitize_key((string) $gateway_id);
+                if ($clean_gateway_id !== '') {
+                    $allowed_gateway_map[$clean_gateway_id] = true;
+                }
+            }
+        }
+
+        $woo_allowed_gateways = [];
+        foreach ($raw_allowed_gateways as $gateway_id) {
+            $gateway_id = sanitize_key((string) $gateway_id);
+            if ($gateway_id !== '' && isset($allowed_gateway_map[$gateway_id])) {
+                $woo_allowed_gateways[] = $gateway_id;
+            }
+        }
+        $woo_allowed_gateways = array_values(array_unique($woo_allowed_gateways));
+
         // Convert recharge mode select to validate_only and allow_real_recharge flags
         $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
         if (!in_array($recharge_mode, ['test_simulate', 'test_allow_change', 'production'], true)) {
@@ -364,6 +389,7 @@ class DC_Recargas_Admin {
             'api_base' => esc_url_raw(trim((string) ($input['api_base'] ?? 'https://www.dingconnect.com/api/V1'))),
             'api_key' => sanitize_text_field((string) ($input['api_key'] ?? '')),
             'payment_mode' => $mode,
+            'woo_allowed_gateways' => $woo_allowed_gateways,
             'recharge_mode' => $recharge_mode,
             'validate_only' => $validate_only,
             'allow_real_recharge' => $allow_real_recharge,
@@ -648,7 +674,6 @@ class DC_Recargas_Admin {
         }
 
         $items = [];
-        $provider_map = $this->get_api_provider_name_map($raw_items, $country_iso);
         $group_counts = [];
         $group_labels = $this->get_api_package_group_labels();
         foreach ($raw_items as $product) {
@@ -663,8 +688,6 @@ class DC_Recargas_Admin {
                 }
             }
 
-            $provider_code = sanitize_text_field((string) ($product['ProviderCode'] ?? ''));
-            $provider_name = sanitize_text_field((string) ($product['ProviderName'] ?? ($provider_map[$provider_code] ?? $provider_code)));
             $receive = !empty($benefits) ? implode(', ', $benefits) : ($product['DefaultDisplayText'] ?? '');
             $label   = ($product['DefaultDisplayText'] ?? '') ?: ($product['SkuCode'] ?? '');
             $package_group = $this->classify_api_package_group($product, $receive, $label);
@@ -677,8 +700,7 @@ class DC_Recargas_Admin {
             $items[] = [
                 'country_iso'       => $country_iso,
                 'sku_code'          => $product['SkuCode'] ?? '',
-                'operator'          => $provider_name,
-                'operator_code'     => $provider_code,
+                'operator'          => $product['ProviderCode'] ?? '',
                 'label'             => $label,
                 'send_value'        => isset($product['Minimum']['SendValue']) ? (float) $product['Minimum']['SendValue'] : 0,
                 'send_currency_iso' => $product['Minimum']['SendCurrencyIso'] ?? 'USD',
@@ -696,55 +718,6 @@ class DC_Recargas_Admin {
             'group_counts' => $group_counts,
             'group_labels' => $group_labels,
         ]);
-    }
-
-    private function get_api_provider_name_map($items, $country_iso) {
-        $provider_codes = [];
-
-        foreach ((array) $items as $item) {
-            if (!is_array($item)) {
-                continue;
-            }
-
-            $provider_code = sanitize_text_field((string) ($item['ProviderCode'] ?? ''));
-            if ('' !== $provider_code) {
-                $provider_codes[] = $provider_code;
-            }
-        }
-
-        $provider_codes = array_values(array_unique($provider_codes));
-        if (empty($provider_codes)) {
-            return [];
-        }
-
-        $response = $this->api->get_providers_by_codes($provider_codes);
-
-        if (is_wp_error($response) && !empty($country_iso)) {
-            $response = $this->api->get_providers_by_country($country_iso);
-        }
-
-        if (is_wp_error($response)) {
-            return [];
-        }
-
-        $providers = $response['Result'] ?? $response['Items'] ?? [];
-        $map = [];
-
-        foreach ((array) $providers as $provider) {
-            if (!is_array($provider)) {
-                continue;
-            }
-
-            $provider_code = sanitize_text_field((string) ($provider['ProviderCode'] ?? ''));
-            if ('' === $provider_code) {
-                continue;
-            }
-
-            $provider_name = sanitize_text_field((string) ($provider['Name'] ?? ($provider['ShortName'] ?? $provider_code)));
-            $map[$provider_code] = $provider_name;
-        }
-
-        return $map;
     }
 
     private function get_api_package_group_labels() {
@@ -826,6 +799,11 @@ class DC_Recargas_Admin {
     public function render_page() {
         $options = $this->api->get_options();
         $bundles = get_option('dc_recargas_bundles', []);
+        $wc_gateways = [];
+        if (class_exists('WC_Payment_Gateways')) {
+            $wc_gateways = WC_Payment_Gateways::instance()->payment_gateways();
+        }
+        $selected_woo_gateways = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
         $landing_shortcodes = get_option('dc_recargas_landing_shortcodes', []);
         if (!is_array($landing_shortcodes)) {
             $landing_shortcodes = [];
@@ -1276,6 +1254,135 @@ class DC_Recargas_Admin {
                     gap: 8px;
                 }
 
+                /* ─ Modal de Personalización de Shortcodes ─ */
+                .dc-customize-compact {
+                    display: flex;
+                    gap: 16px;
+                    align-items: flex-start;
+                    margin-bottom: 12px;
+                }
+
+                .dc-customize-grid {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 12px;
+                    flex: 1;
+                }
+
+                .dc-customize-field {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                }
+
+                .dc-customize-field label {
+                    margin: 0;
+                    color: #334155;
+                    font-size: 12px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                }
+
+                .dc-customize-field input[type="number"],
+                .dc-customize-field select {
+                    border: 1px solid #c9d6ea;
+                    border-radius: 6px;
+                    padding: 6px 8px;
+                    font-size: 13px;
+                    background: white;
+                }
+
+                .dc-customize-field input[type="color"] {
+                    width: 100%;
+                    height: 36px;
+                    border: 1px solid #c9d6ea;
+                    border-radius: 6px;
+                    cursor: pointer;
+                }
+
+                .dc-customize-unit {
+                    position: absolute;
+                    font-size: 11px;
+                    color: #64748b;
+                    margin-top: -20px;
+                    pointer-events: none;
+                }
+
+                .dc-customize-preview-compact {
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 12px;
+                    min-width: 200px;
+                    max-width: 240px;
+                }
+
+                .dc-customize-preview-compact h4 {
+                    margin: 0 0 10px;
+                    color: #334155;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                .dc-customize-preview-container-compact {
+                    background: white;
+                    border-radius: 8px;
+                    padding: 12px;
+                    font-size: 12px;
+                    color: #334155;
+                }
+
+                .dc-customize-preview-container-compact h2 {
+                    margin: 0 0 6px;
+                    font-size: 14px;
+                    font-weight: 700;
+                }
+
+                .dc-customize-preview-container-compact p {
+                    margin: 0 0 10px;
+                    font-size: 11px;
+                    opacity: 0.8;
+                }
+
+                .dc-customize-preview-container-compact button {
+                    width: 100%;
+                    padding: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    color: white;
+                    margin-bottom: 6px;
+                    transition: opacity 0.2s;
+                }
+
+                .dc-customize-preview-container-compact button:hover {
+                    opacity: 0.9;
+                }
+
+                @media (max-width: 1024px) {
+                    .dc-customize-compact {
+                        flex-direction: column;
+                    }
+
+                    .dc-customize-grid {
+                        grid-template-columns: repeat(3, 1fr);
+                    }
+
+                    .dc-customize-preview-compact {
+                        width: 100%;
+                        max-width: 100%;
+                    }
+                }
+
+                @media (max-width: 768px) {
+                    .dc-customize-grid {
+                        grid-template-columns: repeat(2, 1fr);
+                    }
+                }
+
                 /* Keep datalist-enhanced fields visually aligned with the admin UI. */
                 .dc-combo-input {
                     border: 1px solid #c9d6ea;
@@ -1664,6 +1771,43 @@ class DC_Recargas_Admin {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row">Pasarelas permitidas</th>
+                        <td>
+                            <?php if (!class_exists('WooCommerce')): ?>
+                                <p class="description">Activa WooCommerce para configurar pasarelas de pago para recargas.</p>
+                            <?php elseif (empty($wc_gateways)): ?>
+                                <p class="description">No hay pasarelas de WooCommerce registradas.</p>
+                            <?php else: ?>
+                                <fieldset>
+                                    <?php foreach ($wc_gateways as $gateway_id => $gateway): ?>
+                                        <?php
+                                        $clean_gateway_id = sanitize_key((string) $gateway_id);
+                                        if ($clean_gateway_id === '') {
+                                            continue;
+                                        }
+                                        $gateway_title = '';
+                                        if (is_object($gateway) && method_exists($gateway, 'get_title')) {
+                                            $gateway_title = (string) $gateway->get_title();
+                                        }
+                                        if ($gateway_title === '') {
+                                            $gateway_title = $clean_gateway_id;
+                                        }
+                                        ?>
+                                        <label style="display:block;margin-bottom:6px;">
+                                            <input type="checkbox" name="dc_recargas_options[woo_allowed_gateways][]" value="<?php echo esc_attr($clean_gateway_id); ?>" <?php checked(in_array($clean_gateway_id, $selected_woo_gateways, true)); ?>>
+                                            <?php echo esc_html(wp_strip_all_tags($gateway_title)); ?>
+                                            <span style="color:#64748b;">(<?php echo esc_html($clean_gateway_id); ?>)</span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </fieldset>
+                                <p class="description">
+                                    Esta restricción aplica solo a carritos con recargas y solo en modo WooCommerce.<br>
+                                    Si no seleccionas ninguna pasarela, se permitirán todas las pasarelas activas del checkout.
+                                </p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="dc_recharge_mode">Modo de recargas</label></th>
                         <td>
                             <select id="dc_recharge_mode" name="dc_recargas_options[recharge_mode]">
@@ -1781,6 +1925,7 @@ class DC_Recargas_Admin {
                                 <td><code><?php echo esc_html($shortcode_text); ?></code></td>
                                 <td>
                                     <button type="button" class="button button-secondary dc-edit-landing-btn" data-landing="<?php echo esc_attr(wp_json_encode($landing_cfg)); ?>">Editar</button>
+                                    <button type="button" class="button dc-customize-shortcode-btn" data-shortcode-key="<?php echo esc_attr($landing_key); ?>" data-shortcode-text="<?php echo esc_attr($shortcode_text); ?>">Personalizar</button>
                                     <a class="button" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
                                         'action' => 'dc_clone_landing_shortcode',
                                         'landing_id' => $landing_id,
@@ -1850,6 +1995,70 @@ class DC_Recargas_Admin {
                         <?php submit_button('Guardar cambios del shortcode', 'primary', 'submit', false); ?>
                         <button type="button" class="button button-secondary" data-dc-landing-edit-close>Cancelar</button>
                     </form>
+                </div>
+            </div>
+
+            <div id="dc-customize-shortcode-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-customize-shortcode-modal-title" hidden>
+                <div class="dc-edit-modal__backdrop" data-dc-customize-close></div>
+                <div class="dc-edit-modal__dialog" style="max-width: 720px;">
+                    <div class="dc-edit-modal__header">
+                        <div>
+                            <h3 id="dc-customize-shortcode-modal-title">Personalizar Diseño</h3>
+                            <p>Ajusta colores, tamaño y estilos (se aplican automáticamente).</p>
+                        </div>
+                        <button type="button" class="dc-edit-modal__close" aria-label="Cerrar" data-dc-customize-close>&times;</button>
+                    </div>
+
+                    <div class="dc-customize-compact">
+                        <div class="dc-customize-grid">
+                            <div class="dc-customize-field">
+                                <label for="dc_customize_max_width">Ancho máximo</label>
+                                <input type="number" id="dc_customize_max_width" min="300" max="800" step="10" value="480" class="small-text">
+                                <span class="dc-customize-unit">px</span>
+                            </div>
+                            <div class="dc-customize-field">
+                                <label for="dc_customize_bg_color">Fondo</label>
+                                <input type="color" id="dc_customize_bg_color" value="#ffffff" class="dc-color-picker">
+                            </div>
+                            <div class="dc-customize-field">
+                                <label for="dc_customize_primary_color">Botones</label>
+                                <input type="color" id="dc_customize_primary_color" value="#2563eb" class="dc-color-picker">
+                            </div>
+                            <div class="dc-customize-field">
+                                <label for="dc_customize_text_color">Texto</label>
+                                <input type="color" id="dc_customize_text_color" value="#0f172a" class="dc-color-picker">
+                            </div>
+                            <div class="dc-customize-field">
+                                <label for="dc_customize_border_radius">Bordes</label>
+                                <input type="number" id="dc_customize_border_radius" min="0" max="30" step="2" value="16" class="small-text">
+                                <span class="dc-customize-unit">px</span>
+                            </div>
+                            <div class="dc-customize-field">
+                                <label for="dc_customize_padding">Espaciado</label>
+                                <input type="number" id="dc_customize_padding" min="10" max="50" step="5" value="24" class="small-text">
+                                <span class="dc-customize-unit">px</span>
+                            </div>
+                            <div class="dc-customize-field">
+                                <label for="dc_customize_shadow_intensity">Sombra</label>
+                                <select id="dc_customize_shadow_intensity" class="small-text">
+                                    <option value="none">Ninguna</option>
+                                    <option value="light" selected>Ligera</option>
+                                    <option value="medium">Media</option>
+                                    <option value="heavy">Fuerte</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="dc-customize-preview-compact">
+                            <h4 style="margin: 0 0 12px; font-size: 13px;">Vista previa</h4>
+                            <div id="dc_customize_preview" class="dc-customize-preview-container-compact"></div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; justify-content: space-between;">
+                        <div id="dc_customize_status" style="color: #64748b; font-size: 13px; align-self: center;"></div>
+                        <button type="button" class="button button-secondary" data-dc-customize-close>Cerrar</button>
+                    </div>
                 </div>
             </div>
 
@@ -1942,6 +2151,14 @@ class DC_Recargas_Admin {
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiCreateBtn = document.getElementById('dc_api_create_btn');
                 var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
+                var manualCountryIsoEl = document.getElementById('dc_country_iso');
+                var manualLabelEl = document.getElementById('dc_label');
+                var manualSkuEl = document.getElementById('dc_sku_code');
+                var manualSendValueEl = document.getElementById('dc_send_value');
+                var manualSendCurrencyEl = document.getElementById('dc_send_currency_iso');
+                var manualProviderEl = document.getElementById('dc_provider_name');
+                var manualDescriptionEl = document.getElementById('dc_description');
+                var manualBundleSourceEl = document.getElementById('dc_manual_bundle_source');
                 var apiSelected  = null;
                 var apiItems = [];
                 var apiGroupCounts = {};
@@ -2114,12 +2331,7 @@ class DC_Recargas_Admin {
                     return String(text || '').trim();
                 }
 
-                function getManualField(id) {
-                    return document.getElementById(id);
-                }
-
                 function updateManualBundleSource(item) {
-                    var manualBundleSourceEl = getManualField('dc_manual_bundle_source');
                     if (!manualBundleSourceEl) {
                         return;
                     }
@@ -2166,16 +2378,8 @@ class DC_Recargas_Admin {
                 window.dcSetCatalogSubtab = setCatalogSubtabState;
 
                 function fillManualForm(item) {
-                    var manualCountryIsoEl = getManualField('dc_country_iso');
-                    var manualLabelEl = getManualField('dc_label');
-                    var manualSkuEl = getManualField('dc_sku_code');
-                    var manualSendValueEl = getManualField('dc_send_value');
-                    var manualSendCurrencyEl = getManualField('dc_send_currency_iso');
-                    var manualProviderEl = getManualField('dc_provider_name');
-                    var manualDescriptionEl = getManualField('dc_description');
-
                     if (manualCountryIsoEl) manualCountryIsoEl.value = item.country_iso || '';
-                    if (manualLabelEl) manualLabelEl.value = item.label || ((item.operator || 'Producto') + ' - ' + (item.receive || item.sku_code || ''));
+                    if (manualLabelEl) manualLabelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.label || item.sku_code || '');
                     if (manualSkuEl) manualSkuEl.value = item.sku_code || '';
                     if (manualSendValueEl) manualSendValueEl.value = item.send_value != null ? item.send_value : '';
                     if (manualSendCurrencyEl) manualSendCurrencyEl.value = item.send_currency_iso || 'USD';
@@ -2186,7 +2390,6 @@ class DC_Recargas_Admin {
 
                 function openManualSubtab() {
                     var opened = false;
-                    var manualCountryIsoEl = getManualField('dc_country_iso');
 
                     if (typeof window.dcSetCatalogSubtab === 'function') {
                         opened = window.dcSetCatalogSubtab('manual');
@@ -2377,17 +2580,10 @@ class DC_Recargas_Admin {
                     }
                 });
 
-                apiResultsEl.addEventListener('dblclick', function (event) {
+                apiResultsEl.addEventListener('dblclick', function () {
                     var opt = apiResultsEl.options[apiResultsEl.selectedIndex];
-                    if (!opt && event && event.target && event.target.tagName === 'OPTION') {
-                        opt = event.target;
-                    }
                     if (!opt) {
                         return;
-                    }
-
-                    if (typeof opt.index === 'number') {
-                        apiResultsEl.selectedIndex = opt.index;
                     }
 
                     try {
@@ -3694,6 +3890,164 @@ class DC_Recargas_Admin {
                     var insideAnyCombo = ev.target.closest('.dc-combo-wrap');
                     if (!insideAnyCombo) {
                         closeAllCombos(null);
+                    }
+                });
+            })();
+
+            // -- Modal de Personalización de Shortcodes ----
+            (function () {
+                var customizeModal = document.getElementById('dc-customize-shortcode-modal');
+                var customizeButtons = document.querySelectorAll('.dc-customize-shortcode-btn');
+                var customizeCloseEls = document.querySelectorAll('[data-dc-customize-close]');
+                var maxWidthInput = document.getElementById('dc_customize_max_width');
+                var bgColorInput = document.getElementById('dc_customize_bg_color');
+                var primaryColorInput = document.getElementById('dc_customize_primary_color');
+                var textColorInput = document.getElementById('dc_customize_text_color');
+                var borderRadiusInput = document.getElementById('dc_customize_border_radius');
+                var paddingInput = document.getElementById('dc_customize_padding');
+                var shadowIntensitySelect = document.getElementById('dc_customize_shadow_intensity');
+                var preview = document.getElementById('dc_customize_preview');
+                var customizeStatus = document.getElementById('dc_customize_status');
+                var currentShortcodeKey = '';
+
+                function closeCustomizeModal() {
+                    if (customizeModal) {
+                        customizeModal.hidden = true;
+                        document.body.classList.remove('modal-open');
+                    }
+                }
+
+                function updatePreview() {
+                    var maxWidth = parseInt(maxWidthInput.value) || 480;
+                    var bgColor = bgColorInput.value || '#ffffff';
+                    var primaryColor = primaryColorInput.value || '#2563eb';
+                    var textColor = textColorInput.value || '#0f172a';
+                    var borderRadius = parseInt(borderRadiusInput.value) || 16;
+                    var padding = parseInt(paddingInput.value) || 24;
+                    var shadowIntensity = shadowIntensitySelect.value || 'light';
+
+                    var shadowMap = {
+                        'none': 'none',
+                        'light': '0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06)',
+                        'medium': '0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 40px rgba(0, 0, 0, 0.12)',
+                        'heavy': '0 10px 25px rgba(0, 0, 0, 0.15), 0 15px 50px rgba(0, 0, 0, 0.2)'
+                    };
+
+                    var shadow = shadowMap[shadowIntensity] || shadowMap['light'];
+
+                    var previewHTML = '<div class="dc-preview-content" style="'
+                        + 'background: ' + bgColor + '; '
+                        + 'border-radius: ' + borderRadius + 'px; '
+                        + 'padding: ' + padding + 'px; '
+                        + 'box-shadow: ' + shadow + '; '
+                        + 'color: ' + textColor + '; '
+                        + 'max-width: ' + maxWidth + 'px; '
+                        + 'margin: 0 auto;'
+                        + '">'
+                        + '<h2 style="margin: 0 0 8px; color: ' + textColor + '; font-size: 14px; font-weight: 700;">Recargas</h2>'
+                        + '<p style="margin: 0 0 10px; color: ' + textColor + '; opacity: 0.8; font-size: 11px;">Elige tu paquete</p>'
+                        + '<input type="text" placeholder="Teléfono..." class="dc-preview-input" style="border-color: ' + primaryColor + '22; color: ' + textColor + '; margin-bottom: 8px; font-size: 11px;">'
+                        + '<button class="dc-preview-button" style="background: ' + primaryColor + '; color: white; width: 100%; margin-bottom: 4px; font-size: 11px;">Buscar</button>'
+                        + '<button class="dc-preview-button" style="background: white; color: ' + primaryColor + '; border: 2px solid ' + primaryColor + '; width: 100%; font-size: 11px;">Confirmar</button>'
+                        + '</div>';
+
+                    preview.innerHTML = previewHTML;
+                }
+
+                function saveCustomization() {
+                    var customization = {
+                        max_width: parseInt(maxWidthInput.value) || 480,
+                        bg_color: bgColorInput.value || '#ffffff',
+                        primary_color: primaryColorInput.value || '#2563eb',
+                        text_color: textColorInput.value || '#0f172a',
+                        border_radius: parseInt(borderRadiusInput.value) || 16,
+                        padding: parseInt(paddingInput.value) || 24,
+                        shadow_intensity: shadowIntensitySelect.value || 'light'
+                    };
+
+                    if (customizeStatus) {
+                        customizeStatus.textContent = 'Guardando...';
+                    }
+
+                    wp.apiFetch({
+                        path: '/dc-recargas/v1/save-shortcode-customization',
+                        method: 'POST',
+                        data: {
+                            shortcode_key: currentShortcodeKey,
+                            customization: customization
+                        }
+                    }).then(function (response) {
+                        if (customizeStatus) {
+                            customizeStatus.textContent = '✓ Guardado';
+                            setTimeout(function () {
+                                customizeStatus.textContent = '';
+                            }, 2000);
+                        }
+                    }).catch(function (error) {
+                        if (customizeStatus) {
+                            customizeStatus.textContent = '✗ Error al guardar';
+                        }
+                        console.error('Error guardando personalización:', error);
+                    });
+                }
+
+                customizeButtons.forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var key = btn.getAttribute('data-shortcode-key');
+                        currentShortcodeKey = key;
+
+                        // Reset status
+                        if (customizeStatus) {
+                            customizeStatus.textContent = '';
+                        }
+
+                        // Load saved customization if exists
+                        wp.apiFetch({
+                            path: '/dc-recargas/v1/get-shortcode-customization?key=' + key,
+                            method: 'GET'
+                        }).then(function (response) {
+                            if (response && response.customization) {
+                                var custom = response.customization;
+                                if (maxWidthInput) maxWidthInput.value = custom.max_width || 480;
+                                if (bgColorInput) bgColorInput.value = custom.bg_color || '#ffffff';
+                                if (primaryColorInput) primaryColorInput.value = custom.primary_color || '#2563eb';
+                                if (textColorInput) textColorInput.value = custom.text_color || '#0f172a';
+                                if (borderRadiusInput) borderRadiusInput.value = custom.border_radius || 16;
+                                if (paddingInput) paddingInput.value = custom.padding || 24;
+                                if (shadowIntensitySelect) shadowIntensitySelect.value = custom.shadow_intensity || 'light';
+                            }
+
+                            updatePreview();
+                            customizeModal.hidden = false;
+                            document.body.classList.add('modal-open');
+                        }).catch(function (error) {
+                            console.warn('No saved customization found, using defaults', error);
+                            updatePreview();
+                            customizeModal.hidden = false;
+                            document.body.classList.add('modal-open');
+                        });
+                    });
+                });
+
+                customizeCloseEls.forEach(function (el) {
+                    el.addEventListener('click', closeCustomizeModal);
+                });
+
+                customizeInputs.forEach(function (input) {
+                    if (input) {
+                        input.addEventListener('change', function () {
+                            updatePreview();
+                            saveCustomization();
+                        });
+                        input.addEventListener('input', function () {
+                            updatePreview();
+                        });
+                    }
+                });
+
+                document.addEventListener('keydown', function (event) {
+                    if (event.key === 'Escape' && customizeModal && !customizeModal.hidden) {
+                        closeCustomizeModal();
                     }
                 });
             })();

@@ -51,6 +51,10 @@ class DC_Recargas_Frontend {
     }
 
     public function render_shortcode($atts = []) {
+        static $instance_counter = 0;
+        $instance_counter++;
+        $instance_id = 'dc-recargas-app-' . $instance_counter;
+
         wp_enqueue_style('dc-recargas-frontend');
         wp_enqueue_script('dc-recargas-frontend');
 
@@ -93,36 +97,94 @@ class DC_Recargas_Frontend {
 
         ob_start();
         ?>
-        <div class="dc-recargas" id="dc-recargas-app" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
+        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
             <div class="dc-card">
-                <div class="dc-header">
-                    <h2><?php echo esc_html($title); ?></h2>
-                    <p><?php echo esc_html($subtitle); ?></p>
-                </div>
 
-                <div class="dc-phone-row" id="dc-phone-row">
-                    <button type="button" class="dc-country-btn" id="dc-country-btn">
-                        <span class="dc-country-flag" id="dc-country-flag"></span>
-                        <span class="dc-country-dial" id="dc-country-dial"></span>
-                        <svg class="dc-chevron-icon" viewBox="0 0 12 8" width="10" height="8"><path d="M1 1.5l5 5 5-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
-                    </button>
-                    <input id="dc-phone" type="tel" inputmode="numeric" maxlength="15" placeholder="Número móvil" autocomplete="tel-national">
-                </div>
-
-                <div id="dc-active-step" class="dc-active-step" hidden>
-                    <div class="dc-active-step-header">
-                        <span class="dc-active-step-kicker">Paquete activo</span>
-                        <button type="button" class="dc-change-bundle-btn" id="dc-change-bundle-btn">Cambiar paquete</button>
+                <!-- Stepper de progreso -->
+                <nav class="dc-stepper" id="dc-stepper" aria-label="Progreso del proceso">
+                    <div class="dc-step is-active" data-step="1">
+                        <div class="dc-step-dot"><span>1</span></div>
+                        <div class="dc-step-label">Número</div>
                     </div>
-                    <select id="dc-active-bundle-select" class="dc-active-bundle-select" aria-label="Seleccionar paquete activo"></select>
-                    <div id="dc-active-bundle-info" class="dc-active-bundle-info"></div>
-                </div>
+                    <div class="dc-step-bar" data-bar="1"></div>
+                    <div class="dc-step" data-step="2">
+                        <div class="dc-step-dot"><span>2</span></div>
+                        <div class="dc-step-label">Paquete</div>
+                    </div>
+                    <div class="dc-step-bar" data-bar="2"></div>
+                    <div class="dc-step" data-step="3">
+                        <div class="dc-step-dot"><span>3</span></div>
+                        <div class="dc-step-label">Confirmar</div>
+                    </div>
+                </nav>
 
-                <div id="dc-confirm" class="dc-confirm" hidden>
-                    <div class="dc-confirm-summary" id="dc-confirm-summary"></div>
-                    <button type="button" class="dc-confirm-btn" id="dc-confirm-btn">Confirmar recarga</button>
-                </div>
+                <!-- Viewport del wizard -->
+                <div class="dc-wizard" id="dc-wizard">
 
+                    <!-- Paso 1: Número -->
+                    <div class="dc-pane" id="dc-pane-phone">
+                        <div class="dc-pane-header">
+                            <h2><?php echo esc_html($title); ?></h2>
+                            <p><?php echo esc_html($subtitle); ?></p>
+                        </div>
+                        <div class="dc-phone-row" id="dc-phone-row">
+                            <button type="button" class="dc-country-btn" id="dc-country-btn">
+                                <span class="dc-country-flag" id="dc-country-flag"></span>
+                                <span class="dc-country-dial" id="dc-country-dial"></span>
+                                <svg class="dc-chevron-icon" viewBox="0 0 12 8" width="10" height="8"><path d="M1 1.5l5 5 5-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+                            </button>
+                            <input id="dc-phone" type="tel" inputmode="numeric" maxlength="15" placeholder="Número móvil" autocomplete="tel-national">
+                        </div>
+                        <div id="dc-loading" class="dc-loading" hidden>
+                            <div class="dc-spinner"></div>
+                            <span>Buscando paquetes disponibles...</span>
+                        </div>
+                        <div id="dc-feedback" class="dc-feedback" aria-live="polite"></div>
+                    </div>
+
+                    <!-- Paso 2: Paquete -->
+                    <div class="dc-pane" id="dc-pane-bundle" hidden>
+                        <div class="dc-context-strip" id="dc-context-phone"></div>
+                        <div id="dc-provider-filter" class="dc-provider-filter" hidden>
+                            <div class="dc-provider-label">Selecciona un operador</div>
+                            <div id="dc-provider-buttons" class="dc-provider-buttons"></div>
+                        </div>
+                        <div id="dc-bundles" class="dc-bundles" hidden></div>
+                        <div class="dc-pane-nav">
+                            <button type="button" class="dc-nav-back-btn" id="dc-btn-back-bundle">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                Atrás
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Paso 3: Confirmar -->
+                    <div class="dc-pane" id="dc-pane-confirm" hidden>
+                        <div class="dc-context-strip" id="dc-context-bundle"></div>
+                        <div id="dc-confirm-card" class="dc-confirm-card"></div>
+                        <div id="dc-feedback-confirm" class="dc-feedback" aria-live="polite"></div>
+                        <div class="dc-pane-nav dc-pane-nav--split">
+                            <button type="button" class="dc-nav-back-btn" id="dc-btn-back-confirm">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none"><path d="M10 12L6 8l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                                Cambiar
+                            </button>
+                            <button type="button" class="dc-confirm-btn" id="dc-confirm-btn">Confirmar recarga</button>
+                        </div>
+                    </div>
+
+                    <!-- Paso 4: Resultado (sin stepper) -->
+                    <div class="dc-pane" id="dc-pane-result" hidden>
+                        <div id="dc-result" class="dc-result"></div>
+                        <div class="dc-pane-nav dc-pane-nav--center">
+                            <button type="button" class="dc-nav-restart-btn" id="dc-btn-restart">
+                                ↩ Nueva recarga
+                            </button>
+                        </div>
+                    </div>
+
+                </div><!-- /.dc-wizard -->
+
+                <!-- Country overlay (fixed, compartido) -->
                 <div class="dc-country-overlay" id="dc-country-overlay" hidden>
                     <div class="dc-country-panel">
                         <div class="dc-country-panel-header">
@@ -134,24 +196,79 @@ class DC_Recargas_Frontend {
                     </div>
                 </div>
 
-                <div id="dc-loading" class="dc-loading" hidden>
-                    <div class="dc-spinner"></div>
-                    <span>Buscando paquetes disponibles...</span>
-                </div>
-
-                <div id="dc-provider-filter" class="dc-provider-filter" hidden>
-                    <div class="dc-provider-label">Selecciona un operador</div>
-                    <div id="dc-provider-buttons" class="dc-provider-buttons"></div>
-                </div>
-
-                <div id="dc-bundles" class="dc-bundles" hidden></div>
-
-                <div id="dc-feedback" class="dc-feedback" aria-live="polite"></div>
-                <div id="dc-result" class="dc-result" hidden></div>
-            </div>
+            </div><!-- /.dc-card -->
         </div>
         <?php
 
+        // Generate and inject custom CSS if customization is saved
+        if (!empty($config['customization']) && is_array($config['customization'])) {
+            $custom = $config['customization'];
+            echo $this->generate_custom_css($instance_id, $custom);
+        }
+
+        return ob_get_clean();
+    }
+
+    private function generate_custom_css($instance_id, $customization) {
+        $max_width = intval($customization['max_width'] ?? 480);
+        $bg_color = sanitize_text_field($customization['bg_color'] ?? '#ffffff');
+        $primary_color = sanitize_text_field($customization['primary_color'] ?? '#2563eb');
+        $text_color = sanitize_text_field($customization['text_color'] ?? '#0f172a');
+        $border_radius = intval($customization['border_radius'] ?? 16);
+        $padding = intval($customization['padding'] ?? 24);
+        $shadow_intensity = sanitize_text_field($customization['shadow_intensity'] ?? 'light');
+
+        $shadow_map = [
+            'none' => '0 0 0 transparent',
+            'light' => '0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06)',
+            'medium' => '0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 40px rgba(0, 0, 0, 0.12)',
+            'heavy' => '0 10px 25px rgba(0, 0, 0, 0.15), 0 15px 50px rgba(0, 0, 0, 0.2)'
+        ];
+
+        $shadow = $shadow_map[$shadow_intensity] ?? $shadow_map['light'];
+
+        ob_start();
+        ?>
+        <style>
+            #<?php echo esc_attr($instance_id); ?> .dc-recargas {
+                max-width: <?php echo intval($max_width); ?>px;
+            }
+
+            #<?php echo esc_attr($instance_id); ?> .dc-card {
+                background-color: <?php echo esc_attr($bg_color); ?>;
+                box-shadow: <?php echo esc_attr($shadow); ?>;
+                border-radius: <?php echo intval($border_radius); ?>px;
+                padding: <?php echo intval($padding); ?>px <?php echo intval($padding); ?>px <?php echo intval($padding - 4); ?>px;
+            }
+
+            #<?php echo esc_attr($instance_id); ?> .dc-pane-header h2,
+            #<?php echo esc_attr($instance_id); ?> .dc-step-dot,
+            #<?php echo esc_attr($instance_id); ?> button.button-primary,
+            #<?php echo esc_attr($instance_id); ?> [style*="background"] {
+                color: <?php echo esc_attr($text_color); ?> !important;
+            }
+
+            #<?php echo esc_attr($instance_id); ?> button,
+            #<?php echo esc_attr($instance_id); ?> .dc-step.is-active .dc-step-dot,
+            #<?php echo esc_attr($instance_id); ?> a.button {
+                background-color: <?php echo esc_attr($primary_color); ?>;
+                border-color: <?php echo esc_attr($primary_color); ?>;
+                color: #ffffff;
+                border-radius: <?php echo intval($border_radius - 4); ?>px;
+                box-shadow: 0 0 0 4px <?php echo esc_attr($primary_color); ?>22;
+            }
+
+            #<?php echo esc_attr($instance_id); ?> .dc-pane-header h2,
+            #<?php echo esc_attr($instance_id); ?> .dc-context-strip strong {
+                color: <?php echo esc_attr($text_color); ?>;
+            }
+
+            #<?php echo esc_attr($instance_id); ?> input,
+            #<?php echo esc_attr($instance_id); ?> select {
+                border-radius: <?php echo intval($border_radius - 6); ?>px;
+            }
+        </style>
+        <?php
         return ob_get_clean();
     }
 

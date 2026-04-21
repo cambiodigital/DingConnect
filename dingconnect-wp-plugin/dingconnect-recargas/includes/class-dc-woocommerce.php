@@ -54,6 +54,9 @@ class DC_Recargas_WooCommerce {
         add_action('woocommerce_order_status_completed', [$this, 'process_recarga_on_payment']);
         add_action('dc_recargas_retry_transfer', [$this, 'process_retry_transfer'], 10, 2);
 
+        // Restrict checkout payment gateways for recarga carts
+        add_filter('woocommerce_available_payment_gateways', [$this, 'filter_available_payment_gateways'], 20);
+
         // Manual reconciliation + voucher rendering
         add_filter('woocommerce_order_actions', [$this, 'register_manual_reconcile_action']);
         add_action('woocommerce_order_action_dc_recargas_manual_reconcile', [$this, 'handle_manual_reconcile_action']);
@@ -225,6 +228,33 @@ class DC_Recargas_WooCommerce {
             }
         }
         return false;
+    }
+
+    public function filter_available_payment_gateways($gateways) {
+        if (!is_array($gateways) || empty($gateways)) {
+            return $gateways;
+        }
+
+        if (!$this->cart_has_recargas()) {
+            return $gateways;
+        }
+
+        $options = $this->api->get_options();
+        $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
+        if ($payment_mode !== 'woocommerce') {
+            return $gateways;
+        }
+
+        $allowed = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+        if (empty($allowed)) {
+            return $gateways;
+        }
+
+        $allowed_map = array_fill_keys($allowed, true);
+
+        return array_filter($gateways, function ($gateway, $gateway_id) use ($allowed_map) {
+            return isset($allowed_map[sanitize_key((string) $gateway_id)]);
+        }, ARRAY_FILTER_USE_BOTH);
     }
 
     /* ---------------------------------------------------------------

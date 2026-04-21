@@ -67,6 +67,24 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
         ]);
 
+        register_rest_route('dc-recargas/v1', '/save-shortcode-customization', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'save_shortcode_customization'],
+            'permission_callback' => [$this, 'can_manage_options'],
+        ]);
+
+        register_rest_route('dc-recargas/v1', '/get-shortcode-customization', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'get_shortcode_customization'],
+            'permission_callback' => [$this, 'can_manage_options'],
+            'args' => [
+                'key' => [
+                    'required' => true,
+                    'sanitize_callback' => 'sanitize_key',
+                ],
+            ],
+        ]);
+
     }
 
     public function status() {
@@ -584,5 +602,62 @@ class DC_Recargas_REST {
         }
 
         return 'unknown';
+    }
+
+    public function save_shortcode_customization(WP_REST_Request $request) {
+        $shortcode_key = sanitize_key($request->get_param('shortcode_key'));
+        $customization = $request->get_json_params()['customization'] ?? [];
+
+        if (empty($shortcode_key)) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Clave de shortcode requerida'], 400);
+        }
+
+        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        $updated = false;
+
+        foreach ($shortcodes as &$shortcode) {
+            if (sanitize_key($shortcode['key'] ?? '') === $shortcode_key) {
+                $shortcode['customization'] = [
+                    'max_width' => intval($customization['max_width'] ?? 480),
+                    'bg_color' => sanitize_text_field($customization['bg_color'] ?? '#ffffff'),
+                    'primary_color' => sanitize_text_field($customization['primary_color'] ?? '#2563eb'),
+                    'text_color' => sanitize_text_field($customization['text_color'] ?? '#0f172a'),
+                    'border_radius' => intval($customization['border_radius'] ?? 16),
+                    'padding' => intval($customization['padding'] ?? 24),
+                    'shadow_intensity' => sanitize_text_field($customization['shadow_intensity'] ?? 'light'),
+                ];
+                $updated = true;
+                break;
+            }
+        }
+
+        if ($updated) {
+            update_option('dc_recargas_landing_shortcodes', $shortcodes);
+            return rest_ensure_response(['ok' => true, 'message' => 'Personalización guardada']);
+        }
+
+        return new WP_REST_Response(['ok' => false, 'message' => 'Shortcode no encontrado'], 404);
+    }
+
+    public function get_shortcode_customization(WP_REST_Request $request) {
+        $shortcode_key = sanitize_key($request->get_param('key'));
+
+        if (empty($shortcode_key)) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Clave requerida'], 400);
+        }
+
+        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+
+        foreach ($shortcodes as $shortcode) {
+            if (sanitize_key($shortcode['key'] ?? '') === $shortcode_key) {
+                $customization = $shortcode['customization'] ?? null;
+                return rest_ensure_response([
+                    'ok' => true,
+                    'customization' => $customization,
+                ]);
+            }
+        }
+
+        return new WP_REST_Response(['ok' => false, 'message' => 'Shortcode no encontrado'], 404);
     }
 }

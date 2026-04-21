@@ -130,6 +130,12 @@ Flujo recomendado:
 5. Se envía `SendTransfer` con `DistributorRef` único.
 6. Si hay demora o corte de red, se espera hasta 90 segundos y luego se consulta `ListTransferRecords`.
 
+Nota operativa WooCommerce (abril 2026):
+
+- Para shortcodes en modo `payment_mode=woocommerce`, la recarga se agrega al carrito y el envío a DingConnect se ejecuta solo cuando la orden ya está pagada (`is_paid`).
+- El plugin permite definir en admin (`Credenciales > Pasarelas permitidas`) qué métodos de pago WooCommerce quedan habilitados para carritos con recargas DingConnect.
+- Si no se selecciona ninguna pasarela en esa lista, checkout conserva todas las pasarelas activas de WooCommerce.
+
 ### Nota operativa Wizard v2 (abril 2026)
 
 - En `entry_mode=number_first`, el paso de país puede quedar opcional en frontend: el wizard intenta inferir país automáticamente a partir del catálogo devuelto para el número consultado.
@@ -151,6 +157,7 @@ Flujo recomendado:
   - `subtitle="Selecciona tu paquete y confirma"`
 - Contrato de catálogo para landing: el frontend del shortcode envía `allowed_bundle_ids` al endpoint `/products` y backend prioriza esos bundles explícitos de la landing. Esto evita que se mezclen bundles activos globales del país cuando el objetivo tiene su propio catálogo curado.
 - Selector de país en frontend: ya no depende de una configuración fija; se muestra con los países detectados en los bundles permitidos de esa landing.
+- Soporte multi-instancia en una misma página: el contenedor del shortcode usa ID único por render y el script inicializa cada bloque por clase (`.dc-recargas-app`), evitando conflictos cuando una landing publica dos o más formularios de recarga.
 
 ### Nota operativa Catálogo y alta (abril 2026)
 

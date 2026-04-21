@@ -16,6 +16,7 @@ class DC_Recargas_API {
             'payment_mode' => 'direct',
             'validate_only' => 1,
             'allow_real_recharge' => 0,
+            'woo_allowed_gateways' => [],
         ];
 
         return wp_parse_args(get_option('dc_recargas_options', []), $defaults);

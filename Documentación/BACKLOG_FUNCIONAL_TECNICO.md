@@ -136,7 +136,7 @@ Una iniciativa se considera lista cuando cumple:
 70. Corrección UX en admin para campos con buscador (datalist-combobox): se reparó la inicialización JavaScript del combobox (mapa de datalists, registro y alta dinámica de opciones) y se ajustó el ancho/estilo del campo `País fijo (ISO, opcional)` para evitar render comprimido y dropdown inconsistente en alta/edición de landings.
 71. Simplificación operativa en `Landings`: se eliminó del admin el campo `País fijo (ISO, opcional)` para alta/edición de shortcodes dinámicos; el país de la landing ahora se deriva automáticamente de los bundles seleccionados.
 72. Ajuste funcional en frontend de `dingconnect_recargas`: el selector de país siempre queda editable y la lista de países se construye a partir de los `country_iso` presentes en los bundles permitidos de la landing.
-73. Corrección funcional en `Catálogo y alta` del admin: el doble click sobre `Paquetes encontrados` ahora hidrata de forma robusta la subpestaña `Alta manual` con País ISO, Nombre comercial (`label` API), SKU Code, Monto, Moneda y Operador; además el operador se resuelve por nombre de proveedor (no solo `ProviderCode`) usando `GetProviders` como fallback.
+73. Control de pasarelas WooCommerce para recargas: en `Credenciales` se añadió selección de `Pasarelas permitidas` y, cuando el carrito contiene recargas DingConnect en modo WooCommerce, checkout filtra métodos de pago a los IDs configurados (si no se selecciona ninguno, se mantienen todas las pasarelas activas).
 
 ## Backlog actualizado por impacto
 
