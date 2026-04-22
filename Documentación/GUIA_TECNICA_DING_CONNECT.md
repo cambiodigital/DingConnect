@@ -389,6 +389,7 @@ Tomando como referencia el reporte técnico actual del proyecto, el prototipo ya
 - Avance 22-04-2026: `GET /wp-json/dingconnect/v1/products` ahora expone metadatos operativos adicionales (`ValidationRegex`, `SettingDefinitions`, `LookupBillsRequired`, región, pricing ampliado y textos localizados) y el frontend público ya consume parte de ese contrato para validación básica y visualización de `ReceiptText`/`ReceiptParams`.
 - Avance 22-04-2026: WooCommerce ahora reconcilia por `ListTransferRecords` antes de reintentar, evitando tratar `Submitted` como éxito terminal.
 - Avance 22-04-2026: el copy final del shortcode público y del cierre WooCommerce ahora se adapta por familia real de producto usando `ProductType`, `RedemptionMechanism`, `LookupBillsRequired`, `ReceiptText`, `ReceiptParams` y señales fiscales (`ReceiveValueExcludingTax`, `TaxName`, `TaxCalculation`).
+- Avance 22-04-2026: el soporte de planificación interactiva (`mejoras-solicitud-interactiva.html`) se reforzó como herramienta de diseño/solicitud, incorporando métricas de arquitectura, filtros, historial, plantillas rápidas y formulario guiado para generar prompts técnicos más precisos antes de pedir cambios al código del plugin.
 - Sigue pendiente ejecutar validación manual/UAT con proveedores reales y cerrar la evidencia runtime de promociones/markdown enriquecido donde aplique.
 - Falta evidenciar flujo UAT formal y checklist de sign-off.
 - Debe revisarse whitelisting, 2FA y separación de credenciales de prueba y producción.

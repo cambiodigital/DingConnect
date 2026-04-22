@@ -16,7 +16,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useMemo, useEffect } = React;
 
         // --- ICONOS SVG (Reemplazo de Lucide-React para funcionar sin dependencias) ---
         const IconLayout = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>;
@@ -139,14 +139,71 @@
         }
         };
 
+        const requestTemplateDefaults = {
+            objective: '',
+            priority: 'media',
+            impact: '',
+            acceptanceCriteria: '',
+            notes: '',
+        };
+
         function App() {
             const [system, setSystem] = useState(initialSystemData);
             const [selectedNode, setSelectedNode] = useState(null);
             const [changeLog, setChangeLog] = useState([]);
             const [showPrompt, setShowPrompt] = useState(false);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [moduleFilter, setModuleFilter] = useState('all');
+            const [requestTemplate, setRequestTemplate] = useState(requestTemplateDefaults);
 
             const [newProp, setNewProp] = useState({ name: '', type: 'string', description: '' });
             const [newBehavior, setNewBehavior] = useState('');
+
+            const metrics = useMemo(() => {
+                let nodes = 0;
+                let properties = 0;
+                let behaviors = 0;
+                Object.values(system).forEach(group => {
+                    nodes += group.nodes.length;
+                    group.nodes.forEach(node => {
+                        properties += node.properties.length;
+                        behaviors += node.behaviors.length;
+                    });
+                });
+                return { nodes, properties, behaviors };
+            }, [system]);
+
+            const filteredGroups = useMemo(() => {
+                const term = searchTerm.trim().toLowerCase();
+                return Object.entries(system)
+                    .filter(([key]) => moduleFilter === 'all' || key === moduleFilter)
+                    .map(([key, group]) => {
+                        if (!term) return [key, group];
+                        const filteredNodes = group.nodes.filter(node => {
+                            const source = [
+                                node.id,
+                                node.name,
+                                node.description,
+                                ...node.properties.map(prop => `${prop.name} ${prop.type} ${prop.description}`),
+                                ...node.behaviors,
+                            ].join(' ').toLowerCase();
+                            return source.includes(term);
+                        });
+                        return [key, { ...group, nodes: filteredNodes }];
+                    })
+                    .filter(([, group]) => group.nodes.length > 0);
+            }, [system, moduleFilter, searchTerm]);
+
+            useEffect(() => {
+                if (!selectedNode) return;
+                for (const group of Object.values(system)) {
+                    const currentNode = group.nodes.find(node => node.id === selectedNode.id);
+                    if (currentNode) {
+                        setSelectedNode(currentNode);
+                        return;
+                    }
+                }
+            }, [system]);
 
             const logChange = (action, entity, details) => {
                 setChangeLog(prev => [...prev, { id: Date.now(), action, entity, details, time: new Date().toLocaleTimeString() }]);
@@ -155,6 +212,13 @@
             const handleAddProperty = (e) => {
                 e.preventDefault();
                 if (!newProp.name || !selectedNode) return;
+                const alreadyExists = selectedNode.properties.some(
+                    prop => prop.name.toLowerCase() === newProp.name.toLowerCase()
+                );
+                if (alreadyExists) {
+                    alert('Ese campo ya existe en esta entidad.');
+                    return;
+                }
 
                 const updatedSystem = { ...system };
                 for (const group in updatedSystem) {
@@ -216,12 +280,67 @@
                 setSystem(updatedSystem);
             }
 
+            const handleQuickTemplate = (type) => {
+                if (!selectedNode) return;
+                if (type === 'provider-code') {
+                    setNewProp({
+                        name: 'ProviderCode',
+                        type: 'string',
+                        description: 'Código real de proveedor DingConnect para no perder metadatos live.',
+                    });
+                    return;
+                }
+                if (type === 'setting-definitions') {
+                    setNewProp({
+                        name: 'SettingDefinitions',
+                        type: 'array',
+                        description: 'Definiciones dinámicas requeridas por el proveedor.',
+                    });
+                    return;
+                }
+                if (type === 'estimate-prices') {
+                    setNewBehavior('Cuando IsRange sea true, consultar EstimatePrices y bloquear confirmación sin cálculo válido.');
+                    return;
+                }
+                if (type === 'transfer-records') {
+                    setNewBehavior('Si SendTransfer queda Submitted/timeout, consultar ListTransferRecords antes de reintentar.');
+                }
+            };
+
+            const handleUndoLog = () => {
+                if (changeLog.length === 0) return;
+                setChangeLog(prev => prev.slice(0, -1));
+            };
+
+            const handleResetSession = () => {
+                if (!confirm('¿Seguro que deseas reiniciar el mini sistema y borrar el historial de cambios?')) return;
+                setSystem(initialSystemData);
+                setSelectedNode(null);
+                setChangeLog([]);
+                setSearchTerm('');
+                setModuleFilter('all');
+                setRequestTemplate(requestTemplateDefaults);
+                setNewProp({ name: '', type: 'string', description: '' });
+                setNewBehavior('');
+            };
+
             const generateAIPrompt = () => {
-                let prompt = `¡Hola! Necesito hacer unas modificaciones estructurales a mi sistema de recargas basado en DingConnect y WooCommerce.\n\n`;
-                prompt += `He analizado la arquitectura actual y requiero los siguientes cambios de campos, propiedades y comportamientos lógicos:\n\n`;
+                let prompt = `¡Hola! Necesito hacer mejoras en mi sistema de recargas basado en DingConnect y WooCommerce.\n\n`;
+                prompt += `### Solicitud guiada\n`;
+                prompt += `- Objetivo: ${requestTemplate.objective || 'No definido'}\n`;
+                prompt += `- Prioridad: ${requestTemplate.priority}\n`;
+                prompt += `- Impacto esperado: ${requestTemplate.impact || 'No definido'}\n`;
+                prompt += `- Criterios de aceptación: ${requestTemplate.acceptanceCriteria || 'No definido'}\n`;
+                prompt += `- Notas: ${requestTemplate.notes || 'Sin notas adicionales'}\n\n`;
+                prompt += `### Resumen visual de arquitectura\n`;
+                prompt += `- Módulos: ${Object.keys(system).length}\n`;
+                prompt += `- Entidades: ${metrics.nodes}\n`;
+                prompt += `- Campos: ${metrics.properties}\n`;
+                prompt += `- Comportamientos: ${metrics.behaviors}\n\n`;
+                prompt += `### Cambios estructurales solicitados\n\n`;
                 
                 if (changeLog.length === 0) {
-                return "Aún no has realizado ninguna modificación en la arquitectura. Haz cambios agregando campos o comportamientos primero.";
+                return prompt + "Aún no hay cambios estructurales en el historial. Agrega campos o reglas antes de generar la solicitud final.";
                 }
 
                 const groupedChanges = changeLog.reduce((acc, log) => {
@@ -239,7 +358,7 @@
                 }
 
                 prompt += `\n**Instrucción para la IA:**\n`;
-                prompt += `Por favor, escríbeme el código (PHP y JS según corresponda) para implementar estos cambios exactos. Asegúrate de modificar los formularios de guardado, la estructura de base de datos (options) y los adaptadores de la REST API para que estos nuevos datos fluyan correctamente hasta WooCommerce y el Frontend.`;
+                prompt += `Por favor, propón e implementa cambios de código (PHP y JS) para aplicar esta solicitud, asegurando compatibilidad con backend REST del plugin, persistencia de bundles, frontend público y flujo WooCommerce. Incluye validación, riesgos y pruebas sugeridas.`;
 
                 return prompt;
             };
@@ -269,6 +388,60 @@
                     </button>
                 </header>
 
+                {/* BARRA DE CONTROLES */}
+                <section className="bg-white border-b border-slate-200 p-4 grid grid-cols-1 lg:grid-cols-4 gap-3">
+                    <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+                        <p className="text-xs text-indigo-700">Entidades</p>
+                        <p className="text-2xl font-bold text-indigo-900">{metrics.nodes}</p>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+                        <p className="text-xs text-blue-700">Campos</p>
+                        <p className="text-2xl font-bold text-blue-900">{metrics.properties}</p>
+                    </div>
+                    <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+                        <p className="text-xs text-amber-700">Comportamientos</p>
+                        <p className="text-2xl font-bold text-amber-900">{metrics.behaviors}</p>
+                    </div>
+                    <div className="bg-green-50 border border-green-100 rounded-lg p-3">
+                        <p className="text-xs text-green-700">Historial</p>
+                        <p className="text-2xl font-bold text-green-900">{changeLog.length}</p>
+                    </div>
+
+                    <div className="lg:col-span-2 flex items-center gap-2 border border-slate-300 rounded-lg px-3 bg-slate-50">
+                        <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Buscar por entidad, campo o comportamiento..."
+                            className="w-full py-2 bg-transparent text-sm focus:outline-none"
+                        />
+                    </div>
+                    <select
+                        value={moduleFilter}
+                        onChange={(e) => setModuleFilter(e.target.value)}
+                        className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                    >
+                        <option value="all">Todos los módulos</option>
+                        {Object.entries(system).map(([key, group]) => (
+                            <option key={key} value={key}>{group.title}</option>
+                        ))}
+                    </select>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleUndoLog}
+                            className="flex-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg px-3 py-2 text-xs font-semibold"
+                        >
+                            Deshacer historial
+                        </button>
+                        <button
+                            onClick={handleResetSession}
+                            className="flex-1 bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 rounded-lg px-3 py-2 text-xs font-semibold"
+                        >
+                            Reiniciar sesión
+                        </button>
+                    </div>
+                </section>
+
                 <main className="flex-1 flex overflow-hidden">
                     
                     {/* PANEL IZQUIERDO: ARQUITECTURA */}
@@ -276,7 +449,7 @@
                     <h2 className="text-xl font-bold mb-6 text-slate-700">Módulos del Sistema</h2>
                     
                     <div className="space-y-6">
-                        {Object.entries(system).map(([key, group]) => (
+                        {filteredGroups.map(([key, group]) => (
                         <div key={key} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="bg-slate-100 p-3 border-b border-slate-200 flex items-center gap-2 font-semibold text-slate-700">
                             {group.icon} {group.title}
@@ -315,6 +488,26 @@
                             </div>
                         </div>
                         ))}
+                        {filteredGroups.length === 0 && (
+                            <div className="bg-white rounded-xl border border-slate-200 p-4 text-sm text-slate-500">
+                                Sin resultados para el filtro actual.
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-6 bg-white rounded-xl border border-slate-200 p-4">
+                        <h3 className="font-semibold text-slate-800 mb-3">Cambios recientes</h3>
+                        <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                            {[...changeLog].slice(-8).reverse().map((log) => (
+                                <li key={log.id} className="text-xs bg-slate-50 border border-slate-200 rounded p-2">
+                                    <span className="font-semibold text-indigo-700">[{log.action}]</span> {log.details}
+                                    <div className="text-slate-500 mt-1">{log.entity} · {log.time}</div>
+                                </li>
+                            ))}
+                            {changeLog.length === 0 && (
+                                <li className="text-sm text-slate-500">Aún no hay cambios registrados.</li>
+                            )}
+                        </ul>
                     </div>
                     </div>
 
@@ -331,6 +524,16 @@
                         <div className="mb-6">
                             <h2 className="text-2xl font-bold text-indigo-900">{selectedNode.name}</h2>
                             <p className="text-slate-500">{selectedNode.description}</p>
+                        </div>
+
+                        <div className="mb-6 bg-indigo-50 border border-indigo-100 rounded-lg p-4">
+                            <p className="text-sm font-semibold text-indigo-900 mb-2">Plantillas rápidas de mejora</p>
+                            <div className="flex flex-wrap gap-2">
+                                <button onClick={() => handleQuickTemplate('provider-code')} className="text-xs bg-white border border-indigo-200 hover:bg-indigo-100 rounded px-3 py-2">Campo: ProviderCode</button>
+                                <button onClick={() => handleQuickTemplate('setting-definitions')} className="text-xs bg-white border border-indigo-200 hover:bg-indigo-100 rounded px-3 py-2">Campo: SettingDefinitions</button>
+                                <button onClick={() => handleQuickTemplate('estimate-prices')} className="text-xs bg-white border border-indigo-200 hover:bg-indigo-100 rounded px-3 py-2">Regla: EstimatePrices</button>
+                                <button onClick={() => handleQuickTemplate('transfer-records')} className="text-xs bg-white border border-indigo-200 hover:bg-indigo-100 rounded px-3 py-2">Regla: ListTransferRecords</button>
+                            </div>
                         </div>
 
                         {/* SECCIÓN PROPIEDADES */}
@@ -417,7 +620,7 @@
                         </div>
 
                         {/* SECCIÓN COMPORTAMIENTOS */}
-                        <div>
+                        <div className="mb-8">
                             <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex justify-between items-center text-slate-800">
                             Comportamientos / Validaciones / Salidas
                             </h3>
@@ -450,6 +653,63 @@
                                 <IconPlus className="w-4 h-4" /> Regla
                             </button>
                             </form>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <h3 className="text-lg font-semibold text-slate-800 mb-3">Solicitud guiada para IA</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Objetivo principal</label>
+                                    <input
+                                        type="text"
+                                        value={requestTemplate.objective}
+                                        onChange={(e) => setRequestTemplate({ ...requestTemplate, objective: e.target.value })}
+                                        placeholder="Qué quieres mejorar exactamente"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Prioridad</label>
+                                    <select
+                                        value={requestTemplate.priority}
+                                        onChange={(e) => setRequestTemplate({ ...requestTemplate, priority: e.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm bg-white"
+                                    >
+                                        <option value="alta">Alta</option>
+                                        <option value="media">Media</option>
+                                        <option value="baja">Baja</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Impacto esperado</label>
+                                    <input
+                                        type="text"
+                                        value={requestTemplate.impact}
+                                        onChange={(e) => setRequestTemplate({ ...requestTemplate, impact: e.target.value })}
+                                        placeholder="Qué verá negocio o usuario"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Criterios de aceptación</label>
+                                    <input
+                                        type="text"
+                                        value={requestTemplate.acceptanceCriteria}
+                                        onChange={(e) => setRequestTemplate({ ...requestTemplate, acceptanceCriteria: e.target.value })}
+                                        placeholder="Cómo sabrás que quedó bien"
+                                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-semibold text-slate-600 mb-1">Notas técnicas / restricciones</label>
+                                    <textarea
+                                        value={requestTemplate.notes}
+                                        onChange={(e) => setRequestTemplate({ ...requestTemplate, notes: e.target.value })}
+                                        placeholder="Dependencias, límites de seguridad, contexto operativo..."
+                                        className="w-full px-3 py-2 border border-slate-300 rounded text-sm min-h-[78px]"
+                                    />
+                                </div>
+                            </div>
                         </div>
 
                         </div>
