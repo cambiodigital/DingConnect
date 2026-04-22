@@ -146,6 +146,7 @@
             acceptanceCriteria: '',
             notes: '',
         };
+        const MAX_RECENT_CHANGES = 8;
 
         function App() {
             const [system, setSystem] = useState(initialSystemData);
@@ -199,7 +200,9 @@
                 for (const group of Object.values(system)) {
                     const currentNode = group.nodes.find(node => node.id === selectedNode.id);
                     if (currentNode) {
-                        setSelectedNode(currentNode);
+                        if (currentNode !== selectedNode) {
+                            setSelectedNode(currentNode);
+                        }
                         return;
                     }
                 }
@@ -498,7 +501,7 @@
                     <div className="mt-6 bg-white rounded-xl border border-slate-200 p-4">
                         <h3 className="font-semibold text-slate-800 mb-3">Cambios recientes</h3>
                         <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            {changeLog.slice(-8).reverse().map((log) => (
+                            {changeLog.slice(-MAX_RECENT_CHANGES).reverse().map((log) => (
                                 <li key={log.id} className="text-xs bg-slate-50 border border-slate-200 rounded p-2">
                                     <span className="font-semibold text-indigo-700">[{log.action}]</span> {log.details}
                                     <div className="text-slate-500 mt-1">{log.entity} · {log.time}</div>
