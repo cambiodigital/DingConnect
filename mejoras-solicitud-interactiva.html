@@ -147,6 +147,7 @@
             notes: '',
         };
         const MAX_RECENT_CHANGES = 8;
+        const MAX_CHANGE_LOG_ENTRIES = 500;
 
         function App() {
             const [system, setSystem] = useState(initialSystemData);
@@ -209,14 +210,18 @@
             }, [system, selectedNode]);
 
             const logChange = (action, entity, details) => {
-                setChangeLog(prev => [...prev, { id: Date.now(), action, entity, details, time: new Date().toLocaleTimeString() }]);
+                setChangeLog(prev => {
+                    const next = [...prev, { id: Date.now(), action, entity, details, time: new Date().toLocaleTimeString() }];
+                    return next.slice(-MAX_CHANGE_LOG_ENTRIES);
+                });
             };
 
             const handleAddProperty = (e) => {
                 e.preventDefault();
                 if (!newProp.name || !selectedNode) return;
+                const normalizedNewPropName = newProp.name.trim().toLowerCase();
                 const alreadyExists = selectedNode.properties.some(
-                    prop => prop.name.toLowerCase() === newProp.name.toLowerCase()
+                    prop => prop.name.trim().toLowerCase() === normalizedNewPropName
                 );
                 if (alreadyExists) {
                     alert('Ya existe un campo con ese nombre (sin distinguir mayúsculas/minúsculas).');
