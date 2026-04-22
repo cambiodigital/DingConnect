@@ -1904,8 +1904,12 @@ class DC_Recargas_Admin {
                     min-width: 150px;
                 }
 
+                .dc-landing-bundles-full-width {
+                    width: 100%;
+                }
+
                 .dc-landing-bundles-checklist {
-                    max-height: 240px;
+                    max-height: 320px;
                     overflow: auto;
                     border: 1px solid #c9d6ea;
                     border-radius: 8px;
@@ -1913,7 +1917,8 @@ class DC_Recargas_Admin {
                     padding: 8px;
                     display: grid;
                     gap: 6px;
-                    width: min(680px, 100%);
+                    width: 100%;
+                    box-sizing: border-box;
                 }
 
                 .dc-landing-bundles-checklist__item {
@@ -1925,6 +1930,10 @@ class DC_Recargas_Admin {
                     color: #1e293b;
                     padding: 4px 2px;
                     border-bottom: 1px dashed #e2e8f0;
+                }
+
+                .dc-landing-bundles-checklist__item[hidden] {
+                    display: none !important;
                 }
 
                 .dc-landing-bundles-checklist__item.is-selected {
@@ -1982,22 +1991,6 @@ class DC_Recargas_Admin {
                     align-items: center;
                     gap: 10px;
                     flex-wrap: wrap;
-                }
-
-                .dc-landing-bundles-checklist__order {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 4px;
-                    color: #334155;
-                    font-size: 12px;
-                    white-space: nowrap;
-                }
-
-                .dc-landing-bundles-checklist__order input[type="number"] {
-                    width: 64px;
-                    min-height: 30px;
-                    border: 1px solid #c9d6ea;
-                    border-radius: 6px;
                 }
 
                 .dc-landing-bundles-checklist__featured {
@@ -2208,6 +2201,135 @@ class DC_Recargas_Admin {
                     font-weight: 600;
                 }
 
+                .dc-api-results-section {
+                    width: 100%;
+                    margin-top: 16px;
+                    padding: 14px;
+                    border: 1px solid #dbe5f3;
+                    border-radius: 12px;
+                    background: #ffffff;
+                    box-sizing: border-box;
+                }
+
+                .dc-api-results-section__header {
+                    margin-bottom: 8px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+
+                .dc-api-results-section__title {
+                    margin: 0;
+                    font-size: 15px;
+                    color: #0f172a;
+                }
+
+                .dc-api-results-search {
+                    margin-bottom: 10px;
+                }
+
+                .dc-api-results-search input {
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+
+                .dc-api-table-wrap {
+                    border: 1px solid #dbe5f3;
+                    border-radius: 10px;
+                    overflow: auto;
+                    max-height: 520px;
+                    background: #f8fbff;
+                }
+
+                .dc-api-results-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    min-width: 980px;
+                    background: #ffffff;
+                }
+
+                .dc-api-results-table thead th {
+                    position: sticky;
+                    top: 0;
+                    background: #eff6ff;
+                    color: #1e3a8a;
+                    z-index: 1;
+                }
+
+                .dc-api-results-table th,
+                .dc-api-results-table td {
+                    padding: 9px 10px;
+                    border-bottom: 1px solid #e2e8f0;
+                    text-align: left;
+                    vertical-align: top;
+                    font-size: 12px;
+                }
+
+                .dc-api-results-table tbody tr {
+                    cursor: pointer;
+                    transition: background-color 0.15s ease;
+                }
+
+                .dc-api-results-table tbody tr:hover {
+                    background: #f8fafc;
+                }
+
+                .dc-api-results-table tbody tr.is-selected {
+                    background: #dbeafe;
+                    box-shadow: inset 0 0 0 1px #60a5fa;
+                }
+
+                .dc-api-results-table .dc-api-group-row td {
+                    background: #f1f5f9;
+                    color: #334155;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.04em;
+                    font-size: 11px;
+                    cursor: default;
+                }
+
+                .dc-api-cell-mono {
+                    font-family: Menlo, Consolas, Monaco, monospace;
+                    font-size: 11px;
+                }
+
+                .dc-api-source-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 999px;
+                    padding: 2px 8px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    line-height: 1.4;
+                    white-space: nowrap;
+                }
+
+                .dc-api-source-badge.is-csv {
+                    background: #dcfce7;
+                    color: #166534;
+                }
+
+                .dc-api-source-badge.is-api {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+
+                .dc-api-results-actions {
+                    margin-top: 10px;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    align-items: center;
+                }
+
+                .dc-api-results-actions .description {
+                    margin: 0;
+                }
+
                 @media (max-width: 782px) {
                     .dc-catalog-subnav__btn {
                         flex: 1;
@@ -2392,49 +2514,45 @@ class DC_Recargas_Admin {
                         <th scope="row"><label for="dc_landing_subtitle">Subtítulo del formulario</label></th>
                         <td><input type="text" id="dc_landing_subtitle" name="landing_subtitle" class="regular-text" placeholder="Elige un paquete y confirma tu recarga"></td>
                     </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_landing_bundle_ids">Bundles de la landing</label></th>
-                        <td>
-                            <div class="dc-landing-bundles-filters" data-dc-landing-filters>
-                                <label>País
-                                    <select id="dc_landing_filter_country" class="small-text" data-filter="country">
-                                        <option value="all">Todos</option>
-                                    </select>
-                                </label>
-                                <label>Tipo de producto
-                                    <select id="dc_landing_filter_family" class="small-text" data-filter="family">
-                                        <option value="all">Todos</option>
-                                    </select>
-                                </label>
-                            </div>
-                            <div id="dc_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para la landing">
-                                <?php foreach ($bundles as $bundle) : ?>
-                                    <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
-                                    <?php if ($bundle_id === '') { continue; } ?>
-                                    <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
-                                    <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
-                                    <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" draggable="true">
-                                        <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
-                                        <span class="dc-landing-bundles-checklist__main">
-                                            <input type="checkbox" class="dc-create-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
-                                            <span>[<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
-                                        </span>
-                                        <span class="dc-landing-bundles-checklist__controls">
-                                            <span class="dc-landing-bundles-checklist__order">Orden
-                                                <input type="number" min="1" step="1" class="dc-create-landing-bundle-order" name="bundle_order[<?php echo esc_attr($bundle_id); ?>]" value="">
-                                            </span>
-                                            <span class="dc-landing-bundles-checklist__featured">
-                                                <input type="radio" class="dc-create-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>">
-                                                Destacado
-                                            </span>
-                                        </span>
-                                    </label>
-                                <?php endforeach; ?>
-                            </div>
-                            <p class="description">Marca los bundles, define su orden (1, 2, 3...) y opcionalmente marca uno como destacado.</p>
-                        </td>
-                    </tr>
                 </table>
+
+                <div class="dc-landing-bundles-full-width">
+                    <h4 style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #334155;">Bundles de la landing</h4>
+                    <div class="dc-landing-bundles-filters" data-dc-landing-filters>
+                        <label>País
+                            <select id="dc_landing_filter_country" class="small-text" data-filter="country">
+                                <option value="all">Todos</option>
+                            </select>
+                        </label>
+                        <label>Tipo de producto
+                            <select id="dc_landing_filter_family" class="small-text" data-filter="family">
+                                <option value="all">Todos</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div id="dc_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para la landing">
+                        <?php foreach ($bundles as $bundle) : ?>
+                            <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
+                            <?php if ($bundle_id === '') { continue; } ?>
+                            <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
+                            <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
+                            <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>">
+                                <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
+                                <span class="dc-landing-bundles-checklist__main">
+                                    <input type="checkbox" class="dc-create-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
+                                    <span>[<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
+                                </span>
+                                <span class="dc-landing-bundles-checklist__controls">
+                                    <span class="dc-landing-bundles-checklist__featured">
+                                        <input type="radio" class="dc-create-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>">
+                                        Destacado
+                                    </span>
+                                </span>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <p class="description">Arrastra los bundles para cambiar el orden. Marca los que deben aparecer y opcionalmente uno como destacado.</p>
+                </div>
 
                 <?php submit_button('Crear shortcode de landing'); ?>
             </form>
@@ -2518,49 +2636,45 @@ class DC_Recargas_Admin {
                                 <th scope="row"><label for="dc_edit_landing_subtitle">Subtítulo del formulario</label></th>
                                 <td><input type="text" id="dc_edit_landing_subtitle" name="landing_subtitle" class="regular-text"></td>
                             </tr>
-                            <tr>
-                                <th scope="row"><label for="dc_edit_landing_bundle_ids">Bundles de la landing</label></th>
-                                <td>
-                                    <div class="dc-landing-bundles-filters" data-dc-landing-filters>
-                                        <label>País
-                                            <select id="dc_edit_landing_filter_country" class="small-text" data-filter="country">
-                                                <option value="all">Todos</option>
-                                            </select>
-                                        </label>
-                                        <label>Tipo de producto
-                                            <select id="dc_edit_landing_filter_family" class="small-text" data-filter="family">
-                                                <option value="all">Todos</option>
-                                            </select>
-                                        </label>
-                                    </div>
-                                    <div id="dc_edit_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para editar la landing">
-                                        <?php foreach ($bundles as $bundle) : ?>
-                                            <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
-                                            <?php if ($bundle_id === '') { continue; } ?>
-                                            <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
-                                            <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
-                                                <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" draggable="true">
-                                                    <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
-                                                <span class="dc-landing-bundles-checklist__main">
-                                                    <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
-                                                    <span>[<?php echo esc_html($bundle_country); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
-                                                </span>
-                                                <span class="dc-landing-bundles-checklist__controls">
-                                                    <span class="dc-landing-bundles-checklist__order">Orden
-                                                        <input type="number" min="1" step="1" class="dc-edit-landing-bundle-order" name="bundle_order[<?php echo esc_attr($bundle_id); ?>]" value="">
-                                                    </span>
-                                                    <span class="dc-landing-bundles-checklist__featured">
-                                                        <input type="radio" class="dc-edit-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>">
-                                                        Destacado
-                                                    </span>
-                                                </span>
-                                            </label>
-                                        <?php endforeach; ?>
-                                    </div>
-                                    <p class="description">Marca los bundles que deben quedar en este shortcode y define su orden de visualización.</p>
-                                </td>
-                            </tr>
                         </table>
+
+                        <div class="dc-landing-bundles-full-width">
+                            <h4 style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: #334155;">Bundles de la landing</h4>
+                            <div class="dc-landing-bundles-filters" data-dc-landing-filters>
+                                <label>País
+                                    <select id="dc_edit_landing_filter_country" class="small-text" data-filter="country">
+                                        <option value="all">Todos</option>
+                                    </select>
+                                </label>
+                                <label>Tipo de producto
+                                    <select id="dc_edit_landing_filter_family" class="small-text" data-filter="family">
+                                        <option value="all">Todos</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div id="dc_edit_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para editar la landing">
+                                <?php foreach ($bundles as $bundle) : ?>
+                                    <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
+                                    <?php if ($bundle_id === '') { continue; } ?>
+                                    <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
+                                    <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
+                                    <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>">
+                                        <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
+                                        <span class="dc-landing-bundles-checklist__main">
+                                            <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
+                                            <span>[<?php echo esc_html($bundle_country); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
+                                        </span>
+                                        <span class="dc-landing-bundles-checklist__controls">
+                                            <span class="dc-landing-bundles-checklist__featured">
+                                                <input type="radio" class="dc-edit-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>">
+                                                Destacado
+                                            </span>
+                                        </span>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <p class="description">Arrastra los bundles para cambiar el orden. Marca los que deben aparecer y opcionalmente uno como destacado.</p>
+                        </div>
 
                         <?php submit_button('Guardar cambios del shortcode', 'primary', 'submit', false); ?>
                         <button type="button" class="button button-secondary" data-dc-landing-edit-close>Cancelar</button>
@@ -2697,19 +2811,38 @@ class DC_Recargas_Admin {
                         <p class="description">Filtro operativo derivado del catálogo: saldo/top-up, datos y combos. Se habilita después de consultar la API.</p>
                     </td>
                 </tr>
-                <tr>
-                    <th scope="row"><label for="dc_api_results">Paquetes encontrados</label></th>
-                    <td>
-                        <input type="text" id="dc_api_search" class="regular-text" placeholder="Buscar por operador, beneficio o SKU..." disabled style="margin-bottom:6px;width:100%;box-sizing:border-box;">
-                        <select id="dc_api_results" size="10" class="large-text"></select>
-                        <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API». Luego selecciona un paquete y usa los botones abajo.</p>
-                        <p class="description" id="dc_api_csv_warn" hidden style="color:#a00;margin-top:4px;"></p>
-                        <p>
-                               <button type="button" class="button button-primary" id="dc_api_load_manual_btn" disabled>Seleccionar producto</button>
-                        </p>
-                    </td>
-                </tr>
             </table>
+
+            <section class="dc-api-results-section" aria-labelledby="dc_api_results_title">
+                <div class="dc-api-results-section__header">
+                    <h3 id="dc_api_results_title" class="dc-api-results-section__title">Paquetes encontrados</h3>
+                </div>
+                <div class="dc-api-results-search">
+                    <input type="text" id="dc_api_search" class="regular-text" placeholder="Buscar por operador, beneficio, SKU o vigencia..." disabled>
+                </div>
+                <div class="dc-api-table-wrap" role="region" aria-label="Tabla de paquetes encontrados" tabindex="0">
+                    <table class="dc-api-results-table" aria-describedby="dc_api_help">
+                        <thead>
+                            <tr>
+                                <th scope="col">Tipo</th>
+                                <th scope="col">Operador</th>
+                                <th scope="col">Beneficios / descripción</th>
+                                <th scope="col">SKU</th>
+                                <th scope="col">Coste DIN</th>
+                                <th scope="col">Moneda</th>
+                                <th scope="col">Vigencia</th>
+                                <th scope="col">Fuente</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dc_api_results"></tbody>
+                    </table>
+                </div>
+                <div class="dc-api-results-actions">
+                    <button type="button" class="button button-primary" id="dc_api_load_manual_btn" disabled>Seleccionar producto</button>
+                    <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API». Luego selecciona un paquete y usa el botón para cargarlo en alta manual.</p>
+                </div>
+                <p class="description" id="dc_api_csv_warn" hidden style="color:#a00;margin-top:4px;"></p>
+            </section>
             <script>
             (function () {
                  var apiNonce     = <?php echo wp_json_encode($catalog_nonce); ?>;
@@ -2737,6 +2870,7 @@ class DC_Recargas_Admin {
                 var manualValidityRawEl = null;
                 var manualBundleSourceEl = null;
                 var apiSelected  = null;
+                var apiSelectedRowEl = null;
                 var apiItems = [];
                 var apiGroupCounts = {};
                 var apiSearchEl  = document.getElementById('dc_api_search');
@@ -2826,16 +2960,8 @@ class DC_Recargas_Admin {
                     apiCountryWarningEl.hidden = true;
                 }
 
-                function apiOptionLabel(item) {
-                    var prefix = (item.catalog_source === 'api') ? '[sin CSV] ' : '';
-                    var parts = [prefix + (item.operator || ''), item.receive || item.label];
-                    if (item.send_value && item.send_currency_iso) {
-                        parts.push(item.send_value + ' ' + item.send_currency_iso);
-                    }
-                    if (item.validity) {
-                        parts.push(item.validity);
-                    }
-                    return parts.filter(Boolean).join(' — ');
+                function apiSourceLabel(item) {
+                    return item && item.catalog_source === 'api' ? 'API (sin CSV)' : 'CSV';
                 }
 
                 function syncApiFilterOptions() {
@@ -3071,6 +3197,7 @@ class DC_Recargas_Admin {
                     apiItems = [];
                     apiGroupCounts = {};
                     apiSelected = null;
+                    apiSelectedRowEl = null;
                     apiResultsEl.innerHTML = '';
                     apiLoadManualBtn.disabled = true;
 
@@ -3090,11 +3217,38 @@ class DC_Recargas_Admin {
                     }
                 }
 
+                function setApiSelection(item, row) {
+                    apiSelected = item || null;
+
+                    if (apiSelectedRowEl) {
+                        apiSelectedRowEl.classList.remove('is-selected');
+                        apiSelectedRowEl.removeAttribute('aria-selected');
+                    }
+
+                    apiSelectedRowEl = row || null;
+
+                    if (apiSelectedRowEl) {
+                        apiSelectedRowEl.classList.add('is-selected');
+                        apiSelectedRowEl.setAttribute('aria-selected', 'true');
+                    }
+
+                    apiLoadManualBtn.disabled = !apiSelected;
+
+                    if (apiCsvWarnEl) {
+                        if (apiSelected && apiSelected.catalog_source === 'api') {
+                            apiCsvWarnEl.textContent = '⚠ Este SKU (' + (apiSelected.sku_code || '') + ') no tiene match en el CSV del catálogo. Los datos de operador y beneficio provienen directamente de la API.';
+                            apiCsvWarnEl.hidden = false;
+                        } else {
+                            apiCsvWarnEl.hidden = true;
+                        }
+                    }
+                }
+
                 function renderApiResults(items) {
                     var grouped = {};
 
                     apiResultsEl.innerHTML = '';
-                    apiSelected = null;
+                    setApiSelection(null, null);
 
                     if (!items || items.length === 0) {
                         apiHelpEl.textContent = apiItems.length > 0
@@ -3131,18 +3285,57 @@ class DC_Recargas_Admin {
                             return apiGroupOrder(left) - apiGroupOrder(right);
                         })
                         .forEach(function (group) {
-                            var optgroup = document.createElement('optgroup');
-                            optgroup.label = (apiGroupLabels[group] || group) + ' (' + grouped[group].length + ')';
+                            var groupRow = document.createElement('tr');
+                            groupRow.className = 'dc-api-group-row';
+                            var groupCell = document.createElement('td');
+                            groupCell.colSpan = 8;
+                            groupCell.textContent = (apiGroupLabels[group] || group) + ' (' + grouped[group].length + ')';
+                            groupRow.appendChild(groupCell);
+                            apiResultsEl.appendChild(groupRow);
 
                             grouped[group].forEach(function (item) {
-                                var opt = document.createElement('option');
-                                opt.value = item.sku_code;
-                                opt.textContent = apiOptionLabel(item);
-                                opt.dataset.item = JSON.stringify(item);
-                                optgroup.appendChild(opt);
-                            });
+                                var row = document.createElement('tr');
+                                row.setAttribute('role', 'row');
+                                row.dataset.item = JSON.stringify(item);
 
-                            apiResultsEl.appendChild(optgroup);
+                                var tdType = document.createElement('td');
+                                tdType.textContent = apiGroupLabels[item.package_group] || item.package_group || 'Otros';
+
+                                var tdOperator = document.createElement('td');
+                                tdOperator.textContent = item.operator || '-';
+
+                                var tdReceive = document.createElement('td');
+                                tdReceive.textContent = item.receive || item.label || '-';
+
+                                var tdSku = document.createElement('td');
+                                tdSku.className = 'dc-api-cell-mono';
+                                tdSku.textContent = item.sku_code || '-';
+
+                                var tdSendValue = document.createElement('td');
+                                tdSendValue.textContent = item.send_value != null && item.send_value !== '' ? String(item.send_value) : '-';
+
+                                var tdCurrency = document.createElement('td');
+                                tdCurrency.textContent = item.send_currency_iso || '-';
+
+                                var tdValidity = document.createElement('td');
+                                tdValidity.textContent = item.validity || '-';
+
+                                var tdSource = document.createElement('td');
+                                var badge = document.createElement('span');
+                                badge.className = 'dc-api-source-badge ' + (item.catalog_source === 'api' ? 'is-api' : 'is-csv');
+                                badge.textContent = apiSourceLabel(item);
+                                tdSource.appendChild(badge);
+
+                                row.appendChild(tdType);
+                                row.appendChild(tdOperator);
+                                row.appendChild(tdReceive);
+                                row.appendChild(tdSku);
+                                row.appendChild(tdSendValue);
+                                row.appendChild(tdCurrency);
+                                row.appendChild(tdValidity);
+                                row.appendChild(tdSource);
+                                apiResultsEl.appendChild(row);
+                            });
                         });
 
                     var apiOnlyCount = items.filter(function (i) { return i.catalog_source === 'api'; }).length;
@@ -3222,30 +3415,36 @@ class DC_Recargas_Admin {
                     });
                 }
 
-                apiResultsEl.addEventListener('change', function () {
-                    var opt = apiResultsEl.options[apiResultsEl.selectedIndex];
-                    if (!opt) {
-                        apiSelected = null;
-                        apiLoadManualBtn.disabled = true;
-                        if (apiCsvWarnEl) { apiCsvWarnEl.hidden = true; }
+                apiResultsEl.addEventListener('click', function (event) {
+                    var row = event.target && event.target.closest ? event.target.closest('tr[data-item]') : null;
+                    if (!row) {
                         return;
                     }
+
                     try {
-                        apiSelected = JSON.parse(opt.dataset.item);
-                        apiLoadManualBtn.disabled = false;
-                        if (apiCsvWarnEl) {
-                            if (apiSelected.catalog_source === 'api') {
-                                apiCsvWarnEl.textContent = '⚠ Este SKU (' + (apiSelected.sku_code || '') + ') no tiene match en el CSV del catálogo. Los datos de operador y beneficio provienen directamente de la API.';
-                                apiCsvWarnEl.hidden = false;
-                            } else {
-                                apiCsvWarnEl.hidden = true;
-                            }
-                        }
+                        setApiSelection(JSON.parse(row.dataset.item), row);
                     } catch (e) {
-                        apiSelected = null;
-                        apiLoadManualBtn.disabled = true;
-                        if (apiCsvWarnEl) { apiCsvWarnEl.hidden = true; }
+                        setApiSelection(null, null);
                     }
+                });
+
+                apiResultsEl.addEventListener('dblclick', function (event) {
+                    var row = event.target && event.target.closest ? event.target.closest('tr[data-item]') : null;
+                    if (!row) {
+                        return;
+                    }
+
+                    try {
+                        setApiSelection(JSON.parse(row.dataset.item), row);
+                    } catch (e) {
+                        setApiSelection(null, null);
+                    }
+
+                    if (!apiSelected) {
+                        return;
+                    }
+
+                    apiLoadManualBtn.click();
                 });
 
                 apiLoadManualBtn.addEventListener('click', function () {
@@ -3982,10 +4181,8 @@ class DC_Recargas_Admin {
                 var landingEditCountryFilterEl = document.getElementById('dc_edit_landing_filter_country');
                 var landingEditFamilyFilterEl = document.getElementById('dc_edit_landing_filter_family');
                 var landingCreateBundleCheckboxEls = document.querySelectorAll('.dc-create-landing-bundle-checkbox');
-                var landingCreateBundleOrderEls = document.querySelectorAll('.dc-create-landing-bundle-order');
                 var landingCreateFeaturedRadioEls = document.querySelectorAll('.dc-create-landing-featured-radio');
                 var landingEditBundleCheckboxEls = document.querySelectorAll('#dc_edit_landing_form .dc-edit-landing-bundle-checkbox');
-                var landingEditBundleOrderEls = document.querySelectorAll('#dc_edit_landing_form .dc-edit-landing-bundle-order');
                 var landingEditFeaturedRadioEls = document.querySelectorAll('#dc_edit_landing_form .dc-edit-landing-featured-radio');
                 var checkBalanceBtn = document.getElementById('dc_check_balance_btn');
                 var balanceResultEl = document.getElementById('dc_balance_result');
@@ -4249,13 +4446,65 @@ class DC_Recargas_Admin {
                     }
 
                     var draggingRowEl = null;
+                    var pendingDragRowEl = null;
+
+                    checklistEl.addEventListener('mousedown', function (event) {
+                        var handleEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundles-drag-handle') : null;
+                        if (handleEl) {
+                            var rowEl = handleEl.closest('.dc-landing-bundles-checklist__item');
+                            if (rowEl) {
+                                pendingDragRowEl = rowEl;
+                                rowEl.setAttribute('draggable', 'true');
+                            }
+                        } else {
+                            pendingDragRowEl = null;
+                            getRows().forEach(function (r) { r.setAttribute('draggable', 'false'); });
+                        }
+                    });
 
                     function getRows() {
                         return Array.prototype.slice.call(checklistEl.querySelectorAll('.dc-landing-bundles-checklist__item'));
                     }
 
-                    function getOrderInputFromRow(rowEl) {
-                        return rowEl ? rowEl.querySelector('input[name^="bundle_order["]') : null;
+                    function getOrderInputFromRow() {
+                        return null;
+                    }
+
+                    function refreshOrderFromDom() {
+                        // Order is now determined by DOM position — no order inputs to update.
+                    }
+
+                    function reorderRowsByOrderInput() {
+                        // No-op: order is maintained by drag-and-drop and reorderBySelectedIds.
+                    }
+
+                    function reorderBySelectedIds(selectedIds) {
+                        if (!Array.isArray(selectedIds) || selectedIds.length === 0) {
+                            return;
+                        }
+
+                        var rows = getRows();
+                        var orderMap = {};
+                        selectedIds.forEach(function (bundleId, index) {
+                            orderMap[String(bundleId)] = index;
+                        });
+
+                        var selected = [];
+                        var unselected = [];
+
+                        rows.forEach(function (rowEl) {
+                            var bundleId = String(rowEl.getAttribute('data-bundle-id') || '');
+                            if (bundleId in orderMap) {
+                                selected.push({ el: rowEl, order: orderMap[bundleId] });
+                            } else {
+                                unselected.push(rowEl);
+                            }
+                        });
+
+                        selected.sort(function (a, b) { return a.order - b.order; });
+
+                        selected.forEach(function (item) { checklistEl.appendChild(item.el); });
+                        unselected.forEach(function (rowEl) { checklistEl.appendChild(rowEl); });
                     }
 
                     function getCheckboxFromRow(rowEl) {
@@ -4343,31 +4592,12 @@ class DC_Recargas_Admin {
                         });
                     }
 
-                    function reorderRowsByOrderInput() {
-                        var rows = getRows();
-                        rows.sort(function (left, right) {
-                            var leftOrderEl = getOrderInputFromRow(left);
-                            var rightOrderEl = getOrderInputFromRow(right);
-                            var leftRaw = leftOrderEl ? parseInt(String(leftOrderEl.value || '').trim(), 10) : NaN;
-                            var rightRaw = rightOrderEl ? parseInt(String(rightOrderEl.value || '').trim(), 10) : NaN;
-                            var leftValue = Number.isFinite(leftRaw) && leftRaw > 0 ? leftRaw : 99999;
-                            var rightValue = Number.isFinite(rightRaw) && rightRaw > 0 ? rightRaw : 99999;
-                            return leftValue - rightValue;
-                        });
-
-                        rows.forEach(function (rowEl) {
-                            checklistEl.appendChild(rowEl);
-                        });
-                    }
-
                     function clearDragOverStyles() {
                         getRows().forEach(function (rowEl) {
                             rowEl.classList.remove('is-drag-over');
                         });
                     }
 
-                    reorderRowsByOrderInput();
-                    refreshOrderFromDom();
                     syncSelectedState();
                     syncFilterOptions();
                     applyRowFilters();
@@ -4400,30 +4630,9 @@ class DC_Recargas_Admin {
                         }
                     });
 
-                    checklistEl.addEventListener('input', function (event) {
-                        var target = event.target;
-                        if (!target) return;
-
-                        if (target.matches('input[name^="bundle_order["]')) {
-                            var rowEl = target.closest('.dc-landing-bundles-checklist__item');
-                            var checkboxEl = getCheckboxFromRow(rowEl);
-                            if (checkboxEl && String(target.value || '').trim() !== '') {
-                                checkboxEl.checked = true;
-                            }
-                            syncSelectedState();
-                            applyRowFilters();
-                        }
-                    });
-
                     checklistEl.addEventListener('dragstart', function (event) {
-                        var handleEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundles-drag-handle') : null;
-                        if (!handleEl) {
-                            event.preventDefault();
-                            return;
-                        }
-
-                        var rowEl = handleEl.closest('.dc-landing-bundles-checklist__item');
-                        if (!rowEl) {
+                        var rowEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundles-checklist__item') : null;
+                        if (!rowEl || rowEl !== pendingDragRowEl) {
                             event.preventDefault();
                             return;
                         }
@@ -4475,19 +4684,19 @@ class DC_Recargas_Admin {
                     });
 
                     checklistEl.addEventListener('dragend', function () {
-                        if (!draggingRowEl) {
-                            return;
+                        if (draggingRowEl) {
+                            draggingRowEl.classList.remove('is-dragging');
+                            draggingRowEl.setAttribute('draggable', 'false');
+                            draggingRowEl = null;
                         }
-
-                        draggingRowEl.classList.remove('is-dragging');
-                        draggingRowEl = null;
+                        pendingDragRowEl = null;
                         clearDragOverStyles();
                         refreshOrderFromDom();
                         syncFilterOptions();
                         applyRowFilters();
                     });
 
-                    checklistEl.__dcReorderRowsByOrderInput = reorderRowsByOrderInput;
+                    checklistEl.__dcReorderBySelectedIds = reorderBySelectedIds;
                     checklistEl.__dcRefreshOrderFromDom = refreshOrderFromDom;
                     checklistEl.__dcSyncSelectedState = syncSelectedState;
                     checklistEl.__dcApplyFilters = applyRowFilters;
@@ -4510,29 +4719,15 @@ class DC_Recargas_Admin {
 
                     if (landingEditBundleCheckboxEls.length) {
                         var selectedMap = {};
-                        var orderMap = {};
                         if (Array.isArray(landing.bundle_ids)) {
-                            landing.bundle_ids.forEach(function (bundleId, index) {
-                                var bundleKey = String(bundleId);
-                                selectedMap[bundleKey] = true;
-                                orderMap[bundleKey] = index + 1;
+                            landing.bundle_ids.forEach(function (bundleId) {
+                                selectedMap[String(bundleId)] = true;
                             });
                         }
 
                         landingEditBundleCheckboxEls.forEach(function (checkboxEl) {
                             checkboxEl.checked = !!selectedMap[String(checkboxEl.value)];
                         });
-
-                        if (landingEditBundleOrderEls.length) {
-                            landingEditBundleOrderEls.forEach(function (orderEl) {
-                                var bundleId = '';
-                                var nameMatch = String(orderEl.name || '').match(/bundle_order\[([^\]]+)\]/);
-                                if (nameMatch && nameMatch[1]) {
-                                    bundleId = String(nameMatch[1]);
-                                }
-                                orderEl.value = orderMap[bundleId] || '';
-                            });
-                        }
 
                         if (landingEditFeaturedRadioEls.length) {
                             var featuredId = String(landing.featured_bundle_id || '');
@@ -4541,11 +4736,8 @@ class DC_Recargas_Admin {
                             });
                         }
 
-                        if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcReorderRowsByOrderInput === 'function') {
-                            landingEditChecklistEl.__dcReorderRowsByOrderInput();
-                        }
-                        if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcRefreshOrderFromDom === 'function') {
-                            landingEditChecklistEl.__dcRefreshOrderFromDom();
+                        if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcReorderBySelectedIds === 'function') {
+                            landingEditChecklistEl.__dcReorderBySelectedIds(Array.isArray(landing.bundle_ids) ? landing.bundle_ids : []);
                         }
                         if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcSyncSelectedState === 'function') {
                             landingEditChecklistEl.__dcSyncSelectedState();

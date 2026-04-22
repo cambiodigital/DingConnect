@@ -176,6 +176,8 @@ Nota operativa WooCommerce (abril 2026):
 - La clasificación comercial por bundle usa `package_family` (`topup | data | combo | voucher | dth | other`) y conserva `product_type_raw` para trazabilidad contra API/CSV.
 - La vigencia del producto se guarda en texto (`validity_raw`) y, cuando es interpretable (por ejemplo `P30D` o `30 days`), se deriva `validity_days` para filtros o reglas futuras.
 - En landings dinámicas, el checklist de bundles incorpora filtros de País y Tipo de producto; los bundles ya seleccionados permanecen visibles aunque no coincidan con el filtro activo.
+- La sección `Paquetes encontrados` de `Buscar en API` ahora se renderiza como tabla de ancho completo fuera de la `form-table`, con columnas de operación (tipo, operador, beneficio, SKU, coste, moneda, vigencia y fuente CSV/API), selección por fila y doble click para cargar en `Alta manual`.
+- Regla de implementación de filtros en checklist: si cada fila usa `display:flex` por estilo, debe existir una regla explícita para `label[hidden]` (`display:none !important`) para que los filtros de País/Tipo oculten realmente los bundles no coincidentes.
 
 ## 7.2 PIN, vouchers y productos de lectura de recibo
 

@@ -151,6 +151,8 @@ Una iniciativa se considera lista cuando cumple:
 85. Enriquecimiento de alta desde catálogo API: al seleccionar producto se propagan metadatos comerciales (`package_family`, `product_type_raw`, `validity_raw`) al alta manual y el backend persiste también `validity_days` derivado cuando el formato de vigencia es parseable.
 86. Hidratación híbrida API + CSV en catálogo admin: la búsqueda live usa DingConnect para validar SKUs y coste vigente (`SendValue`/moneda), pero completa `operator`, `receive`, `product_type` y `validity` desde `Products-with-sku.csv` mediante lookup por `SkuCode`, manteniendo el CSV como fuente curada de metadata comercial.
 87. Actualización autónoma del catálogo CSV en admin: la pestaña `Credenciales` ahora permite subir un CSV manualmente, valida las cabeceras esperadas (`SkuCode`, `Operator`, `Receive`, `Product type`, `Country`, `Validity`) y activa el archivo subido como fuente vigente para la hidratación por SKU sin tocar código ni desplegar el plugin.
+88. Rediseño de `Paquetes encontrados` en `Buscar en API`: el listado dejó de usar un `select` básico y pasó a una tabla operativa de ancho completo, fuera de la `form-table`, con columnas completas (tipo, operador, beneficios, SKU, coste, moneda, vigencia y fuente), encabezado fijo, selección por fila y doble click para cargar directamente en `Alta manual`.
+88. Corrección funcional en filtros de bundles para landings: los filtros `País` y `Tipo de producto` del checklist (alta y edición) recuperan su efecto visual al respetar `hidden` por fila, evitando que el estilo base `display:flex` mantenga visibles bundles fuera del filtro activo.
 
 ## Backlog actualizado por impacto
 
