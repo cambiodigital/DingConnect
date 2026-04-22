@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DingConnect System Architect</title>
+    <!-- Carga de Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de React -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Carga de Babel para compilar JSX en el navegador -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // --- ICONOS SVG (Reemplazo de Lucide-React para funcionar sin dependencias) ---
+        const IconLayout = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>;
+        const IconDatabase = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>;
+        const IconServer = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>;
+        const IconShoppingCart = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path></svg>;
+        const IconSettings = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>;
+        const IconPlus = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>;
+        const IconTrash2 = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>;
+        const IconMessageSquare = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>;
+        const IconArrowRight = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>;
+        const IconXCircle = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>;
+        const IconSave = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>;
+
+        // --- DATOS INICIALES EXTRAÍDOS DEL DIAGRAMA ---
+        const initialSystemData = {
+        admin: {
+            title: "1. Admin: Catálogo y Alta",
+            icon: <IconLayout className="w-6 h-6" />,
+            nodes: [
+            {
+                id: "A5",
+                name: "Formulario Alta Manual",
+                description: "Datos recogidos al crear un bundle manual en WP.",
+                properties: [
+                { name: "country_iso", type: "string", description: "ISO del país" },
+                { name: "label", type: "string", description: "operator - (receive | label | sku_code)" },
+                { name: "sku_code", type: "string", description: "Identificador único del producto" },
+                { name: "send_value", type: "float", description: "Valor a enviar" },
+                { name: "send_currency_iso", type: "string", description: "Moneda de envío" },
+                { name: "public_price", type: "float", description: "Precio de venta al público" },
+                { name: "provider_name", type: "string", description: "Nombre del operador" },
+                ],
+                behaviors: [
+                "No persiste ProviderCode ni metadatos live ricos actualmente."
+                ]
+            }
+            ]
+        },
+        persistence: {
+            title: "2. Persistencia de Bundles",
+            icon: <IconDatabase className="w-6 h-6" />,
+            nodes: [
+            {
+                id: "B1",
+                name: "Option: dc_recargas_bundles",
+                description: "Estructura de guardado en la base de datos de WordPress.",
+                properties: [
+                { name: "id", type: "string", description: "uniqid(bundle_)" },
+                { name: "country_iso", type: "string", description: "" },
+                { name: "label", type: "string", description: "" },
+                { name: "sku_code", type: "string", description: "" },
+                { name: "send_value", type: "float", description: "" },
+                { name: "send_currency_iso", type: "string", description: "" },
+                { name: "public_price", type: "float", description: "Guardado pero no expuesto correctamente" },
+                { name: "is_active", type: "boolean", description: "Estado del bundle" },
+                ],
+                behaviors: [
+                "PÉRDIDA DE DATOS: Se pierde riqueza del producto live (ProviderCode, Benefits, IsRange, etc)."
+                ]
+            }
+            ]
+        },
+        api: {
+            title: "6. REST /products",
+            icon: <IconServer className="w-6 h-6" />,
+            nodes: [
+            {
+                id: "F4",
+                name: "Producto Saved Normalizado",
+                description: "Salida del endpoint cuando lee de BBDD.",
+                properties: [
+                { name: "BundleId", type: "string", description: "" },
+                { name: "ProviderCode", type: "string", description: "Normalmente vacío por falta de persistencia" },
+                { name: "ReceiveValue", type: "float", description: "public_price | send_value" },
+                { name: "IsRange", type: "boolean", description: "Fijo en false (Error de diseño actual)" },
+                { name: "LookupBillsRequired", type: "boolean", description: "Fijo en false" },
+                ],
+                behaviors: [
+                "No tiene datos en vivo, carece de metadatos importantes para el frontend."
+                ]
+            },
+            {
+                id: "F7",
+                name: "Producto Live Normalizado",
+                description: "Salida del endpoint cuando consulta a la API de DingConnect.",
+                properties: [
+                { name: "ProviderCode", type: "string", description: "" },
+                { name: "Benefits", type: "array", description: "Beneficios reales" },
+                { name: "IsRange", type: "boolean", description: "Valor real de la API" },
+                { name: "SettingDefinitions", type: "array", description: "Campos dinámicos requeridos" },
+                { name: "ValidationRegex", type: "string", description: "Validación de cuenta" },
+                ],
+                behaviors: [
+                "Contiene toda la metadata rica necesaria."
+                ]
+            }
+            ]
+        },
+        woocommerce: {
+            title: "9. WooCommerce",
+            icon: <IconShoppingCart className="w-6 h-6" />,
+            nodes: [
+            {
+                id: "I1",
+                name: "Cart Item Data",
+                description: "Datos que viajan al carrito de WooCommerce.",
+                properties: [
+                { name: "dc_sku_code", type: "string", description: "" },
+                { name: "dc_send_value", type: "float", description: "" },
+                { name: "dc_redemption_mechanism", type: "string", description: "" },
+                { name: "dc_is_range", type: "boolean", description: "" },
+                { name: "dc_settings", type: "array", description: "Settings definidos por el usuario" },
+                ],
+                behaviors: [
+                "Espera al order->is_paid() para ejecutar la recarga."
+                ]
+            }
+            ]
+        }
+        };
+
+        function App() {
+            const [system, setSystem] = useState(initialSystemData);
+            const [selectedNode, setSelectedNode] = useState(null);
+            const [changeLog, setChangeLog] = useState([]);
+            const [showPrompt, setShowPrompt] = useState(false);
+
+            const [newProp, setNewProp] = useState({ name: '', type: 'string', description: '' });
+            const [newBehavior, setNewBehavior] = useState('');
+
+            const logChange = (action, entity, details) => {
+                setChangeLog(prev => [...prev, { id: Date.now(), action, entity, details, time: new Date().toLocaleTimeString() }]);
+            };
+
+            const handleAddProperty = (e) => {
+                e.preventDefault();
+                if (!newProp.name || !selectedNode) return;
+
+                const updatedSystem = { ...system };
+                for (const group in updatedSystem) {
+                const nodeIndex = updatedSystem[group].nodes.findIndex(n => n.id === selectedNode.id);
+                if (nodeIndex !== -1) {
+                    updatedSystem[group].nodes[nodeIndex].properties.push({ ...newProp });
+                    logChange('AGREGAR_CAMPO', selectedNode.name, `Se agregó el campo '${newProp.name}' (${newProp.type}): ${newProp.description}`);
+                    setSelectedNode({ ...updatedSystem[group].nodes[nodeIndex] });
+                    break;
+                }
+                }
+                setSystem(updatedSystem);
+                setNewProp({ name: '', type: 'string', description: '' });
+            };
+
+            const handleDeleteProperty = (propName) => {
+                const updatedSystem = { ...system };
+                for (const group in updatedSystem) {
+                const nodeIndex = updatedSystem[group].nodes.findIndex(n => n.id === selectedNode.id);
+                if (nodeIndex !== -1) {
+                    updatedSystem[group].nodes[nodeIndex].properties = updatedSystem[group].nodes[nodeIndex].properties.filter(p => p.name !== propName);
+                    logChange('ELIMINAR_CAMPO', selectedNode.name, `Se eliminó el campo '${propName}'`);
+                    setSelectedNode({ ...updatedSystem[group].nodes[nodeIndex] });
+                    break;
+                }
+                }
+                setSystem(updatedSystem);
+            };
+
+            const handleAddBehavior = (e) => {
+                e.preventDefault();
+                if (!newBehavior || !selectedNode) return;
+
+                const updatedSystem = { ...system };
+                for (const group in updatedSystem) {
+                const nodeIndex = updatedSystem[group].nodes.findIndex(n => n.id === selectedNode.id);
+                if (nodeIndex !== -1) {
+                    updatedSystem[group].nodes[nodeIndex].behaviors.push(newBehavior);
+                    logChange('AGREGAR_COMPORTAMIENTO', selectedNode.name, `Nueva regla/salida: ${newBehavior}`);
+                    setSelectedNode({ ...updatedSystem[group].nodes[nodeIndex] });
+                    break;
+                }
+                }
+                setSystem(updatedSystem);
+                setNewBehavior('');
+            };
+
+            const handleDeleteBehavior = (index) => {
+                const updatedSystem = { ...system };
+                for (const group in updatedSystem) {
+                    const nodeIndex = updatedSystem[group].nodes.findIndex(n => n.id === selectedNode.id);
+                    if (nodeIndex !== -1) {
+                    const removed = updatedSystem[group].nodes[nodeIndex].behaviors.splice(index, 1);
+                    logChange('ELIMINAR_COMPORTAMIENTO', selectedNode.name, `Se eliminó regla: ${removed}`);
+                    setSelectedNode({ ...updatedSystem[group].nodes[nodeIndex] });
+                    break;
+                    }
+                }
+                setSystem(updatedSystem);
+            }
+
+            const generateAIPrompt = () => {
+                let prompt = `¡Hola! Necesito hacer unas modificaciones estructurales a mi sistema de recargas basado en DingConnect y WooCommerce.\n\n`;
+                prompt += `He analizado la arquitectura actual y requiero los siguientes cambios de campos, propiedades y comportamientos lógicos:\n\n`;
+                
+                if (changeLog.length === 0) {
+                return "Aún no has realizado ninguna modificación en la arquitectura. Haz cambios agregando campos o comportamientos primero.";
+                }
+
+                const groupedChanges = changeLog.reduce((acc, log) => {
+                if (!acc[log.entity]) acc[log.entity] = [];
+                acc[log.entity].push(log);
+                return acc;
+                }, {});
+
+                for (const [entity, logs] of Object.entries(groupedChanges)) {
+                prompt += `### En el módulo/entidad: **${entity}**\n`;
+                logs.forEach(log => {
+                    prompt += `- [${log.action}] ${log.details}\n`;
+                });
+                prompt += `\n`;
+                }
+
+                prompt += `\n**Instrucción para la IA:**\n`;
+                prompt += `Por favor, escríbeme el código (PHP y JS según corresponda) para implementar estos cambios exactos. Asegúrate de modificar los formularios de guardado, la estructura de base de datos (options) y los adaptadores de la REST API para que estos nuevos datos fluyan correctamente hasta WooCommerce y el Frontend.`;
+
+                return prompt;
+            };
+
+            const copyToClipboard = () => {
+                navigator.clipboard.writeText(generateAIPrompt());
+                alert("¡Prompt copiado al portapapeles! Ya puedes pegarlo en el chat de la IA.");
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col font-sans text-slate-800">
+                {/* HEADER */}
+                <header className="bg-indigo-900 text-white p-4 shadow-md flex justify-between items-center shrink-0">
+                    <div>
+                    <h1 className="text-2xl font-bold flex items-center gap-2">
+                        <IconSettings className="w-7 h-7 text-indigo-300" />
+                        DingConnect System Architect
+                    </h1>
+                    <p className="text-indigo-200 text-sm mt-1">Modela propiedades, salidas y genera el prompt de actualización</p>
+                    </div>
+                    <button 
+                    onClick={() => setShowPrompt(true)}
+                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-colors shadow-sm"
+                    >
+                    <IconMessageSquare className="w-5 h-5" />
+                    Generar Prompt IA ({changeLog.length} cambios)
+                    </button>
+                </header>
+
+                <main className="flex-1 flex overflow-hidden">
+                    
+                    {/* PANEL IZQUIERDO: ARQUITECTURA */}
+                    <div className="w-1/2 p-6 overflow-y-auto border-r border-slate-200 bg-slate-100/50">
+                    <h2 className="text-xl font-bold mb-6 text-slate-700">Módulos del Sistema</h2>
+                    
+                    <div className="space-y-6">
+                        {Object.entries(system).map(([key, group]) => (
+                        <div key={key} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                            <div className="bg-slate-100 p-3 border-b border-slate-200 flex items-center gap-2 font-semibold text-slate-700">
+                            {group.icon} {group.title}
+                            </div>
+                            <div className="p-4 space-y-3">
+                            {group.nodes.map(node => (
+                                <div 
+                                key={node.id} 
+                                onClick={() => setSelectedNode(node)}
+                                className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                    selectedNode?.id === node.id 
+                                    ? 'border-indigo-500 bg-indigo-50 shadow-md' 
+                                    : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                                }`}
+                                >
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                    <h3 className="font-bold text-indigo-900">{node.name}</h3>
+                                    <p className="text-xs text-slate-500 mt-1">{node.description}</p>
+                                    </div>
+                                    <span className="bg-slate-200 text-slate-600 text-xs px-2 py-1 rounded font-mono">
+                                    ID: {node.id}
+                                    </span>
+                                </div>
+                                
+                                <div className="mt-3 flex gap-2 text-xs">
+                                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                    {node.properties.length} Propiedades
+                                    </span>
+                                    <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-full">
+                                    {node.behaviors.length} Comportamientos
+                                    </span>
+                                </div>
+                                </div>
+                            ))}
+                            </div>
+                        </div>
+                        ))}
+                    </div>
+                    </div>
+
+                    {/* PANEL DERECHO: EDITOR DE ENTIDAD */}
+                    <div className="w-1/2 bg-white flex flex-col overflow-y-auto relative">
+                    {!selectedNode ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center h-full min-h-[500px]">
+                        <IconLayout className="w-16 h-16 mb-4 opacity-50" />
+                        <h2 className="text-xl font-semibold text-slate-500">Selecciona una entidad</h2>
+                        <p className="mt-2">Haz clic en un módulo de la izquierda para explorar y modificar sus campos y reglas.</p>
+                        </div>
+                    ) : (
+                        <div className="flex-1 p-6">
+                        <div className="mb-6">
+                            <h2 className="text-2xl font-bold text-indigo-900">{selectedNode.name}</h2>
+                            <p className="text-slate-500">{selectedNode.description}</p>
+                        </div>
+
+                        {/* SECCIÓN PROPIEDADES */}
+                        <div className="mb-8">
+                            <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex justify-between items-center text-slate-800">
+                            Campos de Datos (Propiedades)
+                            </h3>
+                            
+                            <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden mb-4">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-100 text-slate-600">
+                                <tr>
+                                    <th className="px-4 py-2">Nombre</th>
+                                    <th className="px-4 py-2">Tipo</th>
+                                    <th className="px-4 py-2">Descripción / Origen</th>
+                                    <th className="px-4 py-2 text-right">Acción</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                {selectedNode.properties.map((prop, idx) => (
+                                    <tr key={idx} className="border-t border-slate-200 hover:bg-slate-100 transition-colors">
+                                    <td className="px-4 py-3 font-mono font-semibold text-indigo-700">{prop.name}</td>
+                                    <td className="px-4 py-3">
+                                        <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-xs">
+                                        {prop.type}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-600">{prop.description}</td>
+                                    <td className="px-4 py-3 text-right">
+                                        <button 
+                                        onClick={() => handleDeleteProperty(prop.name)}
+                                        className="text-red-400 hover:text-red-600 p-1"
+                                        title="Eliminar campo"
+                                        >
+                                        <IconTrash2 className="w-4 h-4 inline" />
+                                        </button>
+                                    </td>
+                                    </tr>
+                                ))}
+                                </tbody>
+                            </table>
+                            </div>
+
+                            {/* Formulario Agregar Propiedad */}
+                            <form onSubmit={handleAddProperty} className="bg-indigo-50/50 p-4 rounded-lg border border-indigo-100 flex flex-wrap gap-3 items-end">
+                            <div className="flex-1 min-w-[150px]">
+                                <label className="block text-xs font-semibold text-indigo-800 mb-1">Nuevo Campo</label>
+                                <input 
+                                type="text" 
+                                placeholder="ej: ProviderCode" 
+                                className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                value={newProp.name}
+                                onChange={(e) => setNewProp({...newProp, name: e.target.value})}
+                                />
+                            </div>
+                            <div className="w-32">
+                                <label className="block text-xs font-semibold text-indigo-800 mb-1">Tipo</label>
+                                <select 
+                                className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"
+                                value={newProp.type}
+                                onChange={(e) => setNewProp({...newProp, type: e.target.value})}
+                                >
+                                <option value="string">String</option>
+                                <option value="float">Float/Int</option>
+                                <option value="boolean">Boolean</option>
+                                <option value="array">Array</option>
+                                <option value="object">Object</option>
+                                </select>
+                            </div>
+                            <div className="flex-1 min-w-[200px]">
+                                <label className="block text-xs font-semibold text-indigo-800 mb-1">Descripción / Mapeo</label>
+                                <input 
+                                type="text" 
+                                placeholder="De dónde viene o qué hace" 
+                                className="w-full px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                value={newProp.description}
+                                onChange={(e) => setNewProp({...newProp, description: e.target.value})}
+                                />
+                            </div>
+                            <button type="submit" className="bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded flex items-center justify-center transition-colors">
+                                <IconPlus className="w-5 h-5" />
+                            </button>
+                            </form>
+                        </div>
+
+                        {/* SECCIÓN COMPORTAMIENTOS */}
+                        <div>
+                            <h3 className="text-lg font-semibold border-b pb-2 mb-4 flex justify-between items-center text-slate-800">
+                            Comportamientos / Validaciones / Salidas
+                            </h3>
+                            
+                            <ul className="space-y-2 mb-4">
+                            {selectedNode.behaviors.map((beh, idx) => (
+                                <li key={idx} className="flex gap-3 items-start bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-900 text-sm">
+                                <IconArrowRight className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                                <span className="flex-1">{beh}</span>
+                                <button 
+                                    onClick={() => handleDeleteBehavior(idx)}
+                                    className="text-amber-400 hover:text-red-500 p-1"
+                                >
+                                    <IconTrash2 className="w-4 h-4 inline" />
+                                </button>
+                                </li>
+                            ))}
+                            </ul>
+
+                            {/* Formulario Agregar Comportamiento */}
+                            <form onSubmit={handleAddBehavior} className="flex gap-2">
+                            <input 
+                                type="text" 
+                                placeholder="Ej: Validar que si IsRange es true..." 
+                                className="flex-1 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                                value={newBehavior}
+                                onChange={(e) => setNewBehavior(e.target.value)}
+                            />
+                            <button type="submit" className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded text-sm font-semibold transition-colors flex items-center gap-1">
+                                <IconPlus className="w-4 h-4" /> Regla
+                            </button>
+                            </form>
+                        </div>
+
+                        </div>
+                    )}
+                    </div>
+                </main>
+
+                {/* MODAL DEL PROMPT */}
+                {showPrompt && (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+                        <div className="bg-slate-800 text-white p-5 flex justify-between items-center">
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg> 
+                            Prompt Generado para la IA
+                        </h2>
+                        <button onClick={() => setShowPrompt(false)} className="text-slate-400 hover:text-white transition-colors">
+                            <IconXCircle className="w-6 h-6" />
+                        </button>
+                        </div>
+                        
+                        <div className="p-6 flex-1 overflow-y-auto bg-slate-50">
+                        <p className="text-slate-600 mb-4 font-medium">
+                            Copia el siguiente texto estructurado y envíaselo a la IA para que aplique los cambios arquitectónicos que has diseñado:
+                        </p>
+                        
+                        <div className="bg-slate-900 text-green-400 p-4 rounded-lg font-mono text-sm whitespace-pre-wrap overflow-x-auto shadow-inner border border-slate-700">
+                            {generateAIPrompt()}
+                        </div>
+                        </div>
+                        
+                        <div className="p-5 border-t border-slate-200 bg-white flex justify-between items-center">
+                        <div className="text-sm text-slate-500">
+                            <span className="font-bold">{changeLog.length}</span> cambios registrados.
+                        </div>
+                        <div className="flex gap-3">
+                            <button 
+                            onClick={() => setShowPrompt(false)}
+                            className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                            Cerrar
+                            </button>
+                            <button 
+                            onClick={copyToClipboard}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 transition-colors shadow-md"
+                            >
+                            <IconSave className="w-5 h-5" />
+                            Copiar al Portapapeles
+                            </button>
+                        </div>
+                        </div>
+                    </div>
+                    </div>
+                )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

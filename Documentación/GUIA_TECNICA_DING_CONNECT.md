@@ -156,6 +156,7 @@ Nota operativa WooCommerce (abril 2026):
   - `title="Recargas Cuba"`
   - `subtitle="Selecciona tu paquete y confirma"`
 - Contrato de catálogo para landing: el frontend del shortcode envía `allowed_bundle_ids` al endpoint `/products` y backend prioriza esos bundles explícitos de la landing. Esto evita que se mezclen bundles activos globales del país cuando el objetivo tiene su propio catálogo curado.
+- Limitación real actual: cuando `/products` resuelve bundles guardados (`source = saved`) en lugar de catálogo live DingConnect, la landing conserva orden, destacado y restricción de catálogo, pero NO conserva por defecto metadatos ricos del producto (`ProviderCode`, `IsRange`, `LookupBillsRequired`, `SettingDefinitions`, `Benefits`, markdown, branding y validaciones del proveedor).
 - Orden y destacado por landing: la configuración del shortcode dinámico permite ordenar bundles de forma explícita y marcar uno como destacado; el endpoint `/products` respeta ese orden cuando aplica filtro por `allowed_bundle_ids` y frontend resalta el paquete destacado con una variación visual amarilla suave.
 - UX de orden en admin: en alta y edición de landings el checklist de bundles incorpora drag and drop (con manija), y al mover filas se recalcula automáticamente `bundle_order` para persistir el orden visual sin edición manual de números.
 - Selector de país en frontend: ya no depende de una configuración fija; se muestra con los países detectados en los bundles permitidos de esa landing.
@@ -176,19 +177,24 @@ Nota operativa WooCommerce (abril 2026):
 - En modo WooCommerce, `settings` y `bill_ref` ya no se pierden: se guardan en carrito/pedido y el despachador backend los incorpora a `SendTransfer` junto con la reconciliación previa por `ListTransferRecords`.
 - UX dinámica endurecida para payload real: el frontend procesa `ResultCode` y `ErrorCodes` de `EstimatePrices/LookupBills`, muestra mensajes accionables por código DingConnect y refleja estado de carga durante la estimación.
 - Coherencia de datos en productos con factura: al cambiar importe o `SettingDefinitions`, el frontend invalida `BillRef` y obliga a reconsulta para evitar enviar una factura obsoleta.
+- Alcance exacto del flujo dinámico: estas capacidades avanzadas quedan plenamente activas cuando `/products` entrega catálogo live normalizado desde DingConnect. Si el shortcode trabaja sobre bundles guardados del admin, hoy el backend expone un contrato degradado (`ProviderCode` normalmente vacío, `IsRange = false`, `LookupBillsRequired = false`, `SettingDefinitions = []`), por lo que `provider-status`, `EstimatePrices`, `LookupBills` y campos dinámicos suelen no activarse.
+- Cambio mínimo recomendado para alinear runtime y documentación: al guardar un bundle desde catálogo live, persistir también `ProviderCode`, `Benefits`, `DescriptionMarkdown`, `ReadMoreMarkdown`, `LookupBillsRequired`, `SettingDefinitions`, `ValidationRegex`, `CustomerCareNumber`, `LogoUrl`, `PaymentTypes`, `RegionCodes`, `RedemptionMechanism`, `ProcessingMode` e indicador real de rango; después, hacer que `/products` reutilice esos campos cuando `source = saved`.
 
 ### Nota operativa Catálogo y alta (abril 2026)
 
 - En la subpestaña `Buscar en API` del admin, los bundles creados desde resultados live se guardan como inactivos por defecto.
 - La activación/desactivación de bundles se realiza exclusivamente desde `Bundles guardados`, para mantener un único punto de control operativo.
-- La búsqueda live del admin sigue consultando DingConnect para obtener SKUs disponibles y coste vigente, pero hidrata `operator`, `receive`, `product_type` y `validity` desde `Products-with-sku.csv` cuando encuentra coincidencia exacta por `SkuCode`.
-- El admin permite reemplazar ese CSV curado desde la pestaña `Credenciales`. La validación se hace por nombre de cabeceras, de modo que el archivo puede cambiar de contenido cuando se quiera, siempre que mantenga los nombres esperados de columna.
+- La búsqueda live del admin en `Buscar en API` usa únicamente datos de DingConnect para mostrar `operator`, `receive`, `product_type`, `validity`, `send_value` y moneda.
+- La pestaña `Credenciales` ya no expone carga de CSV para enriquecimiento del catálogo, dejando un único contrato operativo basado en API live.
+- La tabla `Paquetes encontrados` fija la columna `Fuente` como `API` y eliminó avisos/contadores asociados a match contra CSV, para evitar ambigüedad operativa.
 - El modelo de bundle soporta precio dual por registro: `send_value` (Coste DIN) y `public_price` (Precio al Público editable), con moneda pública por defecto en EUR.
-- La clasificación comercial por bundle usa `package_family` (`topup | data | combo | voucher | dth | other`) y conserva `product_type_raw` para trazabilidad contra API/CSV.
+- Brecha contractual actual: aunque `public_price_currency` se persiste en admin, `/products` para bundles guardados sigue publicando `ReceiveCurrencyIso` con `send_currency_iso`; para que el contrato sea exacto con el precio comercial guardado, ese mapeo debe separarse o corregirse explícitamente.
+- La clasificación comercial por bundle usa `package_family` (`topup | data | combo | voucher | dth | other`) y conserva `product_type_raw` para trazabilidad contra API.
 - La vigencia del producto se guarda en texto (`validity_raw`) y, cuando es interpretable (por ejemplo `P30D` o `30 days`), se deriva `validity_days` para filtros o reglas futuras.
 - En landings dinámicas, el checklist de bundles incorpora filtros de País y Tipo de producto; los bundles ya seleccionados permanecen visibles aunque no coincidan con el filtro activo.
-- La sección `Paquetes encontrados` de `Buscar en API` ahora se renderiza como tabla de ancho completo fuera de la `form-table`, con columnas de operación (tipo, operador, beneficio, SKU, coste, moneda, vigencia y fuente CSV/API), selección por fila y doble click para cargar en `Alta manual`.
+- La sección `Paquetes encontrados` de `Buscar en API` ahora se renderiza como tabla de ancho completo fuera de la `form-table`, con columnas de operación (tipo, operador, beneficio, SKU, coste, moneda, vigencia y fuente API), selección por fila y doble click para cargar en `Alta manual`.
 - Regla de implementación de filtros en checklist: si cada fila usa `display:flex` por estilo, debe existir una regla explícita para `label[hidden]` (`display:none !important`) para que los filtros de País/Tipo oculten realmente los bundles no coincidentes.
+- Regla de tabla en `Bundles guardados`: la tabla debe ir dentro de un contenedor con `overflow-x: auto` para evitar desbordes en pantallas estrechas; además, la columna `check-column` debe mantener alineación centrada y espaciado homogéneo entre `Seleccionar todos` y checkboxes por fila.
 
 ## 7.2 PIN, vouchers y productos de lectura de recibo
 

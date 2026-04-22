@@ -47,7 +47,7 @@ Priorizar próximos proyectos y funcionalidades sobre la base actual del plugin 
 Una iniciativa se considera lista cuando cumple:
 
 1. Código implementado en el plugin.
-2. Validación manual en entorno WordPress.
+2. Validación manual en entorno WordPress cuando exista entorno disponible; si no existe, se permite validación estática y QA/UAT diferida.
 3. Actualización de documentación en `Documentación/`.
 4. Registro de riesgos y decisiones relevantes.
 
@@ -149,8 +149,8 @@ Una iniciativa se considera lista cuando cumple:
 83. Alta manual y edición de bundles actualizadas al nuevo esquema comercial: formularios y modal ahora muestran campos explícitos de `Coste DIN` y `Precio al Público`, manteniendo `label` siempre editable por operación.
 84. Landings escalables con checklist filtrable: la selección de bundles en alta/edición de shortcodes dinámicos ahora soporta filtros por país y tipo de producto (`package_family`), preservando siempre visibles los bundles ya seleccionados para evitar pérdidas de configuración.
 85. Enriquecimiento de alta desde catálogo API: al seleccionar producto se propagan metadatos comerciales (`package_family`, `product_type_raw`, `validity_raw`) al alta manual y el backend persiste también `validity_days` derivado cuando el formato de vigencia es parseable.
-86. Hidratación híbrida API + CSV en catálogo admin: la búsqueda live usa DingConnect para validar SKUs y coste vigente (`SendValue`/moneda), pero completa `operator`, `receive`, `product_type` y `validity` desde `Products-with-sku.csv` mediante lookup por `SkuCode`, manteniendo el CSV como fuente curada de metadata comercial.
-87. Actualización autónoma del catálogo CSV en admin: la pestaña `Credenciales` ahora permite subir un CSV manualmente, valida las cabeceras esperadas (`SkuCode`, `Operator`, `Receive`, `Product type`, `Country`, `Validity`) y activa el archivo subido como fuente vigente para la hidratación por SKU sin tocar código ni desplegar el plugin.
+86. Simplificación de catálogo admin en `Buscar en API`: se retiró la hidratación por CSV y los resultados ahora se construyen únicamente con datos live de DingConnect (`operator`, `receive`, `product_type`, `validity`, `send_value`, moneda).
+87. Limpieza operativa en `Credenciales`: se eliminó del panel la carga de CSV de catálogo por SKU al dejar de utilizarse esa fuente para enriquecer productos encontrados por API.
 88. Rediseño de `Paquetes encontrados` en `Buscar en API`: el listado dejó de usar un `select` básico y pasó a una tabla operativa de ancho completo, fuera de la `form-table`, con columnas completas (tipo, operador, beneficios, SKU, coste, moneda, vigencia y fuente), encabezado fijo, selección por fila y doble click para cargar directamente en `Alta manual`.
 88. Corrección funcional en filtros de bundles para landings: los filtros `País` y `Tipo de producto` del checklist (alta y edición) recuperan su efecto visual al respetar `hidden` por fila, evitando que el estilo base `display:flex` mantenga visibles bundles fuera del filtro activo.
 89. Compatibilidad de análisis estático en WooCommerce: la creación del producto base de recarga ahora reutiliza el ID devuelto por `save()` en `WC_Product_Simple`, evitando falsos positivos de `Undefined method get_id` en VS Code y manteniendo el mismo comportamiento del CRUD real de WooCommerce.
@@ -165,6 +165,8 @@ Una iniciativa se considera lista cuando cumple:
 98. Matriz manual por proveedor real documentada: se agregó `Documentación/MATRIZ_PRUEBAS_MANUALES_PROVEEDOR_REAL.md` con casos para DTH, electricidad, PIN/voucher y móvil rango, además de criterio operativo `GO/NO-GO` ligado a evidencia real/UAT y a la política `Submitted`.
 99. Hardening anti-duplicados en WooCommerce: se restauró la guardia de idempotencia por `transfer_ref` existente y se ajustó la conciliación para que, ante fallo de `ListTransferRecords`, se difiera la operación sin reenviar `SendTransfer` hasta recuperar estado, evitando riesgo de recargas duplicadas.
 100. Estabilidad de estimaciones en frontend: el cálculo de `EstimatePrices` ahora invalida respuestas asíncronas tardías al cambiar importe o paquete, evitando que una estimación vieja sobrescriba la selección actual del usuario.
+101. Mejora de usabilidad en `Bundles guardados` (admin): la tabla ahora se renderiza dentro de contenedor con scroll horizontal interno para evitar desbordes y la columna de checkboxes (incluyendo `seleccionar todos`) queda centrada y con espaciado consistente respecto al resto de filas.
+102. Limpieza final API-only en panel admin: `Catálogo y alta` eliminó referencias visuales y lógicas a CSV (avisos, badge condicional, sufijos de conteo y copy heredado), por lo que la búsqueda live muestra fuente única `API` y la carga de formulario manual se alimenta exclusivamente de respuesta DingConnect.
 
 ## Backlog actualizado por impacto
 
@@ -188,11 +190,11 @@ Una iniciativa se considera lista cuando cumple:
 5. Prioridad P1 - Operación multi-landing por shortcode dinámico.
    - Estado: parcialmente completado.
    - Completado: alta, edición inline, duplicado rápido y baja de configuraciones de landing desde admin, generación de shortcode por clave y filtrado de bundles por landing.
-   - Pendiente: vista previa de shortcode en frontend por entorno, métricas por objetivo y validación runtime/UAT con productos reales de rango, bill payment y PIN.
+   - Pendiente: vista previa de shortcode en frontend por entorno, métricas por objetivo, validación runtime/UAT con productos reales de rango, bill payment y PIN, y cierre del drift `saved vs live` persistiendo metadatos ricos del bundle para que una landing curada no pierda comportamiento dinámico respecto al catálogo DingConnect.
 6. Prioridad P1 - Flujo frontend dinámico según tipo de producto DingConnect.
    - Estado: parcialmente completado.
    - Completado: provider status previo a confirmación, campos dinámicos por `SettingDefinitions`, estimación de importes con `EstimatePrices`, selección de facturas mediante `LookupBills`, transporte de `bill_ref/settings` hasta WooCommerce y `SendTransfer`, render de errores reales (`ResultCode/ErrorCodes`), control de estado obsoleto en factura/estimación, copy final por familia real en shortcode/WooCommerce y matriz manual operativa con criterio `GO/NO-GO`.
-   - Pendiente: ejecutar en WordPress/UAT la matriz manual con proveedores reales (DTH, electricidad, PIN/voucher y móvil rango) y anexar evidencia runtime por familia.
+   - Pendiente: ejecutar en WordPress/UAT la matriz manual con proveedores reales (DTH, electricidad, PIN/voucher y móvil rango), anexar evidencia runtime por familia y corregir el contrato de bundles guardados para reutilizar `ProviderCode`, `LookupBillsRequired`, `SettingDefinitions`, `IsRange`, markdown, branding y moneda pública sin degradar el flujo al pasar por admin.
 
 ## Nota operativa de despliegue (14-04-2026)
 

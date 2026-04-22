@@ -10,162 +10,6 @@ if (class_exists('DC_Recargas_Admin')) {
 
 class DC_Recargas_Admin {
     private $api;
-    private $csv_catalog_index = null;
-
-    private function get_expected_catalog_csv_headers() {
-        return ['SkuCode', 'Operator', 'Receive', 'Product type', 'Country', 'Validity'];
-    }
-
-    private function normalize_catalog_csv_headers($headers) {
-        if (!is_array($headers)) {
-            return [];
-        }
-
-        return array_map(static function ($header) {
-            $header = (string) $header;
-            $header = preg_replace('/^\xEF\xBB\xBF/', '', $header);
-            return trim($header);
-        }, $headers);
-    }
-
-    private function validate_catalog_csv_headers($headers) {
-        $headers = $this->normalize_catalog_csv_headers($headers);
-        $missing = [];
-
-        foreach ($this->get_expected_catalog_csv_headers() as $required_header) {
-            if (!in_array($required_header, $headers, true)) {
-                $missing[] = $required_header;
-            }
-        }
-
-        return [
-            'headers' => $headers,
-            'missing' => $missing,
-            'is_valid' => empty($missing),
-        ];
-    }
-
-    private function get_uploaded_catalog_csv_path($options = null) {
-        if (!is_array($options)) {
-            $options = $this->api->get_options();
-        }
-
-        $path = (string) ($options['catalog_csv_path'] ?? '');
-        return ($path !== '' && file_exists($path) && is_readable($path)) ? $path : '';
-    }
-
-    private function get_default_catalog_csv_path() {
-        $default_path = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'Products-with-sku.csv';
-        return (file_exists($default_path) && is_readable($default_path)) ? $default_path : '';
-    }
-
-    private function get_active_catalog_csv_path($options = null) {
-        $uploaded_path = $this->get_uploaded_catalog_csv_path($options);
-        if ($uploaded_path !== '') {
-            return $uploaded_path;
-        }
-
-        return $this->get_default_catalog_csv_path();
-    }
-
-    private function handle_catalog_csv_upload($current_options) {
-        if (empty($_FILES['dc_catalog_csv_file']) || !is_array($_FILES['dc_catalog_csv_file'])) {
-            return [
-                'options' => $current_options,
-                'message' => '',
-                'type' => 'success',
-            ];
-        }
-
-        $file = $_FILES['dc_catalog_csv_file'];
-        $error_code = isset($file['error']) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
-        if ($error_code === UPLOAD_ERR_NO_FILE) {
-            return [
-                'options' => $current_options,
-                'message' => '',
-                'type' => 'success',
-            ];
-        }
-
-        if ($error_code !== UPLOAD_ERR_OK) {
-            return [
-                'options' => $current_options,
-                'message' => 'No se pudo subir el CSV de catálogo. Error de carga: ' . $error_code . '.',
-                'type' => 'error',
-            ];
-        }
-
-        $tmp_name = (string) ($file['tmp_name'] ?? '');
-        $original_name = sanitize_file_name((string) ($file['name'] ?? 'catalog.csv'));
-        $extension = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
-        if ($tmp_name === '' || !is_uploaded_file($tmp_name) || $extension !== 'csv') {
-            return [
-                'options' => $current_options,
-                'message' => 'El archivo de catálogo debe ser un CSV válido.',
-                'type' => 'error',
-            ];
-        }
-
-        $handle = fopen($tmp_name, 'r');
-        if (!$handle) {
-            return [
-                'options' => $current_options,
-                'message' => 'No se pudo leer el CSV cargado.',
-                'type' => 'error',
-            ];
-        }
-
-        $headers = fgetcsv($handle, 0, ';');
-        fclose($handle);
-
-        $validation = $this->validate_catalog_csv_headers($headers);
-        if (!$validation['is_valid']) {
-            return [
-                'options' => $current_options,
-                'message' => 'El CSV no tiene las cabeceras esperadas. Faltan: ' . implode(', ', $validation['missing']) . '.',
-                'type' => 'error',
-            ];
-        }
-
-        $upload_dir = wp_upload_dir();
-        if (!empty($upload_dir['error'])) {
-            return [
-                'options' => $current_options,
-                'message' => 'No se pudo preparar la carpeta de subida para el CSV.',
-                'type' => 'error',
-            ];
-        }
-
-        $target_dir = trailingslashit($upload_dir['basedir']) . 'dingconnect';
-        if (!wp_mkdir_p($target_dir)) {
-            return [
-                'options' => $current_options,
-                'message' => 'No se pudo crear la carpeta destino del CSV.',
-                'type' => 'error',
-            ];
-        }
-
-        $target_file = trailingslashit($target_dir) . 'catalog-products-with-sku.csv';
-        if (!@move_uploaded_file($tmp_name, $target_file)) {
-            return [
-                'options' => $current_options,
-                'message' => 'No se pudo guardar el CSV cargado en el servidor.',
-                'type' => 'error',
-            ];
-        }
-
-        $current_options['catalog_csv_path'] = $target_file;
-        $current_options['catalog_csv_url'] = trailingslashit($upload_dir['baseurl']) . 'dingconnect/catalog-products-with-sku.csv';
-        $current_options['catalog_csv_uploaded_at'] = current_time('mysql');
-        $current_options['catalog_csv_original_name'] = $original_name;
-        $this->csv_catalog_index = null;
-
-        return [
-            'options' => $current_options,
-            'message' => 'CSV de catálogo actualizado correctamente. La hidratación por SKU ya usa este archivo.',
-            'type' => 'updated',
-        ];
-    }
 
     public function __construct($api) {
         $this->api = $api;
@@ -623,23 +467,7 @@ class DC_Recargas_Admin {
             'submitted_max_window_hours' => $submitted_max_window_hours,
             'submitted_escalation_email' => $submitted_escalation_email,
             'submitted_non_retryable_codes' => $submitted_non_retryable_codes,
-            'catalog_csv_path' => sanitize_text_field((string) ($current_options['catalog_csv_path'] ?? '')),
-            'catalog_csv_url' => esc_url_raw((string) ($current_options['catalog_csv_url'] ?? '')),
-            'catalog_csv_uploaded_at' => sanitize_text_field((string) ($current_options['catalog_csv_uploaded_at'] ?? '')),
-            'catalog_csv_original_name' => sanitize_file_name((string) ($current_options['catalog_csv_original_name'] ?? '')),
         ];
-
-        $upload_result = $this->handle_catalog_csv_upload($sanitized);
-        $sanitized = $upload_result['options'];
-
-        if (!empty($upload_result['message'])) {
-            add_settings_error(
-                'dc_recargas_options',
-                'dc_catalog_csv_upload',
-                $upload_result['message'],
-                $upload_result['type'] === 'error' ? 'error' : 'updated'
-            );
-        }
 
         return $sanitized;
     }
@@ -959,7 +787,6 @@ class DC_Recargas_Admin {
         $items = [];
         $group_counts = [];
         $group_labels = $this->get_api_package_group_labels();
-        $csv_catalog = $this->get_csv_catalog_index();
         foreach ($raw_items as $product) {
             $benefits = [];
             if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
@@ -975,18 +802,11 @@ class DC_Recargas_Admin {
             $receive = !empty($benefits) ? implode(', ', $benefits) : ($product['DefaultDisplayText'] ?? '');
             $label   = ($product['DefaultDisplayText'] ?? '') ?: ($product['SkuCode'] ?? '');
             $sku_code = (string) ($product['SkuCode'] ?? '');
-            $csv_match = $sku_code !== '' && isset($csv_catalog[$sku_code]) ? $csv_catalog[$sku_code] : null;
-
-            if (is_array($csv_match)) {
-                $receive = $csv_match['receive'] !== '' ? $csv_match['receive'] : $receive;
-                $label = $csv_match['label'] !== '' ? $csv_match['label'] : $label;
-            }
 
             $package_group = $this->classify_api_package_group(
                 $product,
                 $receive,
-                $label,
-                is_array($csv_match) ? $csv_match['product_type'] : ''
+                $label
             );
 
             if (!isset($group_counts[$package_group])) {
@@ -997,16 +817,16 @@ class DC_Recargas_Admin {
             $items[] = [
                 'country_iso'       => $country_iso,
                 'sku_code'          => $sku_code,
-                'operator'          => is_array($csv_match) && $csv_match['operator'] !== '' ? $csv_match['operator'] : ($product['ProviderCode'] ?? ''),
-                'product_type'      => is_array($csv_match) && $csv_match['product_type'] !== '' ? $csv_match['product_type'] : ($product['ProductType'] ?? ''),
+                'operator'          => ($product['ProviderName'] ?? '') !== '' ? ($product['ProviderName'] ?? '') : ($product['ProviderCode'] ?? ''),
+                'product_type'      => $product['ProductType'] ?? '',
                 'label'             => $label,
                 'send_value'        => isset($product['Minimum']['SendValue']) ? (float) $product['Minimum']['SendValue'] : 0,
                 'send_currency_iso' => $product['Minimum']['SendCurrencyIso'] ?? 'USD',
                 'receive'           => $receive,
-                'validity'          => is_array($csv_match) && $csv_match['validity'] !== '' ? $csv_match['validity'] : ($product['ValidityPeriodIso'] ?? ''),
+                'validity'          => $product['ValidityPeriodIso'] ?? '',
                 'package_group'     => $package_group,
                 'package_group_label' => $group_labels[$package_group] ?? ($group_labels['other'] ?? 'Otros'),
-                'catalog_source'    => is_array($csv_match) ? 'csv+api' : 'api',
+                'catalog_source'    => 'api',
             ];
         }
 
@@ -1028,24 +848,9 @@ class DC_Recargas_Admin {
         ];
     }
 
-    private function classify_api_package_group($product, $receive = '', $label = '', $csv_product_type = '') {
+    private function classify_api_package_group($product, $receive = '', $label = '') {
         $product_type = strtolower(trim((string) ($product['ProductType'] ?? '')));
-        $csv_product_type = strtolower(trim((string) $csv_product_type));
         $benefit_types = [];
-
-        if ($csv_product_type !== '') {
-            if (strpos($csv_product_type, 'top-up') !== false || strpos($csv_product_type, 'topup') !== false) {
-                return 'saldo';
-            }
-
-            if (strpos($csv_product_type, 'data') !== false) {
-                return 'data';
-            }
-
-            if (strpos($csv_product_type, 'bundle') !== false) {
-                return 'combo';
-            }
-        }
 
         if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
             foreach ($product['Benefits'] as $benefit) {
@@ -1108,65 +913,6 @@ class DC_Recargas_Admin {
         }
 
         return false;
-    }
-
-    private function get_csv_catalog_index() {
-        if (is_array($this->csv_catalog_index)) {
-            return $this->csv_catalog_index;
-        }
-
-        $this->csv_catalog_index = [];
-        $csv_path = $this->get_active_catalog_csv_path();
-        if (!file_exists($csv_path) || !is_readable($csv_path)) {
-            return $this->csv_catalog_index;
-        }
-
-        $handle = fopen($csv_path, 'r');
-        if (!$handle) {
-            return $this->csv_catalog_index;
-        }
-
-        $headers = fgetcsv($handle, 0, ';');
-        $validation = $this->validate_catalog_csv_headers($headers);
-        if (!$validation['is_valid']) {
-            fclose($handle);
-            return $this->csv_catalog_index;
-        }
-
-        $headers = $validation['headers'];
-
-        while (($row = fgetcsv($handle, 0, ';')) !== false) {
-            if (!is_array($row) || count($row) < count($headers)) {
-                continue;
-            }
-
-            $record = array_combine($headers, array_slice($row, 0, count($headers)));
-            if (!is_array($record)) {
-                continue;
-            }
-
-            $sku_code = trim((string) ($record['SkuCode'] ?? ''));
-            if ($sku_code === '') {
-                continue;
-            }
-
-            $operator = trim((string) ($record['Operator'] ?? ''));
-            $receive = trim((string) ($record['Receive'] ?? ''));
-
-            $this->csv_catalog_index[$sku_code] = [
-                'sku_code' => $sku_code,
-                'operator' => $operator,
-                'receive' => $receive,
-                'product_type' => trim((string) ($record['Product type'] ?? '')),
-                'country' => trim((string) ($record['Country'] ?? '')),
-                'validity' => trim((string) ($record['Validity'] ?? '')),
-                'label' => trim($operator . ($receive !== '' ? ' - ' . $receive : '')),
-            ];
-        }
-
-        fclose($handle);
-
-        return $this->csv_catalog_index;
     }
 
     private function normalize_package_family($raw_family, $raw_product_type = '') {
@@ -2293,6 +2039,35 @@ class DC_Recargas_Admin {
                     background: #f8fbff;
                 }
 
+                .dc-saved-bundles-table-wrap {
+                    border: 1px solid #dbe5f3;
+                    border-radius: 10px;
+                    overflow-x: auto;
+                    overflow-y: hidden;
+                    background: #ffffff;
+                }
+
+                .dc-saved-bundles-table-wrap .widefat {
+                    min-width: 1080px;
+                    border: 0;
+                    border-radius: 0;
+                    box-shadow: none;
+                }
+
+                .dc-saved-bundles-table-wrap .check-column {
+                    width: 54px;
+                    min-width: 54px;
+                    text-align: center;
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    vertical-align: middle;
+                }
+
+                .dc-saved-bundles-table-wrap .check-column input[type="checkbox"] {
+                    margin: 0 auto;
+                    display: block;
+                }
+
                 .dc-api-results-table {
                     width: 100%;
                     border-collapse: collapse;
@@ -2358,14 +2133,9 @@ class DC_Recargas_Admin {
                     white-space: nowrap;
                 }
 
-                .dc-api-source-badge.is-csv {
+                .dc-api-source-badge.is-api {
                     background: #dcfce7;
                     color: #166534;
-                }
-
-                .dc-api-source-badge.is-api {
-                    background: #fee2e2;
-                    color: #991b1b;
                 }
 
                 .dc-api-results-actions {
@@ -2400,7 +2170,7 @@ class DC_Recargas_Admin {
                 <section id="dc-tab-setup" class="dc-tab-panel" data-dc-tab-panel="tab_setup">
 
             <h2>Credenciales y modo de operación</h2>
-            <form method="post" action="options.php" enctype="multipart/form-data">
+            <form method="post" action="options.php">
                 <?php settings_fields('dc_recargas_group'); ?>
 
                 <table class="form-table" role="presentation">
@@ -2525,32 +2295,6 @@ class DC_Recargas_Admin {
                         <td>
                             <input type="text" id="dc_submitted_non_retryable_codes" name="dc_recargas_options[submitted_non_retryable_codes]" class="regular-text" value="<?php echo esc_attr((string) ($options['submitted_non_retryable_codes'] ?? 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed')); ?>" placeholder="InsufficientBalance,AccountNumberInvalid">
                             <p class="description">Lista de códigos DingConnect que deben cortarse sin reintento (separados por coma).</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row"><label for="dc_catalog_csv_file">CSV catálogo por SKU</label></th>
-                        <td>
-                            <input type="file" id="dc_catalog_csv_file" name="dc_catalog_csv_file" accept=".csv,text/csv">
-                            <p class="description">Sube un CSV con cabeceras fijas: <strong>SkuCode</strong>, <strong>Operator</strong>, <strong>Receive</strong>, <strong>Product type</strong>, <strong>Country</strong>, <strong>Validity</strong>. El sistema identifica cada columna por su nombre, no por su posición.</p>
-                            <p class="description">
-                                <?php
-                                $active_csv_path = $this->get_active_catalog_csv_path($options);
-                                $uploaded_csv_path = $this->get_uploaded_catalog_csv_path($options);
-                                $csv_source_label = $uploaded_csv_path !== '' ? 'CSV subido desde admin' : 'CSV del repositorio';
-                                ?>
-                                <strong>Fuente activa:</strong> <?php echo esc_html($csv_source_label); ?>.<br>
-                                <?php if (!empty($options['catalog_csv_original_name'])): ?>
-                                    <strong>Último archivo:</strong> <?php echo esc_html($options['catalog_csv_original_name']); ?>.<br>
-                                <?php endif; ?>
-                                <?php if (!empty($options['catalog_csv_uploaded_at'])): ?>
-                                    <strong>Actualizado:</strong> <?php echo esc_html($options['catalog_csv_uploaded_at']); ?>.<br>
-                                <?php endif; ?>
-                                <?php if ($active_csv_path !== ''): ?>
-                                    <strong>Ruta activa:</strong> <?php echo esc_html($active_csv_path); ?>
-                                <?php else: ?>
-                                    <strong>Ruta activa:</strong> No hay CSV disponible.
-                                <?php endif; ?>
-                            </p>
                         </td>
                     </tr>
                 </table>
@@ -2851,7 +2595,7 @@ class DC_Recargas_Admin {
                 <!-- ── Sub-panel 2: API ── -->
                 <div class="dc-catalog-subpanel is-active" data-catalog-panel="api" aria-hidden="false">
 
-            <p class="dc-catalog-subpanel__intro">Consulta SKUs y coste directamente desde DingConnect en tiempo real. El panel hidrata operador, receive, tipo y vigencia desde el CSV local por SKU; los resultados se guardan en caché por <strong>10 minutos</strong> por país.</p>
+            <p class="dc-catalog-subpanel__intro">Consulta SKUs, operador, beneficios, tipo, vigencia y coste directamente desde DingConnect en tiempo real. Los resultados se guardan en caché por <strong>10 minutos</strong> por país.</p>
 
             <table class="form-table" role="presentation">
                 <tr>
@@ -2926,7 +2670,6 @@ class DC_Recargas_Admin {
                     <button type="button" class="button button-primary" id="dc_api_load_manual_btn" disabled>Seleccionar producto</button>
                     <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API». Luego selecciona un paquete y usa el botón para cargarlo en alta manual.</p>
                 </div>
-                <p class="description" id="dc_api_csv_warn" hidden style="color:#a00;margin-top:4px;"></p>
             </section>
             <script>
             (function () {
@@ -2939,7 +2682,6 @@ class DC_Recargas_Admin {
                 var apiResultsEl = document.getElementById('dc_api_results');
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiLoadManualBtn = document.getElementById('dc_api_load_manual_btn');
-                var apiCsvWarnEl     = document.getElementById('dc_api_csv_warn');
                 var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
                 var manualCountryIsoEl = null;
                 var manualLabelEl = null;
@@ -3046,7 +2788,7 @@ class DC_Recargas_Admin {
                 }
 
                 function apiSourceLabel(item) {
-                    return item && item.catalog_source === 'api' ? 'API (sin CSV)' : 'CSV';
+                    return 'API';
                 }
 
                 function syncApiFilterOptions() {
@@ -3318,15 +3060,6 @@ class DC_Recargas_Admin {
                     }
 
                     apiLoadManualBtn.disabled = !apiSelected;
-
-                    if (apiCsvWarnEl) {
-                        if (apiSelected && apiSelected.catalog_source === 'api') {
-                            apiCsvWarnEl.textContent = '⚠ Este SKU (' + (apiSelected.sku_code || '') + ') no tiene match en el CSV del catálogo. Los datos de operador y beneficio provienen directamente de la API.';
-                            apiCsvWarnEl.hidden = false;
-                        } else {
-                            apiCsvWarnEl.hidden = true;
-                        }
-                    }
                 }
 
                 function renderApiResults(items) {
@@ -3407,7 +3140,7 @@ class DC_Recargas_Admin {
 
                                 var tdSource = document.createElement('td');
                                 var badge = document.createElement('span');
-                                badge.className = 'dc-api-source-badge ' + (item.catalog_source === 'api' ? 'is-api' : 'is-csv');
+                                badge.className = 'dc-api-source-badge is-api';
                                 badge.textContent = apiSourceLabel(item);
                                 tdSource.appendChild(badge);
 
@@ -3423,15 +3156,12 @@ class DC_Recargas_Admin {
                             });
                         });
 
-                    var apiOnlyCount = items.filter(function (i) { return i.catalog_source === 'api'; }).length;
-                    var csvSuffix = apiOnlyCount > 0 ? ' (' + apiOnlyCount + ' sin match en CSV)' : '';
-
                     if (apiFilterEl && apiFilterEl.value !== 'all') {
-                        apiHelpEl.textContent = items.length + ' paquete(s) en «' + (apiGroupLabels[apiFilterEl.value] || apiFilterEl.value) + '»' + csvSuffix + '. Selecciona uno para crear el bundle o cargarlo en alta manual.';
+                        apiHelpEl.textContent = items.length + ' paquete(s) en «' + (apiGroupLabels[apiFilterEl.value] || apiFilterEl.value) + '». Selecciona uno para crear el bundle o cargarlo en alta manual.';
                         return;
                     }
 
-                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s), agrupados por tipo' + csvSuffix + '. Selecciona uno para crear el bundle o cargarlo en alta manual.';
+                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s), agrupados por tipo. Selecciona uno para crear el bundle o cargarlo en alta manual.';
                 }
 
                 function refreshApiResults() {
@@ -3606,7 +3336,7 @@ class DC_Recargas_Admin {
                         <th scope="row"><label for="dc_description">Beneficios recibidos</label></th>
                         <td>
                             <textarea id="dc_description" name="description" class="regular-text" rows="2" placeholder="Ej: Monthly 30GB, Daily 125 Min, USD 10"></textarea>
-                            <p class="description">Lo que recibe el usuario (columna <em>Receive</em> del CSV). Texto corto y claro.</p>
+                            <p class="description">Lo que recibe el usuario (beneficio o descripción operativa del paquete). Texto corto y claro.</p>
                         </td>
                     </tr>
                     <tr>
@@ -3642,6 +3372,7 @@ class DC_Recargas_Admin {
                     <span class="description">Puedes seleccionar uno o varios bundles desde la tabla.</span>
                 </p>
 
+            <div class="dc-saved-bundles-table-wrap" role="region" aria-label="Tabla de bundles guardados">
             <table class="widefat striped">
                 <thead>
                     <tr>
@@ -3709,6 +3440,7 @@ class DC_Recargas_Admin {
                 <?php endif; ?>
                 </tbody>
             </table>
+            </div>
             </form>
 
             <div id="dc-edit-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-edit-modal-title" <?php echo empty($editing_bundle) ? 'hidden' : ''; ?>>
@@ -3767,7 +3499,7 @@ class DC_Recargas_Admin {
                                 <th scope="row"><label for="dc_edit_description">Beneficios recibidos</label></th>
                                 <td>
                                     <textarea id="dc_edit_description" name="description" class="regular-text" rows="2" placeholder="Ej: Monthly 30GB, Daily 125 Min, USD 10"><?php echo esc_textarea($editing_bundle['description'] ?? ''); ?></textarea>
-                                    <p class="description">Lo que recibe el usuario (columna <em>Receive</em> del CSV).</p>
+                                    <p class="description">Lo que recibe el usuario (beneficio o descripción operativa del paquete).</p>
                                 </td>
                             </tr>
                             <tr>

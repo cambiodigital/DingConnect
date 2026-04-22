@@ -22,10 +22,6 @@ class DC_Recargas_API {
             'submitted_max_window_hours' => 12,
             'submitted_escalation_email' => '',
             'submitted_non_retryable_codes' => 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed',
-            'catalog_csv_path' => '',
-            'catalog_csv_url' => '',
-            'catalog_csv_uploaded_at' => '',
-            'catalog_csv_original_name' => '',
         ];
 
         return wp_parse_args(get_option('dc_recargas_options', []), $defaults);

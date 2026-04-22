@@ -1,0 +1,92 @@
+flowchart TB
+    subgraph A["1. Admin: Catálogo y alta"]
+        A1["Buscar en API<br/>AJAX dc_fetch_api_products<br/>requiere country_iso válido"] --> A2["DC_Recargas_API::get_products_by_country()<br/>GET GetProducts<br/>nota: admin AJAX consume raw['Items']"]
+        A2 --> A3["Item admin normalizado<br/>country_iso<br/>sku_code<br/>operator = ProviderName | ProviderCode<br/>product_type<br/>label = DefaultDisplayText | SkuCode<br/>send_value = Minimum.SendValue<br/>send_currency_iso = Minimum.SendCurrencyIso<br/>receive = Benefits | DefaultDisplayText<br/>validity = ValidityPeriodIso<br/>package_group heurístico<br/>catalog_source = api"]
+        A3 --> A4["Doble click en tabla<br/>fillManualForm(item)"]
+        A0["Alta manual directa"] --> A5
+        A4 --> A5["Formulario Alta manual<br/>country_iso<br/>label = operator - (receive | label | sku_code)<br/>sku_code<br/>send_value<br/>send_currency_iso<br/>public_price = ''<br/>public_price_currency = EUR<br/>provider_name = operator<br/>description = receive | label<br/>hidden: package_family, product_type_raw, validity_raw<br/>NO persiste ProviderCode ni metadatos live ricos"]
+        A5 --> A6["POST admin_post_dc_add_bundle<br/>handle_add_bundle()"]
+    end
+
+    subgraph B["2. Persistencia de bundles"]
+        A6 --> B1["Option dc_recargas_bundles[] (persistencia actual)<br/>id = uniqid(bundle_)<br/>country_iso<br/>label<br/>sku_code<br/>send_value<br/>send_currency_iso<br/>public_price<br/>public_price_currency<br/>package_family = normalize_package_family()<br/>product_type_raw<br/>validity_raw<br/>validity_days = parse_validity_days()<br/>provider_name<br/>description<br/>is_active"]
+        B1 -.-> B2["Se pierde riqueza del producto live si no se persiste<br/>ProviderCode<br/>Benefits[]<br/>DescriptionMarkdown<br/>ReadMoreMarkdown<br/>LookupBillsRequired<br/>SettingDefinitions[]<br/>ValidationRegex<br/>CustomerCareNumber<br/>LogoUrl<br/>PaymentTypes<br/>RegionCodes<br/>RedemptionMechanism / ProcessingMode / IsRange"]
+        B1 -.-> B3["public_price_currency se guarda en admin<br/>pero /products saved no la expone<br/>ReceiveCurrencyIso sale con send_currency_iso"]
+    end
+
+    subgraph C["3. Admin: landings dinámicas"]
+        B1 --> C1["Checklist bundles<br/>filtros por país y package_family<br/>checkbox + radio Destacado + drag and drop"]
+        C1 --> C2["order_selected_bundles(bundle_ids, bundle_order POST)<br/>reordena SOLO los IDs seleccionados"]
+        C2 --> C3["POST admin_post_dc_add/update_landing_shortcode"]
+        C3 --> C4["country_iso derivado<br/>1 país único -> ese ISO<br/>varios países -> '' multi-país"]
+        C3 --> C5["key = generate_unique_landing_key()<br/>si vacío usa sanitize_title(name)"]
+        C3 --> C6["featured_bundle_id solo si pertenece a bundle_ids"]
+        C3 --> C7["Option dc_recargas_landing_shortcodes[]<br/>id = uniqid(landing_)<br/>name, key, title, subtitle<br/>country_iso derivado<br/>bundle_ids ORDENADOS<br/>featured_bundle_id<br/>created_at / updated_at<br/>cloned_from?"]
+        C8["Personalizar diseño<br/>REST dc-recargas/v1/save-shortcode-customization<br/>max_width, bg_color, primary_color,<br/>text_color, border_radius, padding, shadow_intensity"] --> C7
+    end
+
+    subgraph D["4. Shortcode público"]
+        D1["[dingconnect_recargas landing_key='...']"] --> D2["render_shortcode()"]
+        C7 --> D2
+        B1 --> D2
+        D2 --> D3["get_landing_shortcode_config(key)"]
+        D3 --> D4["Fusión atts + config landing<br/>bundle_ids = config.bundle_ids + atts.bundles<br/>featured_bundle_id validado<br/>default_country_iso = atts.country | config.country_iso | único país disponible<br/>title/subtitle = atts o config"]
+        D4 --> D5["HTML + data-*<br/>data-allowed-bundle-ids<br/>data-featured-bundle-id<br/>data-default-country-iso<br/>data-available-countries"]
+        D2 --> D6["wp_localize_script DC_RECARGAS_DATA<br/>restBase, nonce, countries,<br/>woocommerce_active, cartUrl, checkoutUrl"]
+        D3 --> D7["customization -> CSS inline por instancia"]
+    end
+
+    subgraph E["5. Frontend.js: búsqueda y selección"]
+        D5 --> E1["searchBundles()<br/>normalizePhone() -> +dial + local"]
+        D6 --> E1
+        E1 --> E2["GET /dingconnect/v1/products<br/>account_number<br/>country_iso<br/>allowed_bundle_ids?"]
+        E7a["state.bundles[]"] --> E8["renderPackageCard()"]
+        E8 --> E9["ensureProviderStatus()<br/>solo si ProviderCode existe<br/>en bundles saved actuales suele no ejecutar"]
+        E8 --> E10["renderDynamicFields()<br/>si IsRange | SettingDefinitions | LookupBillsRequired<br/>en bundles saved actuales suele no ejecutar"]
+        E10 --> E11["/estimate-prices<br/>si IsRange"]
+        E10 --> E12["/lookup-bills<br/>si LookupBillsRequired"]
+        E10 --> E13["settings payload<br/>Name/Value[]"]
+        E8 --> E14["buildConfirmStep()<br/>país, número, operador, importe,<br/>recibe estimado, bill_ref, settings,
+soporte, destacado"]
+    end
+
+    subgraph F["6. REST /products"]
+        E2 --> F1["DC_Recargas_REST::products()"]
+        F1 --> F2{"¿Hay bundles saved aplicables?"}
+        F2 -- "Sí" --> F3["filter_bundles_by_country(country_iso, allowed_bundle_ids)"]
+        F3 --> F4["Producto saved normalizado<br/>BundleId = id<br/>SkuCode = sku_code<br/>ProviderCode = provider_code? (normalmente vacío)<br/>ProviderName = provider_name<br/>ProductType = product_type_raw<br/>SendValue = send_value<br/>SendCurrencyIso = send_currency_iso<br/>ReceiveValue = public_price | send_value<br/>ReceiveCurrencyIso = send_currency_iso (NO public_price_currency)<br/>ReceiveValueExcludingTax = public_price | send_value<br/>DefaultDisplayText/DisplayText = label<br/>Description/AdditionalInformation = description<br/>CountryIso = country_iso<br/>ValidityPeriodIso = validity_raw<br/>IsRange = false<br/>LookupBillsRequired = false<br/>SettingDefinitions = []<br/>sin provider-status / lookup / range / settings live<br/>source = saved"]
+        F2 -- "No" --> F5["API live<br/>get_products_catalog()<br/>fallback get_products(account_number)"]
+        F5 --> F6["normalize_products_for_frontend()<br/>enriquece con GetProviders + GetProductDescriptions"]
+        F6 --> F7["Producto live normalizado<br/>ProviderCode / ProviderName<br/>SkuCode / ProductType / CountryIso / RegionCodes<br/>Send/Receive/Tax/Fee/min-max<br/>DefaultDisplayText / DisplayText<br/>Description + DescriptionMarkdown + ReadMoreMarkdown<br/>Benefits + ValidityPeriodIso<br/>RedemptionMechanism + ProcessingMode<br/>LookupBillsRequired + SettingDefinitions[]<br/>ValidationRegex + CustomerCareNumber + LogoUrl + PaymentTypes + UatNumber<br/>IsRange real<br/>source = dingconnect"]
+        F4 --> E7a
+        F7 --> E7a
+        F6 -.-> F8["Description final = Description | AdditionalInformation | DescriptionMarkdown | primeros Benefits"]
+    end
+
+    subgraph G["7. Salida operativa"]
+        E14 --> G1{"payment_mode"}
+        G1 -- "direct" --> G2["POST /transfer<br/>account_number<br/>sku_code<br/>send_value<br/>send_currency_iso<br/>settings[]<br/>bill_ref"]
+        G1 -- "woocommerce" --> G3["POST /add-to-cart<br/>+ country_iso, provider_name, bundle_label<br/>+ product_type, redemption_mechanism, lookup_bills_required<br/>+ customer_care_number, is_range<br/>+ settings[] + bill_ref"]
+    end
+
+    subgraph H["8. DingConnect directo + logs"]
+        G2 --> H1["DC_Recargas_REST::transfer()<br/>DistributorRef auto si falta"]
+        O1 --> H1
+        H1 --> H2["DC_Recargas_API::send_transfer()<br/>ValidateOnly depende de options"]
+        H2 --> H3["DingConnect SendTransfer"]
+        H1 --> H4["log_transfer() -> CPT dc_transfer_log<br/>_dc_account_number (enmascarado)<br/>_dc_sku_code<br/>_dc_send_value<br/>_dc_currency<br/>_dc_distributor_ref<br/>_dc_transfer_ref<br/>_dc_status<br/>_dc_raw_response"]
+    end
+
+    subgraph I["9. WooCommerce"]
+        G3 --> I1["Cart item data<br/>dc_account_number<br/>dc_country_iso<br/>dc_sku_code<br/>dc_send_value<br/>dc_send_currency_iso<br/>dc_provider_name<br/>dc_bundle_label<br/>dc_product_type<br/>dc_redemption_mechanism<br/>dc_lookup_bills_required<br/>dc_customer_care_number<br/>dc_is_range<br/>dc_flow_kind<br/>dc_settings<br/>dc_bill_ref"]
+        I1 --> I2["Order item meta<br/>_dc_* equivalentes"]
+        I2 --> I3["process_recarga_on_payment()<br/>solo si order->is_paid()"]
+        I3 --> H2
+        I3 --> I4["sync_item_with_ding_status()<br/>ListTransferRecords / retries / escalado / voucher"]
+    end
+
+    subgraph O["10. Configuración global"]
+        O1["Option dc_recargas_options<br/>api_base<br/>api_key<br/>payment_mode<br/>validate_only<br/>allow_real_recharge<br/>woo_allowed_gateways<br/>submitted_retry_*<br/>submitted_non_retryable_codes"]
+    end
+
+    F7 -.-> K1["Cambio mínimo propuesto<br/>persistir metadatos ricos del producto live al guardar bundle<br/>ProviderCode, IsRange, RedemptionMechanism, ProcessingMode,<br/>Benefits, markdown, LookupBillsRequired, SettingDefinitions,<br/>ValidationRegex, branding y metadatos regionales<br/>+ corregir moneda pública expuesta en /products saved"]
