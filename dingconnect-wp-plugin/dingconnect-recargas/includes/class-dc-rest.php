@@ -125,6 +125,9 @@ class DC_Recargas_REST {
 
     public function bundles() {
         $bundles = get_option('dc_recargas_bundles', []);
+        if (!is_array($bundles)) {
+            $bundles = [];
+        }
         $active = array_values(array_filter($bundles, function ($bundle) {
             return !empty($bundle['is_active']);
         }));
@@ -207,11 +210,11 @@ class DC_Recargas_REST {
             'AccountNumber' => $this->sanitize_phone($params['account_number'] ?? ''),
             'SkuCode' => sanitize_text_field($params['sku_code'] ?? ''),
             'SendValue' => (float) ($params['send_value'] ?? 0),
-            'SendCurrencyIso' => strtoupper(sanitize_text_field($params['send_currency_iso'] ?? 'USD')),
+            'SendCurrencyIso' => strtoupper(sanitize_text_field($params['send_currency_iso'] ?? '')),
             'ValidateOnly' => isset($params['validate_only']) ? (bool) $params['validate_only'] : null,
         ];
 
-        if (empty($payload['AccountNumber']) || empty($payload['SkuCode']) || $payload['SendValue'] <= 0) {
+        if (empty($payload['AccountNumber']) || empty($payload['SkuCode']) || $payload['SendValue'] <= 0 || empty($payload['SendCurrencyIso'])) {
             return new WP_REST_Response([
                 'ok' => false,
                 'message' => 'Datos incompletos para procesar la recarga.',
@@ -330,6 +333,9 @@ class DC_Recargas_REST {
 
     private function filter_bundles_by_country($country_iso, $allowed_bundle_ids = []) {
         $bundles = get_option('dc_recargas_bundles', []);
+        if (!is_array($bundles)) {
+            $bundles = [];
+        }
         $allowed_bundle_ids = array_values(array_unique(array_filter(array_map('strval', (array) $allowed_bundle_ids))));
         $has_allowed_filter = !empty($allowed_bundle_ids);
         $allowed_map = $has_allowed_filter ? array_fill_keys($allowed_bundle_ids, true) : [];
@@ -352,6 +358,27 @@ class DC_Recargas_REST {
             return strtoupper((string) ($bundle['country_iso'] ?? '')) === $country_iso;
         }));
 
+        if ($has_allowed_filter) {
+            $order_map = [];
+            foreach ($allowed_bundle_ids as $idx => $bundle_id) {
+                $order_map[$bundle_id] = (int) $idx;
+            }
+
+            usort($active, function ($left, $right) use ($order_map) {
+                $left_id = sanitize_text_field((string) ($left['id'] ?? ''));
+                $right_id = sanitize_text_field((string) ($right['id'] ?? ''));
+
+                $left_order = isset($order_map[$left_id]) ? (int) $order_map[$left_id] : 99999;
+                $right_order = isset($order_map[$right_id]) ? (int) $order_map[$right_id] : 99999;
+
+                if ($left_order !== $right_order) {
+                    return $left_order <=> $right_order;
+                }
+
+                return strcasecmp((string) ($left['label'] ?? ''), (string) ($right['label'] ?? ''));
+            });
+        }
+
         return array_map(function ($bundle) {
             return [
                 'BundleId' => $bundle['id'] ?? '',
@@ -359,7 +386,7 @@ class DC_Recargas_REST {
                 'ProviderName' => $bundle['provider_name'] ?? '',
                 'ProductType' => sanitize_text_field((string) ($bundle['product_type'] ?? '')),
                 'SendValue' => (float) ($bundle['send_value'] ?? 0),
-                'SendCurrencyIso' => $bundle['send_currency_iso'] ?? 'USD',
+                'SendCurrencyIso' => $bundle['send_currency_iso'] ?? '',  // debe venir del bundle guardado; vacío provocará rechazo en el API
                 'DefaultDisplayText' => $bundle['label'] ?? '',
                 'Description' => $bundle['description'] ?? '',
                 'CountryIso' => strtoupper((string) ($bundle['country_iso'] ?? '')),
@@ -495,9 +522,14 @@ class DC_Recargas_REST {
         $maximum = is_array($item['Maximum'] ?? null) ? $item['Maximum'] : [];
         $price = !empty($minimum) ? $minimum : $maximum;
 
+        $send_currency = sanitize_text_field($item['SendCurrencyIso'] ?? ($price['SendCurrencyIso'] ?? ''));
+        if ('' === $send_currency) {
+            error_log('[DingConnect] extract_product_price: SendCurrencyIso ausente en producto SKU=' . ($item['SkuCode'] ?? 'desconocido'));
+        }
+
         return [
             'SendValue' => (float) ($item['SendValue'] ?? ($price['SendValue'] ?? 0)),
-            'SendCurrencyIso' => sanitize_text_field($item['SendCurrencyIso'] ?? ($price['SendCurrencyIso'] ?? 'USD')),
+            'SendCurrencyIso' => $send_currency,
             'ReceiveValue' => (float) ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0)),
             'ReceiveCurrencyIso' => sanitize_text_field($item['ReceiveCurrencyIso'] ?? ($price['ReceiveCurrencyIso'] ?? '')),
         ];
@@ -619,6 +651,9 @@ class DC_Recargas_REST {
         }
 
         $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($shortcodes)) {
+            $shortcodes = [];
+        }
         $updated = false;
 
         foreach ($shortcodes as &$shortcode) {
@@ -653,6 +688,9 @@ class DC_Recargas_REST {
         }
 
         $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($shortcodes)) {
+            $shortcodes = [];
+        }
 
         foreach ($shortcodes as $shortcode) {
             if (sanitize_key($shortcode['key'] ?? '') === $shortcode_key) {

@@ -142,6 +142,9 @@ Una iniciativa se considera lista cuando cumple:
 76. Endurecimiento de despliegue del frontend público: los assets `assets/css/frontend.css` y `assets/js/frontend.js` ahora se versionan por `filemtime` desde el plugin para evitar mezclar markup nuevo con CSS/JS cacheados de versiones anteriores tras una actualización.
 77. Corrección del modal de país en frontend público: el overlay `.dc-country-overlay` ahora respeta el atributo `hidden` mediante una regla CSS explícita, evitando que el modal inicial quede visible y bloquee toda interacción en la landing.
 78. Contrato REST enriquecido para catálogo live: el endpoint `/wp-json/dingconnect/v1/products` ahora expone `ProductType` por ítem (además de `SkuCode`, operador y precios), y el flujo AJAX de `Buscar en API` en admin también devuelve `product_type` para clasificación y reglas futuras basadas en tipo real de DingConnect.
+79. Operación avanzada en shortcodes dinámicos de landings: al crear/editar una landing se puede definir orden explícito de bundles y marcar un `bundle` destacado; frontend respeta el orden configurado y resalta visualmente el destacado con fondo amarillo suave en selección y confirmación.
+80. Mejora UX en `Landings`: los bundles de alta y edición ahora soportan drag and drop con manija visual para reordenar fácilmente; el campo de orden se sincroniza automáticamente con la posición resultante antes de guardar.
+81. Higiene de análisis estático en workspace: se agregó archivo de stubs `wordpress-stubs.php` y configuración de editor para reducir falsos positivos (`Undefined function/type`) de WordPress/WooCommerce en VS Code sin afectar ejecución real del plugin.
 
 ## Backlog actualizado por impacto
 

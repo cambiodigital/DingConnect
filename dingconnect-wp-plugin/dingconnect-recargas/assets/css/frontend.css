@@ -331,12 +331,33 @@
     align-items: start;
 }
 
+.dc-package-card-head.is-featured {
+    background: linear-gradient(180deg, #fff9db 0%, #fff3c4 100%);
+    border: 1px solid #f6d365;
+    border-radius: 14px;
+    padding: 12px;
+}
+
 .dc-package-copy-label {
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #2563eb;
+}
+
+.dc-featured-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #fde68a;
+    color: #854d0e;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    width: fit-content;
 }
 
 .dc-package-copy-title {
@@ -859,6 +880,11 @@
     padding: 16px;
     background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     border-bottom: 1px solid #e2e8f0;
+}
+
+.dc-confirm-hero.is-featured {
+    background: linear-gradient(180deg, #fff9db 0%, #fff3c4 100%);
+    border-bottom-color: #f6d365;
 }
 
 .dc-confirm-kicker {

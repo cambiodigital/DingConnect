@@ -87,7 +87,11 @@ class DC_Recargas_Frontend {
 
         $bundle_ids = $this->parse_bundle_ids((string) $atts['bundles']);
         if (!empty($config['bundle_ids']) && is_array($config['bundle_ids'])) {
-            $bundle_ids = array_values(array_unique(array_merge($bundle_ids, $this->parse_bundle_ids(implode(',', $config['bundle_ids'])))));
+            $bundle_ids = array_values(array_unique(array_merge($this->parse_bundle_ids(implode(',', $config['bundle_ids'])), $bundle_ids)));
+        }
+        $featured_bundle_id = sanitize_text_field((string) ($config['featured_bundle_id'] ?? ''));
+        if (!in_array($featured_bundle_id, $bundle_ids, true)) {
+            $featured_bundle_id = '';
         }
 
         $default_country_iso = strtoupper(sanitize_text_field((string) $atts['country']));
@@ -113,7 +117,7 @@ class DC_Recargas_Frontend {
 
         ob_start();
         ?>
-        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
+        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-featured-bundle-id="<?php echo esc_attr($featured_bundle_id); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
             <div class="dc-card">
 
                 <!-- Viewport del wizard -->

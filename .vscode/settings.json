@@ -1,0 +1,8 @@
+{
+  "intelephense.environment.includePaths": [
+    "staging/wordpress",
+    "staging/wordpress/wp-admin",
+    "staging/wordpress/wp-includes"
+  ],
+  "intelephense.diagnostics.undefinedFunctions": false
+}

@@ -63,6 +63,7 @@
         ? appCountries
         : (Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : []);
     var defaultCountryIso = String(app.getAttribute('data-default-country-iso') || '').toUpperCase();
+    var featuredBundleId = String(app.getAttribute('data-featured-bundle-id') || '').trim();
     var allowedBundleIds = String(app.getAttribute('data-allowed-bundle-ids') || '')
         .split(',').map(function (id) { return id.trim(); }).filter(Boolean);
     var allowedBundleMap = {};
@@ -76,6 +77,7 @@
         country: null,
         bundles: [],
         selected: null,
+        featuredBundleId: featuredBundleId,
         fullPhone: '',
         lastSearchKey: '',
         lastSearchAt: 0,
@@ -187,6 +189,16 @@
 
     function getProviderLabel(bundle) {
         return String((bundle && (bundle.ProviderName || bundle.ProviderCode)) || 'Operador');
+    }
+
+    function getBundleId(bundle) {
+        return String((bundle && bundle.BundleId) || '').trim();
+    }
+
+    function isFeaturedBundle(bundle) {
+        var featuredId = String(state.featuredBundleId || '').trim();
+        if (!featuredId) return false;
+        return getBundleId(bundle) === featuredId;
     }
 
     function formatMoney(amount, currency) {
@@ -347,6 +359,20 @@
                     var id = String(b.BundleId || '').trim();
                     return id && !!state.allowedBundleMap[id];
                 });
+
+                var bundleOrderMap = {};
+                allowedBundleIds.forEach(function (bundleId, index) {
+                    bundleOrderMap[String(bundleId)] = index;
+                });
+
+                state.bundles.sort(function (left, right) {
+                    var leftId = getBundleId(left);
+                    var rightId = getBundleId(right);
+                    var leftOrder = Object.prototype.hasOwnProperty.call(bundleOrderMap, leftId) ? bundleOrderMap[leftId] : 99999;
+                    var rightOrder = Object.prototype.hasOwnProperty.call(bundleOrderMap, rightId) ? bundleOrderMap[rightId] : 99999;
+                    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+                    return getBundleOptionLabel(left).localeCompare(getBundleOptionLabel(right));
+                });
             }
 
             state.dataSource = res.source || 'unknown';
@@ -396,6 +422,9 @@
         var provider = getProviderLabel(bundle);
         var amount = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
 
+        if (isFeaturedBundle(bundle)) {
+            parts.push('⭐ Destacado');
+        }
         parts.push(title);
         if (provider) parts.push(provider);
         parts.push(amount);
@@ -419,7 +448,8 @@
         });
 
         if (!state.selected || state.bundles.indexOf(state.selected) === -1) {
-            state.selected = state.bundles[0];
+            var featured = state.bundles.find(function (bundle) { return isFeaturedBundle(bundle); });
+            state.selected = featured || state.bundles[0];
         }
 
         packageSelect.value = String(state.bundles.indexOf(state.selected));
@@ -438,11 +468,16 @@
         var benefit = String(bundle.Description || bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
         var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
         var amount = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
+        var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
+        var featuredBadge = isFeaturedBundle(bundle)
+            ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
+            : '';
 
         packageCard.innerHTML = ''
-            + '<div class="dc-package-card-head">'
+            + '<div class="dc-package-card-head' + featuredClass + '">'
             +   '<div class="dc-package-copy">'
             +     '<div class="dc-package-copy-label">Beneficios recibidos</div>'
+            +     featuredBadge
             +     '<div class="dc-package-copy-title">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete') + '</div>'
             +     '<div class="dc-package-copy-description">' + escapeHtml(benefit) + '</div>'
             +   '</div>'
@@ -468,6 +503,10 @@
         var dial = state.country ? '+' + state.country.dial : '';
         var phone = phoneEl.value || '';
         var price = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
+        var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
+        var featuredBadge = isFeaturedBundle(bundle)
+            ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
+            : '';
 
         if (contextBundle) {
             var flag = state.country ? isoToFlag(state.country.iso) : '';
@@ -477,9 +516,10 @@
         }
 
         confirmCard.innerHTML = ''
-            + '<div class="dc-confirm-hero">'
+            + '<div class="dc-confirm-hero' + featuredClass + '">'
             +   '<div class="dc-confirm-hero-copy">'
             +     '<div class="dc-confirm-kicker">Beneficios recibidos</div>'
+            +     featuredBadge
             +     '<div class="dc-confirm-title">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete') + '</div>'
             +     '<div class="dc-confirm-benefit">' + escapeHtml(benefit) + '</div>'
             +   '</div>'

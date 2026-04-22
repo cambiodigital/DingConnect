@@ -138,12 +138,21 @@ class DC_Recargas_API {
             $validate_only = (bool) $payload['ValidateOnly'];
         }
 
+        $send_currency = sanitize_text_field($payload['SendCurrencyIso'] ?? '');
+        if ('' === $send_currency) {
+            return new WP_Error(
+                'missing_currency',
+                'SendCurrencyIso es requerido para enviar la recarga.',
+                ['status' => 400]
+            );
+        }
+
         $body = [
             'DistributorRef' => sanitize_text_field($payload['DistributorRef'] ?? $this->new_ref()),
             'AccountNumber' => sanitize_text_field($payload['AccountNumber'] ?? ''),
             'SkuCode' => sanitize_text_field($payload['SkuCode'] ?? ''),
             'SendValue' => (float) ($payload['SendValue'] ?? 0),
-            'SendCurrencyIso' => sanitize_text_field($payload['SendCurrencyIso'] ?? 'USD'),
+            'SendCurrencyIso' => $send_currency,
             'ValidateOnly' => $validate_only,
         ];
 
