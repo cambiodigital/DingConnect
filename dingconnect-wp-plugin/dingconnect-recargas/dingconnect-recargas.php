@@ -116,6 +116,11 @@ register_activation_hook(DC_RECARGAS_FILE, function () {
         'validate_only' => 1,
         'allow_real_recharge' => 0,
         'woo_allowed_gateways' => [],
+        'submitted_retry_max_attempts' => 4,
+        'submitted_retry_backoff_minutes' => '10,20,40,80',
+        'submitted_max_window_hours' => 12,
+        'submitted_escalation_email' => '',
+        'submitted_non_retryable_codes' => 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed',
     ];
 
     if (!get_option('dc_recargas_options')) {

@@ -22,6 +22,8 @@
     var productTypeFilter = findInApp('dc-product-type-filter');
     var packageSelect     = findInApp('dc-package-select');
     var packageCard       = findInApp('dc-package-card');
+    var providerStatusEl  = findInApp('dc-provider-status');
+    var dynamicFieldsEl   = findInApp('dc-dynamic-fields');
     var confirmCard       = findInApp('dc-confirm-card');
     var feedbackConfirmEl = findInApp('dc-feedback-confirm');
     var btnContinueConfirm = findInApp('dc-btn-continue-confirm');
@@ -42,7 +44,7 @@
         countryBtn, countryFlag, countryDial, phoneEl,
         overlay, countrySearch, countryList, countryClose,
         loadingEl, feedbackEl,
-        packageStage, packageSelect, packageCard,
+        packageStage, packageSelect, packageCard, providerStatusEl, dynamicFieldsEl,
         confirmCard, feedbackConfirmEl, btnContinueConfirm, confirmBtn, resultEl,
         panePhone, paneConfirm, paneResult,
         btnBackConfirm, btnRestart,
@@ -71,12 +73,15 @@
     allowedBundleIds.forEach(function (id) { allowedBundleMap[id] = true; });
 
     var autoTimer = null;
+    var estimateTimer = null;
     var SEARCH_CACHE_TTL_MS = 10000;
+    var PROVIDER_STATUS_CACHE_TTL_MS = 300000;
 
     /* ===== State ===== */
     var state = {
         country: null,
         bundles: [],
+        visibleBundles: [],
         selected: null,
         featuredBundleId: featuredBundleId,
         fullPhone: '',
@@ -85,6 +90,15 @@
         inFlightSearchKey: '',
         dataSource: '',
         allowedBundleMap: allowedBundleMap,
+        providerStatusCache: {},
+        selectedSettings: {},
+        selectedBillRef: '',
+        selectedBillOptions: [],
+        selectedEstimate: null,
+        selectedEstimateError: '',
+        selectedSendValue: 0,
+        estimateRequestSeq: 0,
+        estimateRequestActive: 0,
         wizardStep: 'phone',  // phone | confirm | result
     };
 
@@ -172,11 +186,21 @@
 
     function resetPackageStage(clearBundles) {
         state.selected = null;
+        state.visibleBundles = [];
+        state.selectedSettings = {};
+        state.selectedBillRef = '';
+        state.selectedBillOptions = [];
+        state.selectedEstimate = null;
+        state.selectedSendValue = 0;
         if (clearBundles) {
             state.bundles = [];
         }
         packageSelect.innerHTML = '';
         packageCard.innerHTML = '';
+        providerStatusEl.innerHTML = '';
+        providerStatusEl.hidden = true;
+        dynamicFieldsEl.innerHTML = '';
+        dynamicFieldsEl.hidden = true;
         packageStage.hidden = true;
         confirmCard.innerHTML = '';
         setFeedbackConfirm('', '');
@@ -204,6 +228,271 @@
 
     function formatMoney(amount, currency) {
         return Number(amount || 0).toFixed(2) + ' ' + String(currency || 'USD');
+    }
+
+    function getCurrentSendValue(bundle) {
+        var fallback = Number((bundle && bundle.SendValue) || 0);
+        var current = Number(state.selectedSendValue || 0);
+        return current > 0 ? current : fallback;
+    }
+
+    function getCurrentReceiveValue(bundle) {
+        if (state.selectedEstimate && Number(state.selectedEstimate.ReceiveValue || 0) > 0) {
+            return {
+                amount: Number(state.selectedEstimate.ReceiveValue || 0),
+                currency: String(state.selectedEstimate.ReceiveCurrencyIso || bundle.ReceiveCurrencyIso || ''),
+                excludingTax: Number(state.selectedEstimate.ReceiveValueExcludingTax || 0),
+            };
+        }
+
+        return {
+            amount: Number((bundle && bundle.ReceiveValue) || 0),
+            currency: String((bundle && bundle.ReceiveCurrencyIso) || ''),
+            excludingTax: Number((bundle && bundle.ReceiveValueExcludingTax) || 0),
+        };
+    }
+
+    function getMandatorySettingDefinitions(bundle) {
+        return Array.isArray(bundle && bundle.SettingDefinitions)
+            ? bundle.SettingDefinitions.filter(function (definition) {
+                return definition && definition.IsMandatory;
+            })
+            : [];
+    }
+
+    function isRangeBundle(bundle) {
+        return !!(bundle && bundle.IsRange);
+    }
+
+    function syncSettingsFromInputs() {
+        state.selectedSettings = {};
+
+        if (!dynamicFieldsEl) return;
+
+        dynamicFieldsEl.querySelectorAll('[data-setting-name]').forEach(function (input) {
+            var name = String(input.getAttribute('data-setting-name') || '').trim();
+            if (!name) return;
+            state.selectedSettings[name] = String(input.value || '').trim();
+        });
+    }
+
+    function normalizeErrorCodes(errorCodes) {
+        return (Array.isArray(errorCodes) ? errorCodes : []).map(function (entry) {
+            if (entry && typeof entry === 'object') {
+                return {
+                    Code: String(entry.Code || '').trim(),
+                    Context: String(entry.Context || '').trim(),
+                    Message: String(entry.Message || '').trim(),
+                };
+            }
+
+            return {
+                Code: String(entry || '').trim(),
+                Context: '',
+                Message: '',
+            };
+        }).filter(function (entry) {
+            return entry.Code !== '' || entry.Message !== '';
+        });
+    }
+
+    function getResultErrorMessage(item, fallback) {
+        if (!item || typeof item !== 'object') {
+            return fallback;
+        }
+
+        var errorCodes = normalizeErrorCodes(item.ErrorCodes);
+        var resultCode = Number(item.ResultCode || 0);
+        if (!resultCode && !errorCodes.length) {
+            return '';
+        }
+
+        var firstError = errorCodes[0] || null;
+        if (!firstError) {
+            return fallback;
+        }
+
+        var mapped = {
+            InsufficientBalance: 'No hay saldo suficiente en DingConnect para completar esta operación.',
+            AccountNumberInvalid: 'El número no es válido para este producto.',
+            RechargeNotAllowed: 'La recarga no está permitida para esta cuenta o producto.',
+            ProviderError: 'El proveedor rechazó temporalmente la solicitud. Intenta de nuevo en unos minutos.',
+            RateLimited: 'El proveedor limitó temporalmente la consulta. Espera unos segundos e inténtalo de nuevo.',
+            LookupBillsFailed: 'No se pudo consultar la factura con los datos actuales.',
+        };
+
+        if (mapped[firstError.Code]) {
+            return mapped[firstError.Code];
+        }
+
+        return firstError.Message || firstError.Context || fallback;
+    }
+
+    function clearBillSelection(bundle, reasonMessage) {
+        state.selectedBillRef = '';
+        state.selectedBillOptions = [];
+        if (bundle && bundle.LookupBillsRequired) {
+            state.selectedEstimate = null;
+            state.selectedEstimateError = '';
+        }
+
+        if (!dynamicFieldsEl) return;
+
+        var billSelect = dynamicFieldsEl.querySelector('#dc-bill-select');
+        var lookupFeedback = dynamicFieldsEl.querySelector('#dc-bill-feedback');
+        if (billSelect) {
+            billSelect.innerHTML = '';
+            billSelect.hidden = true;
+        }
+        if (lookupFeedback && reasonMessage) {
+            lookupFeedback.textContent = reasonMessage;
+        }
+    }
+
+    function getSettingsPayload(bundle) {
+        syncSettingsFromInputs();
+
+        return Object.keys(state.selectedSettings).filter(function (name) {
+            return String(state.selectedSettings[name] || '').trim() !== '';
+        }).map(function (name) {
+            return {
+                Name: name,
+                Value: String(state.selectedSettings[name] || '').trim(),
+            };
+        });
+    }
+
+    function renderProviderStatus(info) {
+        if (!providerStatusEl) return;
+
+        if (!info || !info.ProviderCode) {
+            providerStatusEl.hidden = true;
+            providerStatusEl.innerHTML = '';
+            return;
+        }
+
+        var isUp = info.IsProcessingTransfers !== false;
+        providerStatusEl.hidden = false;
+        providerStatusEl.className = 'dc-provider-status ' + (isUp ? 'is-ok' : 'is-down');
+        providerStatusEl.innerHTML = ''
+            + '<strong>' + (isUp ? 'Proveedor disponible' : 'Proveedor temporalmente no disponible') + '</strong>'
+            + (info.Message ? '<span>' + escapeHtml(String(info.Message)) + '</span>' : '');
+    }
+
+    async function ensureProviderStatus(bundle, surface) {
+        if (!bundle || !bundle.ProviderCode) return true;
+
+        var providerCode = String(bundle.ProviderCode);
+        if (Object.prototype.hasOwnProperty.call(state.providerStatusCache, providerCode)) {
+            var cachedEntry = state.providerStatusCache[providerCode];
+            var cacheAge = Date.now() - Number(cachedEntry && cachedEntry.ts ? cachedEntry.ts : 0);
+            if (cacheAge <= PROVIDER_STATUS_CACHE_TTL_MS) {
+                var cached = cachedEntry.info || null;
+                renderProviderStatus(cached);
+                if (cached && cached.IsProcessingTransfers === false) {
+                    if (surface === 'confirm') setFeedbackConfirm('El proveedor está temporalmente no disponible. Prueba más tarde.', 'warning');
+                    else setFeedback('El proveedor está temporalmente no disponible. Prueba más tarde.', 'warning');
+                    return false;
+                }
+                return true;
+            }
+
+            delete state.providerStatusCache[providerCode];
+        }
+
+        renderProviderStatus({ ProviderCode: providerCode, IsProcessingTransfers: true, Message: 'Consultando disponibilidad del proveedor...' });
+
+        try {
+            var response = await fetchJson('/provider-status?provider_code=' + encodeURIComponent(providerCode));
+            var info = Array.isArray(response.result) && response.result.length ? response.result[0] : {
+                ProviderCode: providerCode,
+                IsProcessingTransfers: true,
+                Message: '',
+            };
+            state.providerStatusCache[providerCode] = {
+                info: info,
+                ts: Date.now(),
+            };
+            renderProviderStatus(info);
+
+            if (info.IsProcessingTransfers === false) {
+                if (surface === 'confirm') setFeedbackConfirm('El proveedor está temporalmente no disponible. Prueba más tarde.', 'warning');
+                else setFeedback('El proveedor está temporalmente no disponible. Prueba más tarde.', 'warning');
+                return false;
+            }
+            return true;
+        } catch (error) {
+            renderProviderStatus(null);
+            return true;
+        }
+    }
+
+    function validateSelectedBundle(bundle) {
+        if (!bundle) return '';
+
+        var requiredSettings = getMandatorySettingDefinitions(bundle);
+
+        if (bundle.LookupBillsRequired && !state.selectedBillRef) {
+            return 'Selecciona la factura o importe consultado antes de continuar.';
+        }
+
+        if (requiredSettings.length > 0) {
+            var settingMap = {};
+            getSettingsPayload(bundle).forEach(function (setting) {
+                settingMap[String(setting.Name)] = String(setting.Value || '').trim();
+            });
+
+            var missing = requiredSettings.find(function (definition) {
+                return !String(settingMap[String(definition.Name)] || '').trim();
+            });
+
+            if (missing) {
+                return 'Completa el dato requerido: ' + String(missing.Description || missing.Name) + '.';
+            }
+        }
+
+        if (isRangeBundle(bundle)) {
+            var currentSendValue = getCurrentSendValue(bundle);
+            var min = Number(bundle.MinimumSendValue || bundle.SendValue || 0);
+            var max = Number(bundle.MaximumSendValue || bundle.SendValue || 0);
+
+            if (currentSendValue <= 0) {
+                return 'Indica un importe válido para este producto.';
+            }
+
+            if (min > 0 && currentSendValue < min) {
+                return 'El importe está por debajo del mínimo permitido para este producto.';
+            }
+
+            if (max > 0 && currentSendValue > max) {
+                return 'El importe supera el máximo permitido para este producto.';
+            }
+        }
+
+        var regexSource = String(bundle.ValidationRegex || '').trim();
+        if (!regexSource) return '';
+
+        var fullDigits = String(state.fullPhone || normalizePhone() || '').replace(/\D/g, '');
+        var localDigits = String(phoneEl.value || '').replace(/\D/g, '');
+        var candidates = [];
+
+        if (fullDigits) candidates.push(fullDigits);
+        if (localDigits && candidates.indexOf(localDigits) === -1) candidates.push(localDigits);
+
+        try {
+            var pattern = new RegExp(regexSource);
+            var matches = candidates.some(function (candidate) {
+                return pattern.test(candidate);
+            });
+
+            if (!matches) {
+                return 'El número no cumple el formato requerido por este proveedor.';
+            }
+        } catch (error) {
+            console.warn('DingConnect: ValidationRegex no compatible en este navegador.', regexSource, error);
+        }
+
+        return '';
     }
 
     /* ===== Country picker ===== */
@@ -306,6 +595,309 @@
         var data = await response.json();
         if (!response.ok) throw new Error((data && data.message) || 'Error en la solicitud.');
         return data;
+    }
+
+    function renderEstimateSummary(bundle) {
+        var estimateEl = dynamicFieldsEl ? dynamicFieldsEl.querySelector('#dc-range-estimate') : null;
+        if (!estimateEl || !bundle) return;
+
+        estimateEl.classList.remove('is-loading');
+
+        if (!state.selectedEstimate) {
+            if (state.selectedEstimateError) {
+                estimateEl.innerHTML = '<span class="dc-estimate-error">' + escapeHtml(state.selectedEstimateError) + '</span>';
+                return;
+            }
+            estimateEl.innerHTML = '<span>Ingresa un importe para calcular cuánto recibirá el destinatario.</span>';
+            return;
+        }
+
+        var receiveValue = Number(state.selectedEstimate.ReceiveValue || 0);
+        var receiveCurrency = String(state.selectedEstimate.ReceiveCurrencyIso || bundle.ReceiveCurrencyIso || '');
+        var excludingTax = Number(state.selectedEstimate.ReceiveValueExcludingTax || 0);
+        var fee = Number(state.selectedEstimate.CustomerFee || 0);
+        var feeCurrency = String(state.selectedEstimate.SendCurrencyIso || bundle.SendCurrencyIso || '');
+        var taxName = String(state.selectedEstimate.TaxName || 'Impuestos');
+        var taxMode = String(state.selectedEstimate.TaxCalculation || '');
+        var taxAmount = Math.max(0, receiveValue - excludingTax);
+
+        estimateEl.innerHTML = ''
+            + '<strong>' + escapeHtml(formatMoney(receiveValue, receiveCurrency)) + '</strong>'
+            + '<span>recibirá el destinatario</span>'
+            + (excludingTax > 0 ? '<small>Sin impuestos: ' + escapeHtml(formatMoney(excludingTax, receiveCurrency)) + '</small>' : '')
+            + (fee > 0 ? '<small>Tarifa cliente: ' + escapeHtml(formatMoney(fee, feeCurrency)) + '</small>' : '')
+            + (taxAmount > 0 ? '<small>' + escapeHtml(taxName + (taxMode ? ' (' + taxMode + ')' : '')) + ': ' + escapeHtml(formatMoney(taxAmount, receiveCurrency)) + '</small>' : '');
+    }
+
+    async function requestEstimate(bundle, sendValue) {
+        if (!bundle || !isRangeBundle(bundle) || !sendValue || sendValue <= 0) {
+            state.selectedEstimate = null;
+            state.selectedEstimateError = '';
+            renderEstimateSummary(bundle);
+            return;
+        }
+
+        var requestId = ++state.estimateRequestSeq;
+        state.estimateRequestActive = requestId;
+
+        var estimateEl = dynamicFieldsEl ? dynamicFieldsEl.querySelector('#dc-range-estimate') : null;
+        if (estimateEl) {
+            estimateEl.classList.add('is-loading');
+            estimateEl.innerHTML = '<span>Calculando estimación...</span>';
+        }
+
+        try {
+            var response = await fetchJson('/estimate-prices', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sku_code: bundle.SkuCode,
+                    send_value: sendValue,
+                    send_currency_iso: bundle.SendCurrencyIso || '',
+                }),
+            });
+
+            var estimateItem = Array.isArray(response.result) && response.result.length
+                ? response.result[0]
+                : null;
+            var estimateError = getResultErrorMessage(estimateItem, 'No se pudo calcular la estimación para este importe.');
+
+            if (requestId !== state.estimateRequestActive) {
+                return;
+            }
+
+            if (estimateError) {
+                state.selectedEstimate = null;
+                state.selectedEstimateError = estimateError;
+            } else {
+                state.selectedEstimate = estimateItem;
+                state.selectedEstimateError = '';
+            }
+        } catch (error) {
+            if (requestId !== state.estimateRequestActive) {
+                return;
+            }
+            state.selectedEstimate = null;
+            state.selectedEstimateError = 'No se pudo estimar el importe. Puedes intentarlo de nuevo.';
+        }
+
+        renderEstimateSummary(bundle);
+    }
+
+    async function lookupBillsForBundle(bundle) {
+        if (!bundle || !bundle.LookupBillsRequired) return;
+
+        var lookupBtn = dynamicFieldsEl.querySelector('#dc-lookup-bills-btn');
+        var lookupFeedback = dynamicFieldsEl.querySelector('#dc-bill-feedback');
+        var billSelect = dynamicFieldsEl.querySelector('#dc-bill-select');
+        var validationError = validateSelectedBundle(Object.assign({}, bundle, { LookupBillsRequired: false }));
+
+        if (validationError) {
+            lookupFeedback.textContent = validationError;
+            return;
+        }
+
+        lookupBtn.disabled = true;
+        lookupFeedback.textContent = 'Consultando facturas o importes disponibles...';
+        clearBillSelection(bundle, 'Consultando facturas o importes disponibles...');
+
+        try {
+            var response = await fetchJson('/lookup-bills', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sku_code: bundle.SkuCode,
+                    account_number: state.fullPhone,
+                    settings: getSettingsPayload(bundle),
+                }),
+            });
+
+            state.selectedBillOptions = Array.isArray(response.result) ? response.result : [];
+            billSelect.innerHTML = '';
+
+            var lookupError = '';
+            if (state.selectedBillOptions.length) {
+                lookupError = getResultErrorMessage(state.selectedBillOptions[0], 'No se pudo consultar la factura para este producto.');
+            }
+
+            if (lookupError) {
+                state.selectedBillRef = '';
+                billSelect.hidden = true;
+                lookupFeedback.textContent = lookupError;
+                state.selectedEstimate = null;
+                state.selectedEstimateError = lookupError;
+                renderEstimateSummary(bundle);
+                return;
+            }
+
+            if (!state.selectedBillOptions.length) {
+                state.selectedBillRef = '';
+                billSelect.hidden = true;
+                lookupFeedback.textContent = 'No se encontraron facturas o importes disponibles para este producto. Verifica los datos y vuelve a consultar.';
+                return;
+            }
+
+            state.selectedBillOptions.forEach(function (bill, index) {
+                var option = document.createElement('option');
+                option.value = String(index);
+                option.textContent = String(bill.BillRef || 'Factura') + ' · ' + formatMoney(bill.SendValue || 0, bill.SendCurrencyIso || bundle.SendCurrencyIso || '');
+                billSelect.appendChild(option);
+            });
+
+            billSelect.hidden = false;
+            billSelect.value = '0';
+
+            var firstBill = state.selectedBillOptions[0];
+            state.selectedBillRef = String(firstBill.BillRef || '');
+            state.selectedSendValue = Number(firstBill.SendValue || bundle.SendValue || 0);
+            state.selectedEstimate = {
+                SendValue: Number(firstBill.SendValue || 0),
+                SendCurrencyIso: String(firstBill.SendCurrencyIso || bundle.SendCurrencyIso || ''),
+                ReceiveValue: Number(firstBill.ReceiveValue || 0),
+                ReceiveCurrencyIso: String(firstBill.ReceiveCurrencyIso || bundle.ReceiveCurrencyIso || ''),
+                ReceiveValueExcludingTax: Number(firstBill.ReceiveValueExcludingTax || 0),
+                CustomerFee: Number(firstBill.CustomerFee || 0),
+                TaxName: String(firstBill.TaxName || ''),
+                TaxCalculation: String(firstBill.TaxCalculation || ''),
+            };
+            state.selectedEstimateError = '';
+
+            lookupFeedback.textContent = 'Selecciona la factura o el importe que deseas pagar.';
+            renderEstimateSummary(bundle);
+        } catch (error) {
+            lookupFeedback.textContent = error.message || 'No se pudo consultar la factura.';
+            state.selectedEstimate = null;
+            state.selectedEstimateError = lookupFeedback.textContent;
+            renderEstimateSummary(bundle);
+        } finally {
+            lookupBtn.disabled = false;
+        }
+    }
+
+    function renderDynamicFields(bundle) {
+        if (!dynamicFieldsEl) return;
+
+        // Invalidate any pending estimate response from a previous bundle/context.
+        state.estimateRequestActive = ++state.estimateRequestSeq;
+
+        state.selectedSettings = {};
+        state.selectedBillRef = '';
+        state.selectedBillOptions = [];
+        state.selectedEstimate = null;
+        state.selectedEstimateError = '';
+        state.selectedSendValue = Number((bundle && bundle.SendValue) || 0);
+
+        if (!bundle) {
+            dynamicFieldsEl.hidden = true;
+            dynamicFieldsEl.innerHTML = '';
+            return;
+        }
+
+        var settingDefinitions = Array.isArray(bundle.SettingDefinitions) ? bundle.SettingDefinitions : [];
+        var hasDynamicFields = isRangeBundle(bundle) || settingDefinitions.length > 0 || bundle.LookupBillsRequired;
+
+        if (!hasDynamicFields) {
+            dynamicFieldsEl.hidden = true;
+            dynamicFieldsEl.innerHTML = '';
+            return;
+        }
+
+        dynamicFieldsEl.hidden = false;
+
+        var html = '';
+
+        if (isRangeBundle(bundle)) {
+            var min = Number(bundle.MinimumSendValue || bundle.SendValue || 0);
+            var max = Number(bundle.MaximumSendValue || bundle.SendValue || 0);
+            html += ''
+                + '<div class="dc-dynamic-block">'
+                +   '<label class="dc-dynamic-label" for="dc-range-amount">Importe a enviar</label>'
+                +   '<input id="dc-range-amount" class="dc-dynamic-input" type="number" min="' + escapeHtml(String(min)) + '" max="' + escapeHtml(String(max)) + '" step="0.01" value="' + escapeHtml(String(getCurrentSendValue(bundle))) + '">'
+                +   '<div class="dc-dynamic-hint">Rango permitido: ' + escapeHtml(formatMoney(min, bundle.SendCurrencyIso || '')) + ' a ' + escapeHtml(formatMoney(max, bundle.SendCurrencyIso || '')) + '</div>'
+                +   '<div id="dc-range-estimate" class="dc-range-estimate"></div>'
+                + '</div>';
+        }
+
+        if (settingDefinitions.length > 0) {
+            html += '<div class="dc-dynamic-block"><div class="dc-dynamic-section-title">Datos requeridos por el proveedor</div>';
+            settingDefinitions.forEach(function (definition) {
+                var label = String(definition.Description || definition.Name || 'Dato adicional');
+                html += ''
+                    + '<label class="dc-dynamic-label" for="dc-setting-' + escapeHtml(String(definition.Name)) + '">' + escapeHtml(label) + (definition.IsMandatory ? ' *' : '') + '</label>'
+                    + '<input id="dc-setting-' + escapeHtml(String(definition.Name)) + '" class="dc-dynamic-input" type="text" data-setting-name="' + escapeHtml(String(definition.Name)) + '" placeholder="' + escapeHtml(label) + '">';
+            });
+            html += '<div class="dc-dynamic-hint">Usaremos estos datos exactamente como los exige DingConnect para el producto seleccionado.</div></div>';
+        }
+
+        if (bundle.LookupBillsRequired) {
+            html += ''
+                + '<div class="dc-dynamic-block">'
+                +   '<div class="dc-dynamic-section-title">Consulta de factura</div>'
+                +   '<button type="button" id="dc-lookup-bills-btn" class="dc-secondary-btn">Consultar factura o importe</button>'
+                +   '<select id="dc-bill-select" class="dc-dynamic-select" hidden></select>'
+                +   '<div id="dc-bill-feedback" class="dc-dynamic-hint">Consulta los importes disponibles antes de continuar.</div>'
+                + '</div>';
+        }
+
+        dynamicFieldsEl.innerHTML = html;
+
+        if (isRangeBundle(bundle)) {
+            var rangeInput = dynamicFieldsEl.querySelector('#dc-range-amount');
+            renderEstimateSummary(bundle);
+            rangeInput.addEventListener('input', function () {
+                var value = Number(rangeInput.value || 0);
+                state.selectedSendValue = value;
+                state.selectedEstimate = null;
+                state.selectedEstimateError = '';
+                clearBillSelection(bundle, 'Si cambias el importe, debes consultar la factura nuevamente.');
+                renderEstimateSummary(bundle);
+                if (estimateTimer) clearTimeout(estimateTimer);
+                estimateTimer = setTimeout(function () {
+                    requestEstimate(bundle, value);
+                }, 350);
+            });
+
+            requestEstimate(bundle, getCurrentSendValue(bundle));
+        }
+
+        dynamicFieldsEl.querySelectorAll('[data-setting-name]').forEach(function (input) {
+            input.addEventListener('input', function () {
+                syncSettingsFromInputs();
+                clearBillSelection(bundle, 'Cambiaste datos requeridos. Consulta la factura otra vez para continuar.');
+            });
+        });
+
+        if (bundle.LookupBillsRequired) {
+            var lookupBtn = dynamicFieldsEl.querySelector('#dc-lookup-bills-btn');
+            var billSelect = dynamicFieldsEl.querySelector('#dc-bill-select');
+
+            lookupBtn.addEventListener('click', function () {
+                lookupBillsForBundle(bundle);
+            });
+
+            billSelect.addEventListener('change', function () {
+                var selectedBill = state.selectedBillOptions[parseInt(billSelect.value, 10)] || null;
+                if (!selectedBill) {
+                    state.selectedBillRef = '';
+                    return;
+                }
+
+                state.selectedBillRef = String(selectedBill.BillRef || '');
+                state.selectedSendValue = Number(selectedBill.SendValue || bundle.SendValue || 0);
+                state.selectedEstimate = {
+                    SendValue: Number(selectedBill.SendValue || 0),
+                    SendCurrencyIso: String(selectedBill.SendCurrencyIso || bundle.SendCurrencyIso || ''),
+                    ReceiveValue: Number(selectedBill.ReceiveValue || 0),
+                    ReceiveCurrencyIso: String(selectedBill.ReceiveCurrencyIso || bundle.ReceiveCurrencyIso || ''),
+                    ReceiveValueExcludingTax: Number(selectedBill.ReceiveValueExcludingTax || 0),
+                    CustomerFee: Number(selectedBill.CustomerFee || 0),
+                    TaxName: String(selectedBill.TaxName || ''),
+                    TaxCalculation: String(selectedBill.TaxCalculation || ''),
+                };
+                state.selectedEstimateError = '';
+                renderEstimateSummary(bundle);
+            });
+        }
     }
 
     /* ===== Search bundles ===== */
@@ -436,6 +1028,7 @@
 
     function populatePackageSelect(bundlesOverride) {
         var bundles = Array.isArray(bundlesOverride) ? bundlesOverride : state.bundles;
+        state.visibleBundles = bundles.slice();
         packageSelect.innerHTML = '';
 
         if (!bundles.length) {
@@ -505,9 +1098,220 @@
         };
     }
 
+    function getFlowKind(bundle, resultItem, receiptParams) {
+        var productType = String((resultItem && resultItem.ProductType) || (bundle && bundle.ProductType) || '').toLowerCase();
+        var redemptionMechanism = String((resultItem && resultItem.RedemptionMechanism) || (bundle && bundle.RedemptionMechanism) || '').toLowerCase();
+        var additionalInformation = String((bundle && bundle.AdditionalInformation) || '').toLowerCase();
+        var hasPin = !!getReceiptParamValue(receiptParams, 'pin');
+
+        if (hasPin || redemptionMechanism === 'readreceipt' || /(voucher|pin|gift|digital)/.test(productType)) {
+            return 'voucher';
+        }
+
+        if ((bundle && bundle.LookupBillsRequired) || /(electric|bill|utility|power)/.test(productType)) {
+            return 'electricity';
+        }
+
+        if (/(dth|satellite|tv)/.test(productType) || /(dth|satellite|dish|television)/.test(additionalInformation)) {
+            return 'dth';
+        }
+
+        if (isRangeBundle(bundle)) {
+            return 'range';
+        }
+
+        return 'mobile';
+    }
+
+    function getFlowCopy(flowKind, stateKey) {
+        var copyMap = {
+            voucher: {
+                success: {
+                    title: 'Voucher listo para usar',
+                    summary: 'Guarda el codigo y las instrucciones entregadas por el proveedor antes de cerrar esta pantalla.',
+                    receiptTitle: 'Codigo e instrucciones de canje',
+                    paramsTitle: 'Datos del voucher',
+                    nextTitle: 'Que hacer ahora',
+                    nextBody: 'Comparte el codigo solo con el destinatario final y conserva esta referencia para soporte.',
+                    confirmLabel: 'Entrega',
+                    confirmValue: 'Recibiras un codigo o PIN junto con las instrucciones de canje al finalizar.',
+                },
+                pending: {
+                    title: 'Voucher en validacion',
+                    summary: 'El proveedor recibio la solicitud, pero el codigo final todavia no esta confirmado.',
+                    receiptTitle: 'Instrucciones preliminares',
+                    paramsTitle: 'Datos preliminares del voucher',
+                    nextTitle: 'Siguiente paso',
+                    nextBody: 'No repitas la compra mientras el estado siga pendiente. Espera la confirmacion final o revisa el pedido en WooCommerce.',
+                    confirmLabel: 'Entrega',
+                    confirmValue: 'Si el proveedor responde en diferido, el codigo aparecera cuando el estado deje de estar pendiente.',
+                },
+                error: {
+                    title: 'Voucher no confirmado',
+                    summary: 'No hay un codigo final confirmado todavia para este voucher.',
+                    receiptTitle: 'Detalle recibido del proveedor',
+                    paramsTitle: 'Datos tecnicos del voucher',
+                    nextTitle: 'Revision sugerida',
+                    nextBody: 'Verifica la referencia, conserva el pedido y revisa el mensaje tecnico antes de reintentar.',
+                    confirmLabel: 'Entrega',
+                    confirmValue: 'El resultado final depende de la respuesta del proveedor y del receipt devuelto.',
+                },
+            },
+            electricity: {
+                success: {
+                    title: 'Pago del servicio registrado',
+                    summary: 'Conserva la referencia y confirma con el titular del servicio que la factura o saldo quedo actualizado.',
+                    receiptTitle: 'Comprobante o instrucciones del servicio',
+                    paramsTitle: 'Datos del servicio',
+                    nextTitle: 'Que hacer ahora',
+                    nextBody: 'No vuelvas a pagar la misma factura hasta verificar el resultado con la referencia mostrada abajo.',
+                    confirmLabel: 'Servicio',
+                    confirmValue: 'Se aplicara sobre la factura consultada y el proveedor puede devolver datos adicionales del servicio.',
+                },
+                pending: {
+                    title: 'Pago del servicio en validacion',
+                    summary: 'El proveedor recibio la solicitud del servicio, pero aun no cerro el estado final.',
+                    receiptTitle: 'Comprobante preliminar',
+                    paramsTitle: 'Datos preliminares del servicio',
+                    nextTitle: 'Siguiente paso',
+                    nextBody: 'No repitas el pago mientras el estado siga Submitted, Pending o Processing. Espera conciliacion o soporte.',
+                    confirmLabel: 'Servicio',
+                    confirmValue: 'La factura consultada queda asociada a esta operacion y puede tardar en reflejarse.',
+                },
+                error: {
+                    title: 'Pago del servicio no confirmado',
+                    summary: 'La operacion no quedo cerrada con estado exitoso para este servicio.',
+                    receiptTitle: 'Respuesta del proveedor',
+                    paramsTitle: 'Datos tecnicos del servicio',
+                    nextTitle: 'Revision sugerida',
+                    nextBody: 'Valida la factura consultada, la referencia y el estado antes de decidir un nuevo intento.',
+                    confirmLabel: 'Servicio',
+                    confirmValue: 'El proveedor puede responder con informacion adicional incluso si el estado sigue no terminal.',
+                },
+            },
+            dth: {
+                success: {
+                    title: 'Recarga DTH registrada',
+                    summary: 'La recarga del servicio de TV quedo enviada con la referencia operativa correspondiente.',
+                    receiptTitle: 'Detalle del servicio DTH',
+                    paramsTitle: 'Datos entregados por el proveedor',
+                    nextTitle: 'Que hacer ahora',
+                    nextBody: 'Si necesitas soporte, comparte la referencia Ding y el numero de abonado usado en esta compra.',
+                    confirmLabel: 'Servicio',
+                    confirmValue: 'Verifica el numero de abonado y el operador DTH antes de confirmar la recarga.',
+                },
+                pending: {
+                    title: 'Recarga DTH en validacion',
+                    summary: 'La solicitud ya salio al proveedor DTH, pero todavia no hay cierre terminal.',
+                    receiptTitle: 'Detalle preliminar del servicio DTH',
+                    paramsTitle: 'Datos preliminares del proveedor',
+                    nextTitle: 'Siguiente paso',
+                    nextBody: 'No repitas la recarga mientras el estado siga pendiente. Espera confirmacion final o conciliacion manual.',
+                    confirmLabel: 'Servicio',
+                    confirmValue: 'Algunos proveedores DTH validan el abonado antes de cerrar la operacion.',
+                },
+                error: {
+                    title: 'Recarga DTH no confirmada',
+                    summary: 'El proveedor DTH no devolvio un cierre exitoso para esta operacion.',
+                    receiptTitle: 'Respuesta del servicio DTH',
+                    paramsTitle: 'Datos tecnicos del proveedor',
+                    nextTitle: 'Revision sugerida',
+                    nextBody: 'Revisa operador, cuenta y referencia antes de generar una nueva solicitud.',
+                    confirmLabel: 'Servicio',
+                    confirmValue: 'La confirmacion final depende de la validacion del operador DTH y del estado devuelto.',
+                },
+            },
+            range: {
+                success: {
+                    title: 'Recarga movil confirmada',
+                    summary: 'El importe final aceptado por el proveedor quedo registrado con la estimacion aplicada a esta operacion.',
+                    receiptTitle: 'Detalle final de la recarga',
+                    paramsTitle: 'Datos entregados por el proveedor',
+                    nextTitle: 'Que hacer ahora',
+                    nextBody: 'Conserva la referencia y el importe final recibido por si necesitas soporte o conciliacion.',
+                    confirmLabel: 'Importe',
+                    confirmValue: 'El proveedor confirmara el valor final sobre el rango solicitado y puede ajustar impuestos o receive value.',
+                },
+                pending: {
+                    title: 'Recarga movil en validacion',
+                    summary: 'La solicitud de rango quedo enviada, pero el proveedor aun no devolvio el cierre final.',
+                    receiptTitle: 'Detalle preliminar de la recarga',
+                    paramsTitle: 'Datos preliminares del proveedor',
+                    nextTitle: 'Siguiente paso',
+                    nextBody: 'No repitas la compra mientras el estado siga pendiente. Espera la conciliacion final porque el importe ya fue enviado al proveedor.',
+                    confirmLabel: 'Importe',
+                    confirmValue: 'El valor estimado puede quedar pendiente hasta que DingConnect cierre la operacion con el proveedor.',
+                },
+                error: {
+                    title: 'Recarga movil no confirmada',
+                    summary: 'No hay un cierre exitoso para el importe solicitado en este producto de rango.',
+                    receiptTitle: 'Respuesta del proveedor',
+                    paramsTitle: 'Datos tecnicos de la recarga',
+                    nextTitle: 'Revision sugerida',
+                    nextBody: 'Revisa referencia, importe solicitado y mensaje tecnico antes de decidir un nuevo intento.',
+                    confirmLabel: 'Importe',
+                    confirmValue: 'La confirmacion final depende del calculo real del proveedor y del estado devuelto.',
+                },
+            },
+            mobile: {
+                success: {
+                    title: 'Recarga procesada',
+                    summary: 'La recarga fue aceptada por el proveedor y la referencia quedo registrada.',
+                    receiptTitle: 'Detalle de la recarga',
+                    paramsTitle: 'Datos entregados por el proveedor',
+                    nextTitle: 'Que hacer ahora',
+                    nextBody: 'Conserva esta referencia si necesitas soporte o revisar la operacion mas tarde.',
+                    confirmLabel: 'Entrega',
+                    confirmValue: 'El proveedor devolvera el detalle final de la recarga cuando la operacion termine.',
+                },
+                pending: {
+                    title: 'Recarga en validacion',
+                    summary: 'La operacion sigue pendiente en el proveedor y aun no debe tratarse como cerrada.',
+                    receiptTitle: 'Detalle preliminar de la recarga',
+                    paramsTitle: 'Datos preliminares del proveedor',
+                    nextTitle: 'Siguiente paso',
+                    nextBody: 'No repitas la recarga mientras el estado siga Submitted, Pending o Processing. Espera el cierre final.',
+                    confirmLabel: 'Entrega',
+                    confirmValue: 'Si el proveedor responde en diferido, DingConnect cerrara la operacion cuando reciba el estado final.',
+                },
+                error: {
+                    title: 'Recarga no confirmada',
+                    summary: 'La respuesta no quedo en estado exitoso para esta recarga.',
+                    receiptTitle: 'Respuesta del proveedor',
+                    paramsTitle: 'Datos tecnicos de la recarga',
+                    nextTitle: 'Revision sugerida',
+                    nextBody: 'Revisa referencia, estado y mensaje tecnico antes de volver a intentarlo.',
+                    confirmLabel: 'Entrega',
+                    confirmValue: 'El proveedor puede devolver informacion tecnica adicional aunque la operacion no cierre en exito.',
+                },
+            },
+        };
+
+        var kindCopy = copyMap[flowKind] || copyMap.mobile;
+        return kindCopy[stateKey] || kindCopy.pending;
+    }
+
+    function getReceiptParamValue(receiptParams, expectedKey) {
+        var expected = String(expectedKey || '').toLowerCase();
+        var value = '';
+
+        Object.keys(receiptParams || {}).some(function (key) {
+            if (String(key).toLowerCase() !== expected) {
+                return false;
+            }
+
+            value = String(receiptParams[key] || '').trim();
+            return value !== '';
+        });
+
+        return value;
+    }
+
     function renderPackageCard(bundle) {
         if (!bundle) {
             packageCard.innerHTML = '';
+            renderProviderStatus(null);
+            renderDynamicFields(null);
             btnContinueConfirm.disabled = true;
             return;
         }
@@ -515,7 +1319,13 @@
         var providerLabel = getProviderLabel(bundle);
         var benefit = String(bundle.Description || bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
         var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
-        var amount = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
+        var amount = formatMoney(getCurrentSendValue(bundle), bundle.SendCurrencyIso || 'USD');
+        var rangeHint = isRangeBundle(bundle)
+            ? '<div class="dc-package-range-hint">Rango: ' + escapeHtml(formatMoney(bundle.MinimumSendValue || 0, bundle.SendCurrencyIso || '')) + ' a ' + escapeHtml(formatMoney(bundle.MaximumSendValue || 0, bundle.SendCurrencyIso || '')) + '</div>'
+            : '';
+        var cachedProviderStatus = bundle.ProviderCode && Object.prototype.hasOwnProperty.call(state.providerStatusCache, String(bundle.ProviderCode))
+            ? state.providerStatusCache[String(bundle.ProviderCode)]
+            : null;
         var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
         var featuredBadge = isFeaturedBundle(bundle)
             ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
@@ -528,6 +1338,7 @@
             +     featuredBadge
             +     '<div class="dc-package-copy-title">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete') + '</div>'
             +     '<div class="dc-package-copy-description">' + escapeHtml(benefit) + '</div>'
+            +     rangeHint
             +   '</div>'
             +   '<div class="dc-package-price-block">'
             +     '<span class="dc-package-price-label">Monto</span>'
@@ -540,6 +1351,8 @@
             +   '<span class="dc-package-meta-value">' + escapeHtml(providerLabel) + '</span>'
             + '</div>';
 
+        renderProviderStatus(cachedProviderStatus);
+        renderDynamicFields(bundle);
         btnContinueConfirm.disabled = false;
     }
 
@@ -550,11 +1363,16 @@
         var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
         var dial = state.country ? '+' + state.country.dial : '';
         var phone = phoneEl.value || '';
-        var price = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
+        var currentSendValue = getCurrentSendValue(bundle);
+        var currentReceive = getCurrentReceiveValue(bundle);
+        var price = formatMoney(currentSendValue || 0, bundle.SendCurrencyIso || 'USD');
         var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
         var featuredBadge = isFeaturedBundle(bundle)
             ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
             : '';
+        var settingsPayload = getSettingsPayload(bundle);
+        var flowKind = getFlowKind(bundle, null, {});
+        var confirmCopy = getFlowCopy(flowKind, 'pending');
 
         if (contextBundle) {
             var flag = state.country ? isoToFlag(state.country.iso) : '';
@@ -589,6 +1407,70 @@
             +   '<span class="dc-confirm-row-value">' + escapeHtml(countryName + (countryIso ? ' (' + countryIso + ')' : '')) + '</span>'
             + '</div>';
 
+        if (isRangeBundle(bundle)) {
+            confirmCard.innerHTML += ''
+                + '<div class="dc-confirm-row">'
+                +   '<span class="dc-confirm-row-label">Importe solicitado</span>'
+                +   '<span class="dc-confirm-row-value is-price">' + escapeHtml(price) + '</span>'
+                + '</div>';
+        }
+
+        if (currentReceive.amount > 0) {
+            confirmCard.innerHTML += ''
+                + '<div class="dc-confirm-row">'
+                +   '<span class="dc-confirm-row-label">Recibe estimado</span>'
+                +   '<span class="dc-confirm-row-value is-price">' + escapeHtml(formatMoney(currentReceive.amount, currentReceive.currency || '')) + '</span>'
+                + '</div>';
+        }
+
+        if (currentReceive.excludingTax > 0 && currentReceive.excludingTax !== currentReceive.amount) {
+            confirmCard.innerHTML += ''
+                + '<div class="dc-confirm-row">'
+                +   '<span class="dc-confirm-row-label">Recibe sin impuestos</span>'
+                +   '<span class="dc-confirm-row-value is-price">' + escapeHtml(formatMoney(currentReceive.excludingTax, currentReceive.currency || '')) + '</span>'
+                + '</div>';
+        }
+
+        if (state.selectedBillRef) {
+            confirmCard.innerHTML += ''
+                + '<div class="dc-confirm-row">'
+                +   '<span class="dc-confirm-row-label">Factura</span>'
+                +   '<span class="dc-confirm-row-value">' + escapeHtml(state.selectedBillRef) + '</span>'
+                + '</div>';
+        }
+
+        settingsPayload.forEach(function (setting) {
+            confirmCard.innerHTML += ''
+                + '<div class="dc-confirm-row">'
+                +   '<span class="dc-confirm-row-label">' + escapeHtml(setting.Name) + '</span>'
+                +   '<span class="dc-confirm-row-value">' + escapeHtml(setting.Value) + '</span>'
+                + '</div>';
+        });
+
+        if (bundle.CustomerCareNumber) {
+            confirmCard.innerHTML += ''
+                + '<div class="dc-confirm-row">'
+            +   '<span class="dc-confirm-row-label">Soporte proveedor</span>'
+            +   '<span class="dc-confirm-row-value">' + escapeHtml(String(bundle.CustomerCareNumber)) + '</span>'
+                + '</div>';
+        }
+
+        if (confirmCopy.confirmValue) {
+            confirmCard.innerHTML += ''
+                + '<div class="dc-confirm-row">'
+            +   '<span class="dc-confirm-row-label">' + escapeHtml(confirmCopy.confirmLabel) + '</span>'
+            +   '<span class="dc-confirm-row-value is-benefit">' + escapeHtml(confirmCopy.confirmValue) + '</span>'
+                + '</div>';
+        }
+
+        if (String(bundle.RedemptionMechanism || '') === 'ReadAdditionalInformation' && bundle.AdditionalInformation) {
+            confirmCard.innerHTML += ''
+            + '<div class="dc-confirm-row">'
+            +   '<span class="dc-confirm-row-label">Instrucciones</span>'
+            +   '<span class="dc-confirm-row-value is-benefit">' + escapeHtml(String(bundle.AdditionalInformation)) + '</span>'
+            + '</div>';
+        }
+
         if (DC_RECARGAS_DATA.woocommerce_active) {
             confirmBtn.textContent = 'Añadir al carrito';
         } else {
@@ -600,12 +1482,24 @@
 
     packageSelect.addEventListener('change', function () {
         var selectedIndex = parseInt(packageSelect.value, 10);
-        state.selected = state.bundles[selectedIndex] || null;
+        state.selected = state.visibleBundles[selectedIndex] || null;
         renderPackageCard(state.selected);
     });
 
-    btnContinueConfirm.addEventListener('click', function () {
+    btnContinueConfirm.addEventListener('click', async function () {
         if (!state.selected) return;
+        var providerAvailable = await ensureProviderStatus(state.selected, 'package');
+        if (!providerAvailable) {
+            btnContinueConfirm.disabled = false;
+            return;
+        }
+
+        var validationError = validateSelectedBundle(state.selected);
+        if (validationError) {
+            setFeedback(validationError, 'warning');
+            return;
+        }
+
         buildConfirmStep(state.selected);
         goToStep('confirm', 'forward');
     });
@@ -631,6 +1525,18 @@
     /* ===== Confirm action ===== */
     confirmBtn.addEventListener('click', async function () {
         if (!state.selected) return;
+        var providerAvailable = await ensureProviderStatus(state.selected, 'confirm');
+        if (!providerAvailable) {
+            confirmBtn.disabled = false;
+            return;
+        }
+
+        var validationError = validateSelectedBundle(state.selected);
+        if (validationError) {
+            setFeedbackConfirm(validationError, 'warning');
+            return;
+        }
+
         confirmBtn.disabled = true;
 
         if (DC_RECARGAS_DATA.woocommerce_active) {
@@ -646,10 +1552,17 @@
             account_number: state.fullPhone,
             country_iso: state.country.iso,
             sku_code: selected.SkuCode,
-            send_value: Number(selected.SendValue || 0),
+            send_value: Number(getCurrentSendValue(selected) || 0),
             send_currency_iso: selected.SendCurrencyIso || 'EUR',
             provider_name: getProviderLabel(selected),
             bundle_label: selected.DefaultDisplayText || selected.SkuCode,
+            product_type: String(selected.ProductType || ''),
+            redemption_mechanism: String(selected.RedemptionMechanism || ''),
+            lookup_bills_required: !!selected.LookupBillsRequired,
+            customer_care_number: String(selected.CustomerCareNumber || ''),
+            is_range: !!selected.IsRange,
+            settings: getSettingsPayload(selected),
+            bill_ref: state.selectedBillRef || '',
         };
 
         confirmBtn.textContent = 'Añadiendo...';
@@ -681,8 +1594,10 @@
         var payload = {
             account_number: state.fullPhone,
             sku_code: selected.SkuCode,
-            send_value: Number(selected.SendValue || 0),
+            send_value: Number(getCurrentSendValue(selected) || 0),
             send_currency_iso: selected.SendCurrencyIso || 'USD',
+            settings: getSettingsPayload(selected),
+            bill_ref: state.selectedBillRef || '',
         };
 
         confirmBtn.textContent = 'Procesando...';
@@ -710,22 +1625,113 @@
         var transferId = record.TransferId || {};
         var items = result.Items || result.Result || [];
         var item = items[0] || record;
+        var processingState = item.ProcessingState || record.ProcessingState || item.Status || 'Pendiente';
         var transferRef = transferId.TransferRef || transferId.DistributorRef
             || result.TransferRef || result.DistributorRef || 'N/A';
-        var status = item.Status || '';
+        var status = item.Status || processingState || '';
+        var receiptText = String(record.ReceiptText || item.ReceiptText || '');
+        var receiptParams = record.ReceiptParams || item.ReceiptParams || {};
+        var extraInformation = String((state.selected && state.selected.AdditionalInformation) || '');
+        var isSuccess = /approved|completed|success|ok/i.test(String(status));
+        var isPending = /submitted|pending|processing|queued|inprogress/i.test(String(processingState || status));
+        var stateKey = isSuccess ? 'success' : (isPending ? 'pending' : 'error');
+        var flowKind = getFlowKind(state.selected, item, receiptParams);
+        var flowCopy = getFlowCopy(flowKind, stateKey);
+        var providerLabel = getProviderLabel(state.selected || item || {});
+        var providerRef = getReceiptParamValue(receiptParams, 'providerRef');
+        var pinValue = getReceiptParamValue(receiptParams, 'pin');
+        var supportPhone = String((state.selected && state.selected.CustomerCareNumber) || '');
+        var billRef = String(state.selectedBillRef || item.BillRef || record.BillRef || '');
+        var receiptParamsHtml = '';
 
+        Object.keys(receiptParams || {}).forEach(function (key) {
+            if (String(key).toLowerCase() === 'pin' || String(key).toLowerCase() === 'providerref') {
+                return;
+            }
+
+            receiptParamsHtml += ''
+                + '<div class="dc-result-param">'
+                +   '<span class="dc-result-param-key">' + escapeHtml(String(key)) + '</span>'
+                +   '<span class="dc-result-param-value">' + escapeHtml(String(receiptParams[key])) + '</span>'
+                + '</div>';
+        });
+
+        var icon = isSuccess ? '✓' : (isPending ? '⏳' : '!');
         var html = '<div class="dc-result-card">'
             + '<div class="dc-result-header">'
-            + '<span class="dc-result-icon">' + (status === 'Approved' ? '✓' : '⏳') + '</span>'
-            + '<strong>' + (status === 'Approved' ? 'Recarga procesada' : 'Recarga en validación') + '</strong>'
+            + '<span class="dc-result-icon">' + icon + '</span>'
+            + '<strong>' + escapeHtml(flowCopy.title) + '</strong>'
             + '</div><div class="dc-result-body">'
+            + '<div class="dc-result-receipt">'
+            +   '<div class="dc-result-receipt-title">Resumen</div>'
+            +   '<div class="dc-result-receipt-text">' + escapeHtml(flowCopy.summary) + '</div>'
+            + '</div>'
             + '<div class="dc-result-row"><span>Referencia</span><span>' + escapeHtml(String(transferRef)) + '</span></div>'
-            + '<div class="dc-result-row"><span>Estado</span><span>' + escapeHtml(String(status || item.ProcessingState || 'Pendiente')) + '</span></div>'
-            + '<div class="dc-result-row"><span>Número</span><span>' + escapeHtml(String(item.AccountNumber || state.fullPhone || 'N/A')) + '</span></div>';
+            + '<div class="dc-result-row"><span>Estado</span><span>' + escapeHtml(String(status || 'Pendiente')) + '</span></div>'
+            + '<div class="dc-result-row"><span>Numero</span><span>' + escapeHtml(String(item.AccountNumber || state.fullPhone || 'N/A')) + '</span></div>';
+
+        if (providerLabel && providerLabel !== 'Operador') {
+            html += '<div class="dc-result-row"><span>Proveedor</span><span>' + escapeHtml(providerLabel) + '</span></div>';
+        }
 
         if (item.ReceiveValue) {
             html += '<div class="dc-result-row"><span>Recibe</span><span>' + escapeHtml(String(item.ReceiveCurrencyIso || '') + ' ' + Number(item.ReceiveValue).toFixed(2)) + '</span></div>';
         }
+
+        if (Number(item.ReceiveValueExcludingTax || 0) > 0 && Number(item.ReceiveValueExcludingTax || 0) !== Number(item.ReceiveValue || 0)) {
+            html += '<div class="dc-result-row"><span>Recibe sin impuestos</span><span>' + escapeHtml(String(item.ReceiveCurrencyIso || '') + ' ' + Number(item.ReceiveValueExcludingTax).toFixed(2)) + '</span></div>';
+        }
+
+        if (billRef) {
+            html += '<div class="dc-result-row"><span>Factura</span><span>' + escapeHtml(billRef) + '</span></div>';
+        }
+
+        if (pinValue) {
+            html += '<div class="dc-result-row"><span>PIN</span><span>' + escapeHtml(pinValue) + '</span></div>';
+        }
+
+        if (providerRef) {
+            html += '<div class="dc-result-row"><span>Ref. proveedor</span><span>' + escapeHtml(providerRef) + '</span></div>';
+        }
+
+        if (supportPhone) {
+            html += '<div class="dc-result-row"><span>Soporte proveedor</span><span>' + escapeHtml(supportPhone) + '</span></div>';
+        }
+
+        if (receiptText) {
+            html += ''
+                + '<div class="dc-result-receipt">'
+                +   '<div class="dc-result-receipt-title">' + escapeHtml(flowCopy.receiptTitle) + '</div>'
+                +   '<div class="dc-result-receipt-text">' + escapeHtml(receiptText).replace(/\n/g, '<br>') + '</div>'
+                + '</div>';
+        } else if (String((state.selected && state.selected.RedemptionMechanism) || '') === 'ReadAdditionalInformation' && extraInformation) {
+            html += ''
+                + '<div class="dc-result-receipt">'
+                +   '<div class="dc-result-receipt-title">' + escapeHtml(flowCopy.receiptTitle) + '</div>'
+                +   '<div class="dc-result-receipt-text">' + escapeHtml(extraInformation).replace(/\n/g, '<br>') + '</div>'
+                + '</div>';
+        }
+
+        if (receiptParamsHtml) {
+            html += ''
+                + '<div class="dc-result-receipt">'
+                +   '<div class="dc-result-receipt-title">' + escapeHtml(flowCopy.paramsTitle) + '</div>'
+                +   '<div class="dc-result-receipt-params">' + receiptParamsHtml + '</div>'
+                + '</div>';
+        }
+
+        if (processingState && processingState !== status) {
+            html += '<div class="dc-result-row"><span>Procesamiento</span><span>' + escapeHtml(String(processingState)) + '</span></div>';
+        }
+
+        if (flowCopy.nextBody) {
+            html += ''
+                + '<div class="dc-result-receipt">'
+                +   '<div class="dc-result-receipt-title">' + escapeHtml(flowCopy.nextTitle) + '</div>'
+                +   '<div class="dc-result-receipt-text">' + escapeHtml(flowCopy.nextBody) + '</div>'
+                + '</div>';
+        }
+
         html += '</div></div>';
         resultEl.innerHTML = html;
     }

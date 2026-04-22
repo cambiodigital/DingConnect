@@ -180,6 +180,7 @@ if (!class_exists('WC_Product_Simple')) {
         public function set_virtual($virtual) {}
         public function set_regular_price($price) {}
         public function save() { return 0; }
+        public function get_id() { return 0; }
     }
 }
 

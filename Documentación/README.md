@@ -23,6 +23,7 @@ Esta carpeta concentra el contexto técnico y funcional del proyecto para facili
 - `GUIA_TECNICA_DING_CONNECT.md`: resumen técnico unificado de endpoints, flujos, UAT y checklist de sign-off.
 - `API_DING_CONNECT_V1.md`: detalle extendido de endpoints, modelos de datos y reglas operativas.
 - `HALLAZGOS_2026-04-14_DING_SKUS.md`: hallazgos de SKUs para Colombia y recomendaciones de catálogo curado.
+- `MATRIZ_PRUEBAS_MANUALES_PROVEEDOR_REAL.md`: matriz manual por familia de proveedor real (DTH, electricidad, PIN/voucher y movil rango), con payload esperado y criterio GO/NO-GO operativo.
 
 ### Artefactos de implementación
 

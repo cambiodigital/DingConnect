@@ -153,6 +153,18 @@ Una iniciativa se considera lista cuando cumple:
 87. Actualización autónoma del catálogo CSV en admin: la pestaña `Credenciales` ahora permite subir un CSV manualmente, valida las cabeceras esperadas (`SkuCode`, `Operator`, `Receive`, `Product type`, `Country`, `Validity`) y activa el archivo subido como fuente vigente para la hidratación por SKU sin tocar código ni desplegar el plugin.
 88. Rediseño de `Paquetes encontrados` en `Buscar en API`: el listado dejó de usar un `select` básico y pasó a una tabla operativa de ancho completo, fuera de la `form-table`, con columnas completas (tipo, operador, beneficios, SKU, coste, moneda, vigencia y fuente), encabezado fijo, selección por fila y doble click para cargar directamente en `Alta manual`.
 88. Corrección funcional en filtros de bundles para landings: los filtros `País` y `Tipo de producto` del checklist (alta y edición) recuperan su efecto visual al respetar `hidden` por fila, evitando que el estilo base `display:flex` mantenga visibles bundles fuera del filtro activo.
+89. Compatibilidad de análisis estático en WooCommerce: la creación del producto base de recarga ahora reutiliza el ID devuelto por `save()` en `WC_Product_Simple`, evitando falsos positivos de `Undefined method get_id` en VS Code y manteniendo el mismo comportamiento del CRUD real de WooCommerce.
+90. Inicio de cumplimiento backend con documentación DingConnect ampliada: `class-dc-api.php` incorporó métodos para `GetCountries`, `GetCurrencies`, `GetRegions`, `GetProviderStatus`, `GetAccountLookup`, `EstimatePrices`, `LookupBills`, `ListTransferRecords` y `GetErrorCodeDescriptions`, además de extender `SendTransfer` con soporte de `Settings` y `BillRef`.
+91. Contrato REST del plugin ampliado para nuevos flujos: `class-dc-rest.php` ahora expone rutas `provider-status`, `estimate-prices`, `lookup-bills` y `transfer-status`, flexibiliza `GET /products` para consultas por país/proveedor/SKU y normaliza más metadatos de producto (`ValidationRegex`, `SettingDefinitions`, `LookupBillsRequired`, `RegionCode`, `ReceiveValueExcludingTax`, `TaxCalculation`, `DescriptionMarkdown`, `ReadMoreMarkdown`, `CustomerCareNumber`, `LogoUrl`).
+92. Alineación dinámica del shortcode público con el contrato ampliado: el frontend ya mantiene selección filtrada estable por landing, valida `ValidationRegex`, consulta `GetProviderStatus` antes de confirmar, renderiza `SettingDefinitions`, soporta productos de rango con `EstimatePrices`, ejecuta `LookupBills` cuando el producto lo exige y transporta `settings` + `bill_ref` tanto a recarga directa como a WooCommerce.
+93. Endurecimiento del transporte operativo de datos dinámicos: WooCommerce persiste `dc_settings` y `dc_bill_ref` desde `add-to-cart`, los muestra en carrito/pedido y los reenvía a `SendTransfer`, mientras la conciliación previa por `ListTransferRecords` evita retrabajar items ya resueltos y distingue estados pendientes (`Submitted`) de éxitos terminales.
+94. Ajuste UX inicial para payloads reales de `EstimatePrices` y `LookupBills`: el backend REST preserva `ResultCode/ErrorCodes` en `lookup-bills`, normaliza `SettingDefinitions` con metadatos extendidos (`Type`, `ValidationRegex`, límites y `AllowedValues`) y frontend muestra errores accionables por código DingConnect, estados de carga de estimación e invalidación automática de factura/estimación al cambiar importe o settings.
+95. Cierre operativo inicial de `Submitted` en WooCommerce: la política de reintentos dejó de ser fija y pasó a configuración en admin (`intentos máximos`, `backoff`, `ventana máxima`, `correo de escalado`, `códigos no reintentables`), con escalado automático a `escalado_soporte`, corte de errores no reintentables y monitor visible en pestaña `Registros` para recargas pendientes/escaladas.
+96. Copy final por familia real de producto: el shortcode público ahora adapta el mensaje final para móvil rango, PIN/voucher, electricidad y DTH usando `ProductType`, `RedemptionMechanism`, `LookupBillsRequired`, `ReceiptText`, `ReceiptParams`, `ReceiveValueExcludingTax` y `ProcessingState`, mostrando `PIN`, `providerRef`, `BillRef` y guidance explícito cuando el estado queda pendiente.
+97. Copy final alineado en WooCommerce: `add-to-cart` ya preserva metadatos de clasificación (`product_type`, `redemption_mechanism`, `lookup_bills_required`, `is_range`, `customer_care_number`) hasta carrito/pedido, y el thank-you/email generan resumen por familia con mensaje de no repetir compra cuando el estado sigue `Submitted` o equivalente.
+98. Matriz manual por proveedor real documentada: se agregó `Documentación/MATRIZ_PRUEBAS_MANUALES_PROVEEDOR_REAL.md` con casos para DTH, electricidad, PIN/voucher y móvil rango, además de criterio operativo `GO/NO-GO` ligado a evidencia real/UAT y a la política `Submitted`.
+99. Hardening anti-duplicados en WooCommerce: se restauró la guardia de idempotencia por `transfer_ref` existente y se ajustó la conciliación para que, ante fallo de `ListTransferRecords`, se difiera la operación sin reenviar `SendTransfer` hasta recuperar estado, evitando riesgo de recargas duplicadas.
+100. Estabilidad de estimaciones en frontend: el cálculo de `EstimatePrices` ahora invalida respuestas asíncronas tardías al cambiar importe o paquete, evitando que una estimación vieja sobrescriba la selección actual del usuario.
 
 ## Backlog actualizado por impacto
 
@@ -162,8 +174,8 @@ Una iniciativa se considera lista cuando cumple:
    - Pendiente: flujo de actualización masiva de campos (bulk edit).
 2. Prioridad P1 - Flujo WooCommerce y post-pago.
    - Estado: parcialmente completado.
-   - Completado: add-to-cart, checkout obligatorio, creación de producto base, ejecución de transferencia al confirmar pedido y notas en orden.
-   - Pendiente: validación completa con pasarela real, manejo fino de estados de pedido y reconciliación con `ListTransferRecords`.
+   - Completado: add-to-cart, checkout obligatorio, creación de producto base, ejecución de transferencia al confirmar pedido, notas en orden, reconciliación defensiva por `ListTransferRecords`, política configurable de `Submitted` (backoff/escalado/no-reintentos) y monitor operativo inicial en admin.
+   - Pendiente: validación completa con pasarela real y evidencia runtime multi-gateway con casos prolongados reales.
 3. Prioridad P2 - Observabilidad operativa.
    - Estado: parcialmente completado.
    - Completado: logs internos de transferencias.
@@ -176,7 +188,11 @@ Una iniciativa se considera lista cuando cumple:
 5. Prioridad P1 - Operación multi-landing por shortcode dinámico.
    - Estado: parcialmente completado.
    - Completado: alta, edición inline, duplicado rápido y baja de configuraciones de landing desde admin, generación de shortcode por clave y filtrado de bundles por landing.
-   - Pendiente: vista previa de shortcode en frontend por entorno y métricas por objetivo.
+   - Pendiente: vista previa de shortcode en frontend por entorno, métricas por objetivo y validación runtime/UAT con productos reales de rango, bill payment y PIN.
+6. Prioridad P1 - Flujo frontend dinámico según tipo de producto DingConnect.
+   - Estado: parcialmente completado.
+   - Completado: provider status previo a confirmación, campos dinámicos por `SettingDefinitions`, estimación de importes con `EstimatePrices`, selección de facturas mediante `LookupBills`, transporte de `bill_ref/settings` hasta WooCommerce y `SendTransfer`, render de errores reales (`ResultCode/ErrorCodes`), control de estado obsoleto en factura/estimación, copy final por familia real en shortcode/WooCommerce y matriz manual operativa con criterio `GO/NO-GO`.
+   - Pendiente: ejecutar en WordPress/UAT la matriz manual con proveedores reales (DTH, electricidad, PIN/voucher y móvil rango) y anexar evidencia runtime por familia.
 
 ## Nota operativa de despliegue (14-04-2026)
 

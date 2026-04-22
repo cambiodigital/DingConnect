@@ -549,6 +549,51 @@ class DC_Recargas_Admin {
         }
         $woo_allowed_gateways = array_values(array_unique($woo_allowed_gateways));
 
+        $submitted_retry_max_attempts = (int) ($input['submitted_retry_max_attempts'] ?? 4);
+        if ($submitted_retry_max_attempts < 1) {
+            $submitted_retry_max_attempts = 1;
+        }
+        if ($submitted_retry_max_attempts > 8) {
+            $submitted_retry_max_attempts = 8;
+        }
+
+        $submitted_max_window_hours = (int) ($input['submitted_max_window_hours'] ?? 12);
+        if ($submitted_max_window_hours < 1) {
+            $submitted_max_window_hours = 1;
+        }
+        if ($submitted_max_window_hours > 168) {
+            $submitted_max_window_hours = 168;
+        }
+
+        $raw_backoff = (string) ($input['submitted_retry_backoff_minutes'] ?? '10,20,40,80');
+        $backoff_parts = preg_split('/[\s,;]+/', $raw_backoff);
+        $backoff_values = [];
+        foreach ((array) $backoff_parts as $part) {
+            $minutes = (int) $part;
+            if ($minutes < 1 || $minutes > 720) {
+                continue;
+            }
+            $backoff_values[] = $minutes;
+        }
+        $backoff_values = array_values(array_unique($backoff_values));
+        if (empty($backoff_values)) {
+            $backoff_values = [10, 20, 40, 80];
+        }
+        $submitted_retry_backoff_minutes = implode(',', $backoff_values);
+
+        $submitted_non_retryable_parts = preg_split('/[\s,;]+/', (string) ($input['submitted_non_retryable_codes'] ?? 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed'));
+        $submitted_non_retryable_codes = [];
+        foreach ((array) $submitted_non_retryable_parts as $code) {
+            $code = preg_replace('/[^A-Za-z0-9_]/', '', (string) $code);
+            if ($code === '') {
+                continue;
+            }
+            $submitted_non_retryable_codes[] = $code;
+        }
+        $submitted_non_retryable_codes = implode(',', array_values(array_unique($submitted_non_retryable_codes)));
+
+        $submitted_escalation_email = sanitize_email((string) ($input['submitted_escalation_email'] ?? ''));
+
         // Convert recharge mode select to validate_only and allow_real_recharge flags
         $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
         if (!in_array($recharge_mode, ['test_simulate', 'test_allow_change', 'production'], true)) {
@@ -573,6 +618,11 @@ class DC_Recargas_Admin {
             'recharge_mode' => $recharge_mode,
             'validate_only' => $validate_only,
             'allow_real_recharge' => $allow_real_recharge,
+            'submitted_retry_max_attempts' => $submitted_retry_max_attempts,
+            'submitted_retry_backoff_minutes' => $submitted_retry_backoff_minutes,
+            'submitted_max_window_hours' => $submitted_max_window_hours,
+            'submitted_escalation_email' => $submitted_escalation_email,
+            'submitted_non_retryable_codes' => $submitted_non_retryable_codes,
             'catalog_csv_path' => sanitize_text_field((string) ($current_options['catalog_csv_path'] ?? '')),
             'catalog_csv_url' => esc_url_raw((string) ($current_options['catalog_csv_url'] ?? '')),
             'catalog_csv_uploaded_at' => sanitize_text_field((string) ($current_options['catalog_csv_uploaded_at'] ?? '')),
@@ -2443,6 +2493,41 @@ class DC_Recargas_Admin {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row"><label for="dc_submitted_retry_max_attempts">Política Submitted: intentos máximos</label></th>
+                        <td>
+                            <input type="number" id="dc_submitted_retry_max_attempts" name="dc_recargas_options[submitted_retry_max_attempts]" min="1" max="8" value="<?php echo esc_attr((string) ($options['submitted_retry_max_attempts'] ?? 4)); ?>" class="small-text">
+                            <p class="description">Cantidad máxima de ciclos de reintento/reconsulta para estados pendientes como <code>Submitted</code>.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_submitted_retry_backoff_minutes">Política Submitted: backoff (minutos)</label></th>
+                        <td>
+                            <input type="text" id="dc_submitted_retry_backoff_minutes" name="dc_recargas_options[submitted_retry_backoff_minutes]" class="regular-text" value="<?php echo esc_attr((string) ($options['submitted_retry_backoff_minutes'] ?? '10,20,40,80')); ?>" placeholder="10,20,40,80">
+                            <p class="description">Secuencia de espera por ciclo separada por comas. Ejemplo recomendado: <code>10,20,40,80</code>.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_submitted_max_window_hours">Política Submitted: ventana máxima (horas)</label></th>
+                        <td>
+                            <input type="number" id="dc_submitted_max_window_hours" name="dc_recargas_options[submitted_max_window_hours]" min="1" max="168" value="<?php echo esc_attr((string) ($options['submitted_max_window_hours'] ?? 12)); ?>" class="small-text">
+                            <p class="description">Si una recarga permanece pendiente por más de este tiempo, se marca como <code>escalado_soporte</code>.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_submitted_escalation_email">Política Submitted: correo de escalado</label></th>
+                        <td>
+                            <input type="email" id="dc_submitted_escalation_email" name="dc_recargas_options[submitted_escalation_email]" class="regular-text" value="<?php echo esc_attr((string) ($options['submitted_escalation_email'] ?? '')); ?>" placeholder="soporte@tu-dominio.com">
+                            <p class="description">Opcional. Si se define, el plugin envía aviso cuando una recarga se escala por <code>Submitted</code> prolongado.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_submitted_non_retryable_codes">Códigos no reintentables</label></th>
+                        <td>
+                            <input type="text" id="dc_submitted_non_retryable_codes" name="dc_recargas_options[submitted_non_retryable_codes]" class="regular-text" value="<?php echo esc_attr((string) ($options['submitted_non_retryable_codes'] ?? 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed')); ?>" placeholder="InsufficientBalance,AccountNumberInvalid">
+                            <p class="description">Lista de códigos DingConnect que deben cortarse sin reintento (separados por coma).</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="dc_catalog_csv_file">CSV catálogo por SKU</label></th>
                         <td>
                             <input type="file" id="dc_catalog_csv_file" name="dc_catalog_csv_file" accept=".csv,text/csv">
@@ -3711,7 +3796,48 @@ class DC_Recargas_Admin {
                     <?php
                     $logs_nonce = wp_create_nonce('dc_get_logs');
                     $log_stats = $this->get_transfer_log_stats();
+                    $submitted_rows = $this->get_submitted_monitor_rows(120);
                     ?>
+
+                    <div class="dc-submitted-monitor">
+                        <h3>Monitor de recargas pendientes (Submitted)</h3>
+                        <p class="description">Seguimiento operativo de recargas WooCommerce en estado pendiente o escalado.</p>
+                        <?php if (empty($submitted_rows)): ?>
+                            <p class="description" style="margin:0 0 12px;">No hay recargas pendientes en este momento.</p>
+                        <?php else: ?>
+                            <div class="dc-submitted-table-wrap" role="region" aria-label="Monitor de recargas pendientes">
+                                <table class="widefat striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Orden</th>
+                                            <th>Teléfono</th>
+                                            <th>Proveedor / SKU</th>
+                                            <th>Estado</th>
+                                            <th>Intentos</th>
+                                            <th>En estado</th>
+                                            <th>Próximo reintento</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($submitted_rows as $row): ?>
+                                            <tr>
+                                                <td><a href="<?php echo esc_url((string) $row['order_url']); ?>">#<?php echo esc_html((string) $row['order_id']); ?></a></td>
+                                                <td><?php echo esc_html((string) $row['phone']); ?></td>
+                                                <td>
+                                                    <strong><?php echo esc_html((string) $row['provider']); ?></strong><br>
+                                                    <span style="color:#64748b;"><?php echo esc_html((string) $row['sku_code']); ?></span>
+                                                </td>
+                                                <td><code><?php echo esc_html(strtoupper((string) $row['status'])); ?></code></td>
+                                                <td><?php echo esc_html((string) $row['transfer_attempts']); ?> / <?php echo esc_html((string) $row['submitted_attempts']); ?></td>
+                                                <td><?php echo esc_html((string) $row['age_minutes']); ?> min</td>
+                                                <td><?php echo esc_html((string) ($row['next_retry_at'] !== '' ? $row['next_retry_at'] : 'N/A')); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
                     <div class="dc-logs-summary">
                         <div class="dc-logs-stat">
@@ -3766,6 +3892,23 @@ class DC_Recargas_Admin {
                             flex-wrap: wrap;
                             gap: 12px;
                             margin-bottom: 18px;
+                        }
+
+                        .dc-submitted-monitor {
+                            border: 1px solid #dbe4f0;
+                            background: #f8fbff;
+                            border-radius: 12px;
+                            padding: 14px;
+                            margin-bottom: 16px;
+                        }
+
+                        .dc-submitted-monitor h3 {
+                            margin: 0 0 6px;
+                        }
+
+                        .dc-submitted-table-wrap {
+                            overflow-x: auto;
+                            margin-top: 10px;
                         }
 
                         .dc-logs-stat {
@@ -5524,6 +5667,83 @@ class DC_Recargas_Admin {
     // -------------------------------------------------------------------------
     // Logs tab — AJAX handlers
     // -------------------------------------------------------------------------
+
+    private function mask_phone_for_admin($phone) {
+        $digits = preg_replace('/\D+/', '', (string) $phone);
+        if ($digits === '') {
+            return '';
+        }
+
+        $len = strlen($digits);
+        if ($len <= 4) {
+            return str_repeat('*', $len);
+        }
+
+        return str_repeat('*', max(0, $len - 4)) . substr($digits, -4);
+    }
+
+    private function get_submitted_monitor_rows($limit = 80) {
+        if (!class_exists('WooCommerce') || !function_exists('wc_get_orders')) {
+            return [];
+        }
+
+        $order_statuses = [];
+        if (function_exists('wc_get_order_statuses')) {
+            $order_statuses = array_keys((array) call_user_func('wc_get_order_statuses'));
+        }
+
+        $orders = call_user_func('wc_get_orders', [
+            'limit' => max(10, min(200, (int) $limit)),
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'return' => 'objects',
+            'status' => $order_statuses,
+        ]);
+
+        $rows = [];
+        $pending_statuses = ['submitted', 'pending', 'processing', 'queued', 'inprogress', 'pending_retry', 'escalado_soporte'];
+
+        foreach ($orders as $order) {
+            if (!$order instanceof WC_Order) {
+                continue;
+            }
+
+            foreach ($order->get_items() as $item) {
+                if (!$item instanceof WC_Order_Item_Product || $item->get_meta('_dc_recarga') !== 'yes') {
+                    continue;
+                }
+
+                $status = strtolower((string) $item->get_meta('_dc_transfer_status'));
+                if (!in_array($status, $pending_statuses, true)) {
+                    continue;
+                }
+
+                $submitted_since = (string) $item->get_meta('_dc_submitted_since');
+                $submitted_ts = $submitted_since !== '' ? strtotime($submitted_since) : false;
+                $age_minutes = $submitted_ts ? max(0, (int) floor((time() - $submitted_ts) / 60)) : 0;
+
+                $rows[] = [
+                    'order_id' => (int) $order->get_id(),
+                    'order_url' => admin_url('post.php?post=' . (int) $order->get_id() . '&action=edit'),
+                    'phone' => $this->mask_phone_for_admin((string) $item->get_meta('_dc_account_number')),
+                    'sku_code' => (string) $item->get_meta('_dc_sku_code'),
+                    'provider' => (string) $item->get_meta('_dc_provider_name'),
+                    'status' => $status !== '' ? $status : 'pending',
+                    'transfer_attempts' => (int) $item->get_meta('_dc_retry_attempts'),
+                    'submitted_attempts' => (int) $item->get_meta('_dc_submitted_retry_attempts'),
+                    'next_retry_at' => (string) $item->get_meta('_dc_next_retry_at'),
+                    'submitted_since' => $submitted_since,
+                    'age_minutes' => $age_minutes,
+                ];
+            }
+        }
+
+        usort($rows, function ($left, $right) {
+            return (int) ($right['age_minutes'] ?? 0) <=> (int) ($left['age_minutes'] ?? 0);
+        });
+
+        return $rows;
+    }
 
     /**
      * Returns aggregate counts per status for the stats summary cards.

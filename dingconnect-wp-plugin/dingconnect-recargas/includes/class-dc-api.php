@@ -17,6 +17,11 @@ class DC_Recargas_API {
             'validate_only' => 1,
             'allow_real_recharge' => 0,
             'woo_allowed_gateways' => [],
+            'submitted_retry_max_attempts' => 4,
+            'submitted_retry_backoff_minutes' => '10,20,40,80',
+            'submitted_max_window_hours' => 12,
+            'submitted_escalation_email' => '',
+            'submitted_non_retryable_codes' => 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed',
             'catalog_csv_path' => '',
             'catalog_csv_url' => '',
             'catalog_csv_uploaded_at' => '',
@@ -31,37 +36,105 @@ class DC_Recargas_API {
         return !empty($options['api_key']);
     }
 
-    public function get_products($account_number, $take = 50) {
-        $cache_key = 'dc_products_' . md5($account_number . '_' . $take);
+    public function get_countries() {
+        $cache_key = 'dc_countries_all';
         $cached = get_transient($cache_key);
         if (false !== $cached) {
             return $cached;
         }
 
-        $result = $this->request('GET', 'GetProducts', [
-            'AccountNumber' => $account_number,
-            'Take' => (int) $take,
-        ]);
+        $result = $this->request('GET', 'GetCountries');
 
         if (!is_wp_error($result)) {
-            set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+            set_transient($cache_key, $result, DAY_IN_SECONDS);
         }
 
         return $result;
     }
 
-    public function get_products_by_country($country_iso, $take = 250) {
-        $country_iso = strtoupper((string) $country_iso);
-        $cache_key = 'dc_products_country_' . md5($country_iso . '_' . $take);
+    public function get_currencies() {
+        $cache_key = 'dc_currencies_all';
         $cached = get_transient($cache_key);
         if (false !== $cached) {
             return $cached;
         }
 
-        $query = array_merge(
-            $this->build_array_query('CountryIsos', [$country_iso]),
-            ['Take' => (int) $take]
-        );
+        $result = $this->request('GET', 'GetCurrencies');
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, DAY_IN_SECONDS);
+        }
+
+        return $result;
+    }
+
+    public function get_regions($country_isos = []) {
+        $country_isos = array_values(array_unique(array_filter(array_map(function ($value) {
+            return strtoupper((string) $value);
+        }, (array) $country_isos))));
+
+        $cache_key = 'dc_regions_' . md5(wp_json_encode($country_isos));
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $query = !empty($country_isos)
+            ? $this->build_array_query('CountryIsos', $country_isos)
+            : [];
+
+        $result = $this->request('GET', 'GetRegions', $query);
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, DAY_IN_SECONDS);
+        }
+
+        return $result;
+    }
+
+    public function get_products($account_number, $take = 50) {
+        return $this->get_products_catalog([
+            'account_number' => (string) $account_number,
+            'take' => (int) $take,
+        ]);
+    }
+
+    public function get_products_by_country($country_iso, $take = 250) {
+        return $this->get_products_catalog([
+            'country_isos' => [strtoupper((string) $country_iso)],
+            'take' => (int) $take,
+        ]);
+    }
+
+    public function get_products_catalog($filters = []) {
+        $filters = is_array($filters) ? $filters : [];
+
+        $query = [
+            'Take' => max(1, (int) ($filters['take'] ?? 250)),
+        ];
+
+        $account_number = sanitize_text_field((string) ($filters['account_number'] ?? ''));
+        if ('' !== $account_number) {
+            $query['AccountNumber'] = $account_number;
+        }
+
+        $array_filters = [
+            'CountryIsos' => array_map('strtoupper', (array) ($filters['country_isos'] ?? [])),
+            'ProviderCodes' => (array) ($filters['provider_codes'] ?? []),
+            'RegionCodes' => (array) ($filters['region_codes'] ?? []),
+            'Benefits' => (array) ($filters['benefits'] ?? []),
+            'SkuCodes' => (array) ($filters['sku_codes'] ?? []),
+        ];
+
+        foreach ($array_filters as $name => $values) {
+            $query = array_merge($query, $this->build_array_query($name, $values));
+        }
+
+        $cache_key = 'dc_products_catalog_' . md5(wp_json_encode($query));
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
 
         $result = $this->request('GET', 'GetProducts', $query);
 
@@ -114,20 +187,163 @@ class DC_Recargas_API {
         return $result;
     }
 
-    public function get_promotions($country_iso, $take = 10) {
-        return $this->request('GET', 'GetPromotions', [
-            'CountryIso' => strtoupper($country_iso),
-            'Take' => (int) $take,
+    public function get_provider_status($provider_codes = []) {
+        $provider_codes = array_values(array_unique(array_filter(array_map('strval', (array) $provider_codes))));
+        if (empty($provider_codes)) {
+            return ['Result' => []];
+        }
+
+        $cache_key = 'dc_provider_status_' . md5(wp_json_encode($provider_codes));
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $result = $this->request('GET', 'GetProviderStatus', $this->build_array_query('ProviderCodes', $provider_codes));
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, MINUTE_IN_SECONDS);
+        }
+
+        return $result;
+    }
+
+    public function get_promotions($filters = [], $take = 10) {
+        if (!is_array($filters)) {
+            $filters = ['country_isos' => [strtoupper((string) $filters)]];
+        }
+
+        $query = [
+            'Take' => max(1, (int) ($filters['take'] ?? $take)),
+        ];
+
+        $account_number = sanitize_text_field((string) ($filters['account_number'] ?? ''));
+        if ('' !== $account_number) {
+            $query['AccountNumber'] = $account_number;
+        }
+
+        $query = array_merge($query, $this->build_array_query('CountryIsos', array_map('strtoupper', (array) ($filters['country_isos'] ?? []))));
+        $query = array_merge($query, $this->build_array_query('ProviderCodes', (array) ($filters['provider_codes'] ?? [])));
+
+        return $this->request('GET', 'GetPromotions', $query);
+    }
+
+    public function get_promotion_descriptions($language_codes = []) {
+        return $this->request('GET', 'GetPromotionDescriptions', $this->build_array_query('LanguageCodes', (array) $language_codes));
+    }
+
+    public function get_product_descriptions($sku_codes = [], $language_codes = []) {
+        $params = [];
+
+        $params = array_merge($params, $this->build_array_query('SkuCodes', (array) $sku_codes));
+        $params = array_merge($params, $this->build_array_query('LanguageCodes', (array) $language_codes));
+
+        return $this->request('GET', 'GetProductDescriptions', $params);
+    }
+
+    public function get_account_lookup($account_number) {
+        $account_number = sanitize_text_field((string) $account_number);
+        if ('' === $account_number) {
+            return ['Result' => []];
+        }
+
+        return $this->request('GET', 'GetAccountLookup', [
+            'AccountNumber' => $account_number,
         ]);
     }
 
-    public function get_product_descriptions($sku_codes = []) {
-        $params = [];
-        foreach ($sku_codes as $index => $sku) {
-            $params['SkuCodes[' . $index . ']'] = $sku;
+    public function estimate_prices($items = []) {
+        $normalized_items = [];
+
+        foreach ((array) $items as $index => $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $sku_code = sanitize_text_field((string) ($item['SkuCode'] ?? ''));
+            if ('' === $sku_code) {
+                continue;
+            }
+
+            $payload_item = [
+                'SkuCode' => $sku_code,
+                'SendValue' => (float) ($item['SendValue'] ?? 0),
+                'ReceiveValue' => (float) ($item['ReceiveValue'] ?? 0),
+                'BatchItemRef' => sanitize_text_field((string) ($item['BatchItemRef'] ?? ('ITEM-' . ($index + 1)))),
+            ];
+
+            $send_currency = sanitize_text_field((string) ($item['SendCurrencyIso'] ?? ''));
+            if ('' !== $send_currency) {
+                $payload_item['SendCurrencyIso'] = $send_currency;
+            }
+
+            $normalized_items[] = $payload_item;
         }
 
-        return $this->request('GET', 'GetProductDescriptions', $params);
+        if (empty($normalized_items)) {
+            return new WP_Error('dc_estimate_items_missing', 'Debes indicar al menos un SKU para estimar precios.', ['status' => 400]);
+        }
+
+        return $this->request('POST', 'EstimatePrices', [], $normalized_items);
+    }
+
+    public function lookup_bills($sku_code, $account_number, $settings = []) {
+        $sku_code = sanitize_text_field((string) $sku_code);
+        $account_number = sanitize_text_field((string) $account_number);
+
+        if ('' === $sku_code || '' === $account_number) {
+            return new WP_Error('dc_lookup_bills_missing_fields', 'SkuCode y AccountNumber son requeridos para LookupBills.', ['status' => 400]);
+        }
+
+        $body = [
+            'SkuCode' => $sku_code,
+            'AccountNumber' => $account_number,
+        ];
+
+        $normalized_settings = $this->sanitize_settings($settings);
+        if (!empty($normalized_settings)) {
+            $body['Settings'] = $normalized_settings;
+        }
+
+        return $this->request('POST', 'LookupBills', [], $body);
+    }
+
+    public function list_transfer_records($payload = []) {
+        $payload = is_array($payload) ? $payload : [];
+
+        $body = [
+            'Take' => max(1, (int) ($payload['Take'] ?? $payload['take'] ?? 1)),
+        ];
+
+        foreach (['TransferRef', 'DistributorRef', 'AccountNumber'] as $field) {
+            $value = sanitize_text_field((string) ($payload[$field] ?? $payload[strtolower($field)] ?? ''));
+            if ('' !== $value) {
+                $body[$field] = $value;
+            }
+        }
+
+        $skip = (int) ($payload['Skip'] ?? $payload['skip'] ?? 0);
+        if ($skip > 0) {
+            $body['Skip'] = $skip;
+        }
+
+        return $this->request('POST', 'ListTransferRecords', [], $body);
+    }
+
+    public function get_error_code_descriptions() {
+        $cache_key = 'dc_error_code_descriptions_all';
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $result = $this->request('GET', 'GetErrorCodeDescriptions');
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, DAY_IN_SECONDS);
+        }
+
+        return $result;
     }
 
     public function get_balance() {
@@ -143,22 +359,28 @@ class DC_Recargas_API {
         }
 
         $send_currency = sanitize_text_field($payload['SendCurrencyIso'] ?? '');
-        if ('' === $send_currency) {
-            return new WP_Error(
-                'missing_currency',
-                'SendCurrencyIso es requerido para enviar la recarga.',
-                ['status' => 400]
-            );
-        }
 
         $body = [
             'DistributorRef' => sanitize_text_field($payload['DistributorRef'] ?? $this->new_ref()),
             'AccountNumber' => sanitize_text_field($payload['AccountNumber'] ?? ''),
             'SkuCode' => sanitize_text_field($payload['SkuCode'] ?? ''),
             'SendValue' => (float) ($payload['SendValue'] ?? 0),
-            'SendCurrencyIso' => $send_currency,
             'ValidateOnly' => $validate_only,
         ];
+
+        if ('' !== $send_currency) {
+            $body['SendCurrencyIso'] = $send_currency;
+        }
+
+        $settings = $this->sanitize_settings($payload['Settings'] ?? []);
+        if (!empty($settings)) {
+            $body['Settings'] = $settings;
+        }
+
+        $bill_ref = sanitize_text_field((string) ($payload['BillRef'] ?? ''));
+        if ('' !== $bill_ref) {
+            $body['BillRef'] = $bill_ref;
+        }
 
         return $this->request('POST', 'SendTransfer', [], $body);
     }
@@ -334,5 +556,27 @@ class DC_Recargas_API {
         }
 
         return $query;
+    }
+
+    private function sanitize_settings($settings) {
+        $normalized = [];
+
+        foreach ((array) $settings as $setting) {
+            if (!is_array($setting)) {
+                continue;
+            }
+
+            $name = sanitize_text_field((string) ($setting['Name'] ?? $setting['name'] ?? ''));
+            if ('' === $name) {
+                continue;
+            }
+
+            $normalized[] = [
+                'Name' => $name,
+                'Value' => sanitize_text_field((string) ($setting['Value'] ?? $setting['value'] ?? '')),
+            ];
+        }
+
+        return $normalized;
     }
 }

@@ -41,10 +41,30 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
             'args' => [
                 'account_number' => [
-                    'required' => true,
+                    'required' => false,
                     'sanitize_callback' => [$this, 'sanitize_phone'],
                 ],
                 'country_iso' => [
+                    'required' => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'provider_code' => [
+                    'required' => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'region_code' => [
+                    'required' => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'benefit' => [
+                    'required' => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'sku_code' => [
+                    'required' => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ],
+                'redemption_mechanism' => [
                     'required' => false,
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
@@ -53,6 +73,30 @@ class DC_Recargas_REST {
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
             ],
+        ]);
+
+        register_rest_route('dingconnect/v1', '/provider-status', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'provider_status'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route('dingconnect/v1', '/estimate-prices', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'estimate_prices'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route('dingconnect/v1', '/lookup-bills', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'lookup_bills'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route('dingconnect/v1', '/transfer-status', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'transfer_status'],
+            'permission_callback' => '__return_true',
         ]);
 
         register_rest_route('dingconnect/v1', '/transfer', [
@@ -145,9 +189,21 @@ class DC_Recargas_REST {
 
         $account_number = $this->sanitize_phone($request->get_param('account_number'));
         $country_iso = strtoupper(sanitize_text_field($request->get_param('country_iso') ?? ''));
+        $provider_code = sanitize_text_field((string) ($request->get_param('provider_code') ?? ''));
+        $region_code = sanitize_text_field((string) ($request->get_param('region_code') ?? ''));
+        $benefit = sanitize_text_field((string) ($request->get_param('benefit') ?? ''));
+        $sku_code = sanitize_text_field((string) ($request->get_param('sku_code') ?? ''));
+        $redemption_mechanism = sanitize_text_field((string) ($request->get_param('redemption_mechanism') ?? ''));
         $allowed_bundle_ids = $this->parse_bundle_ids((string) ($request->get_param('allowed_bundle_ids') ?? ''));
 
-        if (empty($account_number) || strlen($account_number) < 8) {
+        if (empty($account_number) && empty($country_iso) && empty($provider_code) && empty($sku_code)) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => 'Debes indicar al menos un número, país, proveedor o SKU para consultar productos.',
+            ], 400);
+        }
+
+        if (!empty($account_number) && strlen($account_number) < 8) {
             return new WP_REST_Response([
                 'ok' => false,
                 'message' => 'Número de móvil inválido.',
@@ -166,9 +222,15 @@ class DC_Recargas_REST {
         }
 
         // Sin bundles guardados: usar catálogo live de DingConnect.
-        $response = !empty($country_iso)
-            ? $this->api->get_products_by_country($country_iso, 250)
-            : $this->api->get_products($account_number, 250);
+        $response = $this->api->get_products_catalog([
+            'account_number' => $account_number,
+            'country_isos' => !empty($country_iso) ? [$country_iso] : [],
+            'provider_codes' => !empty($provider_code) ? [$provider_code] : [],
+            'region_codes' => !empty($region_code) ? [$region_code] : [],
+            'benefits' => !empty($benefit) ? [$benefit] : [],
+            'sku_codes' => !empty($sku_code) ? [$sku_code] : [],
+            'take' => 250,
+        ]);
 
         $response_items = is_wp_error($response) ? [] : ($response['Result'] ?? $response['Items'] ?? []);
 
@@ -189,12 +251,188 @@ class DC_Recargas_REST {
             ], 200);
         }
 
-        $api_items = $this->normalize_products_for_frontend($response['Result'] ?? $response['Items'] ?? [], $country_iso);
+        $api_items = $this->normalize_products_for_frontend($response['Result'] ?? $response['Items'] ?? [], $country_iso, [
+            'account_number' => $account_number,
+            'country_iso' => $country_iso,
+            'provider_code' => $provider_code,
+            'region_code' => $region_code,
+            'benefit' => $benefit,
+            'redemption_mechanism' => $redemption_mechanism,
+            'sku_code' => $sku_code,
+        ]);
 
         return rest_ensure_response([
             'ok' => true,
             'source' => 'dingconnect',
             'result' => $api_items,
+        ]);
+    }
+
+    public function provider_status(WP_REST_Request $request) {
+        if (!$this->check_rate_limit('provider_status', 30)) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
+        }
+
+        $provider_codes = $this->sanitize_string_list($request->get_param('provider_codes') ?? $request->get_param('provider_code') ?? '');
+        if (empty($provider_codes)) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Debes indicar al menos un provider_code.'], 400);
+        }
+
+        $response = $this->api->get_provider_status($provider_codes);
+        if (is_wp_error($response)) {
+            return $this->wp_error_to_rest_response($response);
+        }
+
+        $items = $response['Result'] ?? $response['Items'] ?? [];
+
+        return rest_ensure_response([
+            'ok' => true,
+            'result' => array_values(array_map(function ($item) {
+                return [
+                    'ProviderCode' => sanitize_text_field((string) ($item['ProviderCode'] ?? '')),
+                    'IsProcessingTransfers' => !empty($item['IsProcessingTransfers']),
+                    'Message' => sanitize_text_field((string) ($item['Message'] ?? '')),
+                ];
+            }, array_filter((array) $items, 'is_array'))),
+        ]);
+    }
+
+    public function estimate_prices(WP_REST_Request $request) {
+        if (!$this->check_rate_limit('estimate_prices', 20)) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
+        }
+
+        $params = $request->get_json_params();
+        $items = [];
+
+        if (!empty($params['items']) && is_array($params['items'])) {
+            $items = $params['items'];
+        } else {
+            $items[] = [
+                'SkuCode' => sanitize_text_field((string) ($params['sku_code'] ?? '')),
+                'SendValue' => (float) ($params['send_value'] ?? 0),
+                'SendCurrencyIso' => strtoupper(sanitize_text_field((string) ($params['send_currency_iso'] ?? ''))),
+                'ReceiveValue' => (float) ($params['receive_value'] ?? 0),
+                'BatchItemRef' => sanitize_text_field((string) ($params['batch_item_ref'] ?? 'ITEM-1')),
+            ];
+        }
+
+        $response = $this->api->estimate_prices($items);
+        if (is_wp_error($response)) {
+            return $this->wp_error_to_rest_response($response);
+        }
+
+        $items = $response['Result'] ?? $response['Items'] ?? [];
+
+        return rest_ensure_response([
+            'ok' => true,
+            'result' => array_values(array_map(function ($item) {
+                $price = is_array($item['Price'] ?? null) ? $item['Price'] : [];
+
+                return [
+                    'SkuCode' => sanitize_text_field((string) ($item['SkuCode'] ?? '')),
+                    'BatchItemRef' => sanitize_text_field((string) ($item['BatchItemRef'] ?? '')),
+                    'SendValue' => (float) ($price['SendValue'] ?? 0),
+                    'SendCurrencyIso' => sanitize_text_field((string) ($price['SendCurrencyIso'] ?? '')),
+                    'ReceiveValue' => (float) ($price['ReceiveValue'] ?? 0),
+                    'ReceiveCurrencyIso' => sanitize_text_field((string) ($price['ReceiveCurrencyIso'] ?? '')),
+                    'ReceiveValueExcludingTax' => (float) ($price['ReceiveValueExcludingTax'] ?? 0),
+                    'CustomerFee' => (float) ($price['CustomerFee'] ?? 0),
+                    'DistributorFee' => (float) ($price['DistributorFee'] ?? 0),
+                    'TaxRate' => (float) ($price['TaxRate'] ?? 0),
+                    'TaxName' => sanitize_text_field((string) ($price['TaxName'] ?? '')),
+                    'TaxCalculation' => sanitize_text_field((string) ($price['TaxCalculation'] ?? '')),
+                    'ResultCode' => isset($item['ResultCode']) ? (int) $item['ResultCode'] : 0,
+                    'ErrorCodes' => array_values((array) ($item['ErrorCodes'] ?? [])),
+                ];
+            }, array_filter((array) $items, 'is_array'))),
+        ]);
+    }
+
+    public function lookup_bills(WP_REST_Request $request) {
+        if (!$this->check_rate_limit('lookup_bills', 10)) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
+        }
+
+        $params = $request->get_json_params();
+        $sku_code = sanitize_text_field((string) ($params['sku_code'] ?? ''));
+        $account_number = $this->sanitize_phone($params['account_number'] ?? '');
+        $settings = $this->sanitize_settings($params['settings'] ?? []);
+
+        $response = $this->api->lookup_bills($sku_code, $account_number, $settings);
+        if (is_wp_error($response)) {
+            return $this->wp_error_to_rest_response($response);
+        }
+
+        $items = $response['Result'] ?? $response['Items'] ?? [];
+
+        return rest_ensure_response([
+            'ok' => true,
+            'result' => array_values(array_map(function ($item) {
+                $price = is_array($item['Price'] ?? null) ? $item['Price'] : [];
+                $error_codes = [];
+                foreach ((array) ($item['ErrorCodes'] ?? []) as $error_code) {
+                    if (is_array($error_code)) {
+                        $error_codes[] = [
+                            'Code' => sanitize_text_field((string) ($error_code['Code'] ?? '')),
+                            'Context' => sanitize_text_field((string) ($error_code['Context'] ?? '')),
+                            'Message' => sanitize_text_field((string) ($error_code['Message'] ?? '')),
+                        ];
+                        continue;
+                    }
+
+                    $error_codes[] = [
+                        'Code' => sanitize_text_field((string) $error_code),
+                        'Context' => '',
+                        'Message' => '',
+                    ];
+                }
+
+                return [
+                    'BillRef' => sanitize_text_field((string) ($item['BillRef'] ?? '')),
+                    'AdditionalInfo' => is_array($item['AdditionalInfo'] ?? null) ? $item['AdditionalInfo'] : [],
+                    'SendValue' => (float) ($price['SendValue'] ?? 0),
+                    'SendCurrencyIso' => sanitize_text_field((string) ($price['SendCurrencyIso'] ?? '')),
+                    'ReceiveValue' => (float) ($price['ReceiveValue'] ?? 0),
+                    'ReceiveCurrencyIso' => sanitize_text_field((string) ($price['ReceiveCurrencyIso'] ?? '')),
+                    'ReceiveValueExcludingTax' => (float) ($price['ReceiveValueExcludingTax'] ?? 0),
+                    'CustomerFee' => (float) ($price['CustomerFee'] ?? 0),
+                    'DistributorFee' => (float) ($price['DistributorFee'] ?? 0),
+                    'TaxRate' => (float) ($price['TaxRate'] ?? 0),
+                    'TaxName' => sanitize_text_field((string) ($price['TaxName'] ?? '')),
+                    'TaxCalculation' => sanitize_text_field((string) ($price['TaxCalculation'] ?? '')),
+                    'ResultCode' => isset($item['ResultCode']) ? (int) $item['ResultCode'] : 0,
+                    'ErrorCodes' => $error_codes,
+                ];
+            }, array_filter((array) $items, 'is_array'))),
+        ]);
+    }
+
+    public function transfer_status(WP_REST_Request $request) {
+        if (!$this->check_rate_limit('transfer_status', 20)) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
+        }
+
+        $params = $request->get_json_params();
+        $payload = [
+            'TransferRef' => sanitize_text_field((string) ($params['transfer_ref'] ?? '')),
+            'DistributorRef' => sanitize_text_field((string) ($params['distributor_ref'] ?? '')),
+            'AccountNumber' => $this->sanitize_phone($params['account_number'] ?? ''),
+            'Take' => max(1, (int) ($params['take'] ?? 1)),
+            'Skip' => max(0, (int) ($params['skip'] ?? 0)),
+        ];
+
+        $response = $this->api->list_transfer_records($payload);
+        if (is_wp_error($response)) {
+            return $this->wp_error_to_rest_response($response);
+        }
+
+        $items = $response['Result'] ?? $response['Items'] ?? [];
+
+        return rest_ensure_response([
+            'ok' => true,
+            'there_are_more_items' => !empty($response['ThereAreMoreItems']),
+            'result' => $this->normalize_transfer_record_items($items),
         ]);
     }
 
@@ -212,9 +450,11 @@ class DC_Recargas_REST {
             'SendValue' => (float) ($params['send_value'] ?? 0),
             'SendCurrencyIso' => strtoupper(sanitize_text_field($params['send_currency_iso'] ?? '')),
             'ValidateOnly' => isset($params['validate_only']) ? (bool) $params['validate_only'] : null,
+            'Settings' => $this->sanitize_settings($params['settings'] ?? []),
+            'BillRef' => sanitize_text_field((string) ($params['bill_ref'] ?? '')),
         ];
 
-        if (empty($payload['AccountNumber']) || empty($payload['SkuCode']) || $payload['SendValue'] <= 0 || empty($payload['SendCurrencyIso'])) {
+        if (empty($payload['AccountNumber']) || empty($payload['SkuCode']) || $payload['SendValue'] <= 0) {
             return new WP_REST_Response([
                 'ok' => false,
                 'message' => 'Datos incompletos para procesar la recarga.',
@@ -276,6 +516,13 @@ class DC_Recargas_REST {
         $send_currency_iso = strtoupper(sanitize_text_field($params['send_currency_iso'] ?? 'EUR'));
         $provider_name = sanitize_text_field($params['provider_name'] ?? '');
         $bundle_label = sanitize_text_field($params['bundle_label'] ?? '');
+        $product_type = sanitize_text_field((string) ($params['product_type'] ?? ''));
+        $redemption_mechanism = sanitize_text_field((string) ($params['redemption_mechanism'] ?? ''));
+        $lookup_bills_required = !empty($params['lookup_bills_required']);
+        $customer_care_number = sanitize_text_field((string) ($params['customer_care_number'] ?? ''));
+        $is_range = !empty($params['is_range']);
+        $settings = $this->sanitize_settings($params['settings'] ?? []);
+        $bill_ref = sanitize_text_field((string) ($params['bill_ref'] ?? ''));
 
         if (empty($account_number) || empty($sku_code) || $send_value <= 0) {
             return new WP_REST_Response([
@@ -293,6 +540,13 @@ class DC_Recargas_REST {
             'send_currency_iso' => $send_currency_iso,
             'provider_name' => $provider_name,
             'bundle_label' => $bundle_label,
+            'product_type' => $product_type,
+            'redemption_mechanism' => $redemption_mechanism,
+            'lookup_bills_required' => $lookup_bills_required,
+            'customer_care_number' => $customer_care_number,
+            'is_range' => $is_range,
+            'settings' => $settings,
+            'bill_ref' => $bill_ref,
         ]);
 
         if (is_wp_error($result)) {
@@ -312,6 +566,95 @@ class DC_Recargas_REST {
     public function sanitize_phone($phone) {
         // DingConnect valida AccountNumber por regex y rechaza simbolos como '+'.
         return preg_replace('/\D+/', '', (string) $phone);
+    }
+
+    private function sanitize_string_list($value) {
+        if (is_array($value)) {
+            $items = $value;
+        } else {
+            $items = explode(',', (string) $value);
+        }
+
+        $clean = [];
+
+        foreach ($items as $item) {
+            $item = sanitize_text_field((string) $item);
+            if ('' !== $item) {
+                $clean[] = $item;
+            }
+        }
+
+        return array_values(array_unique($clean));
+    }
+
+    private function sanitize_settings($settings) {
+        $normalized = [];
+
+        foreach ((array) $settings as $setting) {
+            if (!is_array($setting)) {
+                continue;
+            }
+
+            $name = sanitize_text_field((string) ($setting['Name'] ?? $setting['name'] ?? ''));
+            if ('' === $name) {
+                continue;
+            }
+
+            $normalized[] = [
+                'Name' => $name,
+                'Value' => sanitize_text_field((string) ($setting['Value'] ?? $setting['value'] ?? '')),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function wp_error_to_rest_response($error) {
+        $error_data = $error->get_error_data();
+        $status_code = 500;
+
+        if (is_array($error_data) && isset($error_data['status']) && is_numeric($error_data['status'])) {
+            $status_code = (int) $error_data['status'];
+        }
+
+        return new WP_REST_Response([
+            'ok' => false,
+            'message' => $error->get_error_message(),
+            'error' => $error_data,
+        ], $status_code);
+    }
+
+    private function normalize_transfer_record_items($items) {
+        return array_values(array_map(function ($item) {
+            $entry = is_array($item['TransferRecord'] ?? null) ? $item['TransferRecord'] : (is_array($item) ? $item : []);
+            $transfer_id = is_array($entry['TransferId'] ?? null) ? $entry['TransferId'] : [];
+            $price = is_array($entry['Price'] ?? null) ? $entry['Price'] : [];
+            $receipt_params = is_array($entry['ReceiptParams'] ?? null) ? $entry['ReceiptParams'] : [];
+
+            return [
+                'TransferRef' => sanitize_text_field((string) ($transfer_id['TransferRef'] ?? '')),
+                'DistributorRef' => sanitize_text_field((string) ($transfer_id['DistributorRef'] ?? '')),
+                'SkuCode' => sanitize_text_field((string) ($entry['SkuCode'] ?? '')),
+                'AccountNumber' => sanitize_text_field((string) ($entry['AccountNumber'] ?? '')),
+                'ProcessingState' => sanitize_text_field((string) ($entry['ProcessingState'] ?? '')),
+                'ReceiptText' => sanitize_text_field((string) ($entry['ReceiptText'] ?? '')),
+                'ReceiptParams' => $receipt_params,
+                'StartedUtc' => sanitize_text_field((string) ($entry['StartedUtc'] ?? '')),
+                'CompletedUtc' => sanitize_text_field((string) ($entry['CompletedUtc'] ?? '')),
+                'SendValue' => (float) ($price['SendValue'] ?? 0),
+                'SendCurrencyIso' => sanitize_text_field((string) ($price['SendCurrencyIso'] ?? '')),
+                'ReceiveValue' => (float) ($price['ReceiveValue'] ?? 0),
+                'ReceiveCurrencyIso' => sanitize_text_field((string) ($price['ReceiveCurrencyIso'] ?? '')),
+                'ReceiveValueExcludingTax' => (float) ($price['ReceiveValueExcludingTax'] ?? 0),
+                'CustomerFee' => (float) ($price['CustomerFee'] ?? 0),
+                'DistributorFee' => (float) ($price['DistributorFee'] ?? 0),
+                'TaxRate' => (float) ($price['TaxRate'] ?? 0),
+                'TaxName' => sanitize_text_field((string) ($price['TaxName'] ?? '')),
+                'TaxCalculation' => sanitize_text_field((string) ($price['TaxCalculation'] ?? '')),
+                'ResultCode' => isset($item['ResultCode']) ? (int) $item['ResultCode'] : 0,
+                'ErrorCodes' => array_values((array) ($item['ErrorCodes'] ?? [])),
+            ];
+        }, array_filter((array) $items, 'is_array')));
     }
 
     private function check_rate_limit($action, $limit_per_minute = 10) {
@@ -383,15 +726,45 @@ class DC_Recargas_REST {
             return [
                 'BundleId' => $bundle['id'] ?? '',
                 'SkuCode' => $bundle['sku_code'] ?? '',
+                'ProviderCode' => sanitize_text_field((string) ($bundle['provider_code'] ?? '')),
                 'ProviderName' => $bundle['provider_name'] ?? '',
                 'ProductType' => sanitize_text_field((string) ($bundle['product_type_raw'] ?? '')),
                 'SendValue' => (float) ($bundle['send_value'] ?? 0),
                 'SendCurrencyIso' => $bundle['send_currency_iso'] ?? '',  // debe venir del bundle guardado; vacío provocará rechazo en el API
+                'ReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'ReceiveCurrencyIso' => $bundle['send_currency_iso'] ?? '',
+                'ReceiveValueExcludingTax' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'MinimumSendValue' => (float) ($bundle['send_value'] ?? 0),
+                'MaximumSendValue' => (float) ($bundle['send_value'] ?? 0),
+                'MinimumReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'MaximumReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'CustomerFee' => 0.0,
+                'DistributorFee' => 0.0,
+                'TaxRate' => 0.0,
+                'TaxName' => '',
+                'TaxCalculation' => '',
                 'DefaultDisplayText' => $bundle['label'] ?? '',
+                'DisplayText' => $bundle['label'] ?? '',
                 'Description' => $bundle['description'] ?? '',
+                'DescriptionMarkdown' => '',
+                'ReadMoreMarkdown' => '',
+                'AdditionalInformation' => $bundle['description'] ?? '',
                 'CountryIso' => strtoupper((string) ($bundle['country_iso'] ?? '')),
+                'RegionCode' => '',
+                'RegionCodes' => [],
+                'ValidationRegex' => '',
+                'CustomerCareNumber' => '',
+                'LogoUrl' => '',
                 'IsPromotion' => false,
                 'IsRange' => false,
+                'Benefits' => [],
+                'ValidityPeriodIso' => sanitize_text_field((string) ($bundle['validity_raw'] ?? '')),
+                'RedemptionMechanism' => 'Immediate',
+                'ProcessingMode' => 'Instant',
+                'LookupBillsRequired' => false,
+                'SettingDefinitions' => [],
+                'PaymentTypes' => [],
+                'UatNumber' => '',
             ];
         }, $active);
     }
@@ -410,12 +783,13 @@ class DC_Recargas_REST {
         return array_values(array_unique($clean));
     }
 
-    private function normalize_products_for_frontend($items, $country_iso) {
+    private function normalize_products_for_frontend($items, $country_iso, $query_context = []) {
         if (empty($items) || !is_array($items)) {
             return [];
         }
 
-        $provider_map = $this->get_provider_name_map($items, $country_iso);
+        $provider_map = $this->get_provider_details_map($items, $country_iso);
+        $description_map = $this->get_product_description_map($items);
         $normalized = [];
 
         foreach ($items as $item) {
@@ -429,26 +803,60 @@ class DC_Recargas_REST {
             }
 
             $provider_code = sanitize_text_field($item['ProviderCode'] ?? '');
-            $provider_name = sanitize_text_field($item['ProviderName'] ?? ($provider_map[$provider_code] ?? $provider_code));
+            $provider_details = $provider_map[$provider_code] ?? [];
+            $provider_name = sanitize_text_field($item['ProviderName'] ?? ($provider_details['ProviderName'] ?? $provider_code));
             $price = $this->extract_product_price($item);
+            $localization_key = sanitize_text_field((string) ($item['LocalizationKey'] ?? ''));
+            $description_details = $description_map[$localization_key] ?? [];
 
-            $normalized[] = [
+            $normalized_item = [
                 'ProviderCode' => $provider_code,
                 'ProviderName' => $provider_name,
                 'SkuCode' => $sku_code,
                 'ProductType' => sanitize_text_field($item['ProductType'] ?? ''),
+                'CountryIso' => sanitize_text_field((string) ($provider_details['CountryIso'] ?? $country_iso)),
+                'RegionCode' => sanitize_text_field((string) ($item['RegionCode'] ?? '')),
+                'RegionCodes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($provider_details['RegionCodes'] ?? [])))),
                 'SendValue' => $price['SendValue'],
                 'SendCurrencyIso' => $price['SendCurrencyIso'],
                 'ReceiveValue' => $price['ReceiveValue'],
                 'ReceiveCurrencyIso' => $price['ReceiveCurrencyIso'],
-                'DefaultDisplayText' => sanitize_text_field($item['DefaultDisplayText'] ?? $sku_code),
-                'Description' => $this->build_product_description($item),
+                'ReceiveValueExcludingTax' => $price['ReceiveValueExcludingTax'],
+                'MinimumSendValue' => $price['MinimumSendValue'],
+                'MaximumSendValue' => $price['MaximumSendValue'],
+                'MinimumReceiveValue' => $price['MinimumReceiveValue'],
+                'MaximumReceiveValue' => $price['MaximumReceiveValue'],
+                'CustomerFee' => $price['CustomerFee'],
+                'DistributorFee' => $price['DistributorFee'],
+                'TaxRate' => $price['TaxRate'],
+                'TaxName' => $price['TaxName'],
+                'TaxCalculation' => $price['TaxCalculation'],
+                'DefaultDisplayText' => sanitize_text_field($item['DefaultDisplayText'] ?? ($description_details['DisplayText'] ?? $sku_code)),
+                'DisplayText' => sanitize_text_field((string) ($description_details['DisplayText'] ?? ($item['DefaultDisplayText'] ?? $sku_code))),
+                'Description' => $this->build_product_description($item, $description_details),
+                'DescriptionMarkdown' => sanitize_text_field((string) ($description_details['DescriptionMarkdown'] ?? '')),
+                'ReadMoreMarkdown' => sanitize_text_field((string) ($description_details['ReadMoreMarkdown'] ?? '')),
+                'AdditionalInformation' => sanitize_text_field((string) ($item['AdditionalInformation'] ?? '')),
                 'IsPromotion' => !empty($item['IsPromotion']),
                 'IsRange' => $this->is_range_product($item),
                 'Benefits' => array_values(array_filter(array_map('sanitize_text_field', (array) ($item['Benefits'] ?? [])))),
                 'ValidityPeriodIso' => sanitize_text_field($item['ValidityPeriodIso'] ?? ''),
                 'RedemptionMechanism' => sanitize_text_field($item['RedemptionMechanism'] ?? ''),
+                'ProcessingMode' => sanitize_text_field((string) ($item['ProcessingMode'] ?? '')),
+                'LookupBillsRequired' => !empty($item['LookupBillsRequired']),
+                'SettingDefinitions' => $this->normalize_setting_definitions($item['SettingDefinitions'] ?? []),
+                'ValidationRegex' => sanitize_text_field((string) ($provider_details['ValidationRegex'] ?? '')),
+                'CustomerCareNumber' => sanitize_text_field((string) ($provider_details['CustomerCareNumber'] ?? '')),
+                'LogoUrl' => esc_url_raw((string) ($provider_details['LogoUrl'] ?? '')),
+                'PaymentTypes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($item['PaymentTypes'] ?? ($provider_details['PaymentTypes'] ?? []))))),
+                'UatNumber' => sanitize_text_field((string) ($item['UatNumber'] ?? '')),
             ];
+
+            if (!$this->product_matches_query_context($normalized_item, $query_context)) {
+                continue;
+            }
+
+            $normalized[] = $normalized_item;
         }
 
         usort($normalized, function ($left, $right) {
@@ -468,7 +876,7 @@ class DC_Recargas_REST {
         return $normalized;
     }
 
-    private function get_provider_name_map($items, $country_iso) {
+    private function get_provider_details_map($items, $country_iso) {
         $provider_codes = [];
 
         foreach ((array) $items as $item) {
@@ -511,7 +919,76 @@ class DC_Recargas_REST {
             }
 
             $provider_name = sanitize_text_field($provider['Name'] ?? ($provider['ShortName'] ?? $provider_code));
-            $map[$provider_code] = $provider_name;
+            $map[$provider_code] = [
+                'ProviderName' => $provider_name,
+                'CountryIso' => sanitize_text_field((string) ($provider['CountryIso'] ?? '')),
+                'ValidationRegex' => sanitize_text_field((string) ($provider['ValidationRegex'] ?? '')),
+                'CustomerCareNumber' => sanitize_text_field((string) ($provider['CustomerCareNumber'] ?? '')),
+                'RegionCodes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($provider['RegionCodes'] ?? [])))),
+                'PaymentTypes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($provider['PaymentTypes'] ?? [])))),
+                'LogoUrl' => esc_url_raw((string) ($provider['LogoUrl'] ?? '')),
+            ];
+        }
+
+        return $map;
+    }
+
+    private function get_product_description_map($items) {
+        $sku_codes = [];
+
+        foreach ((array) $items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $sku_code = sanitize_text_field((string) ($item['SkuCode'] ?? ''));
+            if ('' !== $sku_code) {
+                $sku_codes[] = $sku_code;
+            }
+        }
+
+        $sku_codes = array_values(array_unique($sku_codes));
+        if (empty($sku_codes)) {
+            return [];
+        }
+
+        $preferred_languages = $this->get_preferred_language_codes();
+        $response = $this->api->get_product_descriptions($sku_codes, $preferred_languages);
+        if (is_wp_error($response)) {
+            return [];
+        }
+
+        $descriptions = $response['Result'] ?? $response['Items'] ?? [];
+        $map = [];
+
+        foreach ((array) $descriptions as $description) {
+            if (!is_array($description)) {
+                continue;
+            }
+
+            $localization_key = sanitize_text_field((string) ($description['LocalizationKey'] ?? ''));
+            if ('' === $localization_key) {
+                continue;
+            }
+
+            $language_code = strtolower((string) ($description['LanguageCode'] ?? ''));
+            $priority = array_search(substr($language_code, 0, 2), $preferred_languages, true);
+            $priority = false === $priority ? 999 : (int) $priority;
+
+            if (isset($map[$localization_key]) && $priority >= $map[$localization_key]['_priority']) {
+                continue;
+            }
+
+            $map[$localization_key] = [
+                '_priority' => $priority,
+                'DisplayText' => sanitize_text_field((string) ($description['DisplayText'] ?? '')),
+                'DescriptionMarkdown' => sanitize_text_field((string) ($description['DescriptionMarkdown'] ?? '')),
+                'ReadMoreMarkdown' => sanitize_text_field((string) ($description['ReadMoreMarkdown'] ?? '')),
+            ];
+        }
+
+        foreach ($map as $key => $value) {
+            unset($map[$key]['_priority']);
         }
 
         return $map;
@@ -532,10 +1009,20 @@ class DC_Recargas_REST {
             'SendCurrencyIso' => $send_currency,
             'ReceiveValue' => (float) ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0)),
             'ReceiveCurrencyIso' => sanitize_text_field($item['ReceiveCurrencyIso'] ?? ($price['ReceiveCurrencyIso'] ?? '')),
+            'ReceiveValueExcludingTax' => (float) ($item['ReceiveValueExcludingTax'] ?? ($price['ReceiveValueExcludingTax'] ?? 0)),
+            'MinimumSendValue' => (float) ($minimum['SendValue'] ?? ($item['SendValue'] ?? ($price['SendValue'] ?? 0))),
+            'MaximumSendValue' => (float) ($maximum['SendValue'] ?? ($item['SendValue'] ?? ($price['SendValue'] ?? 0))),
+            'MinimumReceiveValue' => (float) ($minimum['ReceiveValue'] ?? ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0))),
+            'MaximumReceiveValue' => (float) ($maximum['ReceiveValue'] ?? ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0))),
+            'CustomerFee' => (float) ($item['CustomerFee'] ?? ($price['CustomerFee'] ?? 0)),
+            'DistributorFee' => (float) ($item['DistributorFee'] ?? ($price['DistributorFee'] ?? 0)),
+            'TaxRate' => (float) ($item['TaxRate'] ?? ($price['TaxRate'] ?? 0)),
+            'TaxName' => sanitize_text_field((string) ($item['TaxName'] ?? ($price['TaxName'] ?? ''))),
+            'TaxCalculation' => sanitize_text_field((string) ($item['TaxCalculation'] ?? ($price['TaxCalculation'] ?? ''))),
         ];
     }
 
-    private function build_product_description($item) {
+    private function build_product_description($item, $description_details = []) {
         $description = sanitize_text_field($item['Description'] ?? '');
         if ('' !== $description) {
             return $description;
@@ -546,8 +1033,91 @@ class DC_Recargas_REST {
             return $additional;
         }
 
+        $description_markdown = sanitize_text_field((string) ($description_details['DescriptionMarkdown'] ?? ''));
+        if ('' !== $description_markdown) {
+            return $description_markdown;
+        }
+
         $benefits = array_values(array_filter(array_map('sanitize_text_field', (array) ($item['Benefits'] ?? []))));
         return implode(' · ', array_slice($benefits, 0, 3));
+    }
+
+    private function normalize_setting_definitions($definitions) {
+        $normalized = [];
+
+        foreach ((array) $definitions as $definition) {
+            if (!is_array($definition)) {
+                continue;
+            }
+
+            $name = sanitize_text_field((string) ($definition['Name'] ?? ''));
+            if ('' === $name) {
+                continue;
+            }
+
+            $normalized[] = [
+                'Name' => $name,
+                'Description' => sanitize_text_field((string) ($definition['Description'] ?? '')),
+                'IsMandatory' => !empty($definition['IsMandatory']),
+                'Type' => sanitize_text_field((string) ($definition['Type'] ?? $definition['DataType'] ?? 'text')),
+                'ValidationRegex' => sanitize_text_field((string) ($definition['ValidationRegex'] ?? '')),
+                'MinLength' => isset($definition['MinLength']) ? (int) $definition['MinLength'] : 0,
+                'MaxLength' => isset($definition['MaxLength']) ? (int) $definition['MaxLength'] : 0,
+                'MinValue' => isset($definition['MinValue']) ? (float) $definition['MinValue'] : 0,
+                'MaxValue' => isset($definition['MaxValue']) ? (float) $definition['MaxValue'] : 0,
+                'AllowedValues' => array_values(array_filter(array_map(function ($value) {
+                    return sanitize_text_field((string) $value);
+                }, (array) ($definition['AllowedValues'] ?? $definition['Values'] ?? [])), function ($value) {
+                    return $value !== '';
+                })),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function product_matches_query_context($item, $query_context) {
+        $query_context = is_array($query_context) ? $query_context : [];
+
+        if (!empty($query_context['provider_code']) && strcasecmp((string) ($item['ProviderCode'] ?? ''), (string) $query_context['provider_code']) !== 0) {
+            return false;
+        }
+
+        if (!empty($query_context['region_code']) && strcasecmp((string) ($item['RegionCode'] ?? ''), (string) $query_context['region_code']) !== 0) {
+            $regions = array_map('strtoupper', (array) ($item['RegionCodes'] ?? []));
+            if (!in_array(strtoupper((string) $query_context['region_code']), $regions, true)) {
+                return false;
+            }
+        }
+
+        if (!empty($query_context['benefit'])) {
+            $benefits = array_map('strtoupper', (array) ($item['Benefits'] ?? []));
+            if (!in_array(strtoupper((string) $query_context['benefit']), $benefits, true)) {
+                return false;
+            }
+        }
+
+        if (!empty($query_context['redemption_mechanism']) && strcasecmp((string) ($item['RedemptionMechanism'] ?? ''), (string) $query_context['redemption_mechanism']) !== 0) {
+            return false;
+        }
+
+        if (!empty($query_context['sku_code']) && strcasecmp((string) ($item['SkuCode'] ?? ''), (string) $query_context['sku_code']) !== 0) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function get_preferred_language_codes() {
+        $locale = strtolower((string) get_option('WPLANG', 'en'));
+        $language = substr($locale, 0, 2);
+        $codes = ['en'];
+
+        if ($language !== '' && $language !== 'en') {
+            array_unshift($codes, $language);
+        }
+
+        return array_values(array_unique($codes));
     }
 
     private function is_range_product($item) {

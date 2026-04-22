@@ -165,6 +165,17 @@ Nota operativa WooCommerce (abril 2026):
 - Regla de despliegue para assets del shortcode: `assets/css/frontend.css` y `assets/js/frontend.js` deben invalidar caché automáticamente por fecha de modificación (`filemtime`) para impedir que un HTML/JS nuevo conviva con una hoja CSS antigua servida por caché de plugin, CDN o LiteSpeed.
 - Regla de visibilidad del selector de país: el overlay `.dc-country-overlay` debe incluir una regla específica para `[hidden]` con `display: none !important;`, porque depende de ese atributo para no bloquear la interacción inicial del shortcode.
 - Regla de desarrollo en VS Code (análisis estático): para evitar falsos positivos de funciones globales de WordPress/WooCommerce en edición local, el repositorio mantiene `wordpress-stubs.php` como soporte de análisis; no forma parte del runtime de WordPress.
+- Regla de helpers CRUD WooCommerce: cuando se crea un `WC_Product_Simple` nuevo y el ID se necesita inmediatamente, se puede reutilizar el valor retornado por `save()` en lugar de llamar de nuevo a `get_id()`. En este workspace esa forma reduce falsos positivos del analizador sin cambiar el comportamiento real de WooCommerce.
+
+### Nota operativa Shortcode público alineado con DingConnect (abril 2026)
+
+- El shortcode `dingconnect_recargas` ya no se limita a SKUs fijos simples: cuando el producto es de rango, renderiza un input de importe y llama a `EstimatePrices` para recalcular lo que recibirá el destinatario antes de confirmar.
+- Cuando DingConnect publica `SettingDefinitions`, el frontend genera inputs dinámicos, valida obligatorios y reenvía esos pares `Name/Value` hasta `SendTransfer` o `add-to-cart`.
+- Cuando el producto requiere `LookupBills`, el frontend ejecuta la consulta previa, deja seleccionar la factura o importe devuelto por Ding y reenvía `BillRef` en la operación final.
+- Antes de dejar avanzar a confirmación o envío, el shortcode consulta `GetProviderStatus` por `ProviderCode` y bloquea el flujo si el proveedor informa indisponibilidad transaccional.
+- En modo WooCommerce, `settings` y `bill_ref` ya no se pierden: se guardan en carrito/pedido y el despachador backend los incorpora a `SendTransfer` junto con la reconciliación previa por `ListTransferRecords`.
+- UX dinámica endurecida para payload real: el frontend procesa `ResultCode` y `ErrorCodes` de `EstimatePrices/LookupBills`, muestra mensajes accionables por código DingConnect y refleja estado de carga durante la estimación.
+- Coherencia de datos en productos con factura: al cambiar importe o `SettingDefinitions`, el frontend invalida `BillRef` y obliga a reconsulta para evitar enviar una factura obsoleta.
 
 ### Nota operativa Catálogo y alta (abril 2026)
 
@@ -220,6 +231,12 @@ La FAQ y el checklist de sign-off son muy concretos sobre los campos que deben m
 - `DistributorRef` como identificador interno.
 - `AccountNumber` como cuenta o MSISDN destino.
 
+Estado actual del plugin WordPress (abril 2026):
+
+- El frontend público ya cubre `ValidationRegex`, `ReceiptText`, `ReceiptParams`, `DescriptionMarkdown` y `ReadMoreMarkdown` cuando llegan normalizados por backend.
+- Para productos de rango, la confirmación usa el importe realmente seleccionado por el usuario y la estimación devuelta por `EstimatePrices`, no solo el `SendValue` fijo del catálogo.
+- Para bill payment y productos con parámetros obligatorios, la confirmación muestra también `BillRef` y los datos dinámicos capturados antes de enviar o derivar al checkout.
+
 ## 9. Timeout, consulta y reconciliación
 
 La FAQ indica que el cliente debe soportar transacciones que demoren más de lo normal:
@@ -238,6 +255,22 @@ Parámetros mínimos citados en la FAQ para revisar una transacción:
   "Take": 1
 }
 ```
+
+### Política operativa actual para `Submitted` prolongado (WooCommerce, abril 2026)
+
+- Reintentos y reconciliación ya no son hardcoded: se configuran desde `Credenciales` con cinco parámetros operativos:
+  - `submitted_retry_max_attempts`
+  - `submitted_retry_backoff_minutes`
+  - `submitted_max_window_hours`
+  - `submitted_escalation_email`
+  - `submitted_non_retryable_codes`
+- Estrategia recomendada y aplicada por defecto: backoff agresivo `10,20,40,80` minutos con escalado a soporte a las `12h` si el estado sigue pendiente.
+- Cuando un error DingConnect está en la lista de no reintentables (por ejemplo `InsufficientBalance` o `AccountNumberInvalid`), el ítem se marca como `failed_permanent` y no agenda nuevos reintentos.
+- Si la recarga supera ventana/intentos máximos en estado pendiente, el sistema marca `escalado_soporte`, elimina próximo reintento y deja trazabilidad en notas del pedido.
+- El panel `Registros` incluye monitor operativo de recargas pendientes/escaladas para seguimiento rápido por orden, estado, intentos y próximo reintento.
+- Hardening 22-04-2026: la idempotencia WooCommerce vuelve a considerar `transfer_ref` existente como señal de operación ya procesada para evitar redespacho accidental.
+- Hardening 22-04-2026: cuando `ListTransferRecords` falla o no devuelve estado concluyente para un item con referencia previa, el flujo difiere el reintento de conciliación y evita reenviar `SendTransfer` en ese ciclo.
+- Hardening 22-04-2026: en frontend, `EstimatePrices` descarta respuestas tardías de solicitudes previas al cambiar importe/producto, evitando confirmaciones con estimación obsoleta.
 
 ## 10. UAT y credenciales de prueba
 
@@ -346,9 +379,11 @@ El artículo de sign-off deja estos requisitos como base para que el equipo de i
 Tomando como referencia el reporte técnico actual del proyecto, el prototipo ya demuestra llamadas a `GetProducts` y `SendTransfer` con `ValidateOnly: true`, pero todavía quedan brechas para cumplir con la guía oficial completa:
 
 - La API Key sigue expuesta en cliente y debe moverse a un backend propio.
-- Falta documentar e implementar `EstimatePrices` para operadores de rango.
-- Falta una implementación explícita de `ListTransferRecords` para timeout y reconciliación.
-- Falta incorporar `GetProductDescriptions` y el mapeo completo de campos de front.
+- Avance 22-04-2026: el plugin WordPress ya inició esa capa backend con cliente API ampliado y nuevas rutas REST para `GetProviderStatus`, `EstimatePrices`, `LookupBills` y `ListTransferRecords`.
+- Avance 22-04-2026: `GET /wp-json/dingconnect/v1/products` ahora expone metadatos operativos adicionales (`ValidationRegex`, `SettingDefinitions`, `LookupBillsRequired`, región, pricing ampliado y textos localizados) y el frontend público ya consume parte de ese contrato para validación básica y visualización de `ReceiptText`/`ReceiptParams`.
+- Avance 22-04-2026: WooCommerce ahora reconcilia por `ListTransferRecords` antes de reintentar, evitando tratar `Submitted` como éxito terminal.
+- Avance 22-04-2026: el copy final del shortcode público y del cierre WooCommerce ahora se adapta por familia real de producto usando `ProductType`, `RedemptionMechanism`, `LookupBillsRequired`, `ReceiptText`, `ReceiptParams` y señales fiscales (`ReceiveValueExcludingTax`, `TaxName`, `TaxCalculation`).
+- Sigue pendiente ejecutar validación manual/UAT con proveedores reales y cerrar la evidencia runtime de promociones/markdown enriquecido donde aplique.
 - Falta evidenciar flujo UAT formal y checklist de sign-off.
 - Debe revisarse whitelisting, 2FA y separación de credenciales de prueba y producción.
 
@@ -357,8 +392,8 @@ Tomando como referencia el reporte técnico actual del proyecto, el prototipo ya
 Orden recomendado para dejar la integración lista para UAT y sign-off:
 
 1. Mover la integración a backend y retirar credenciales del frontend.
-2. Implementar `GetProducts`, `EstimatePrices`, `GetProductDescriptions`, `SendTransfer` y `ListTransferRecords` como flujo estándar.
-3. Soportar `ReceiptText`, markdown y `ValidityPeriodISO` en interfaz.
+2. Consolidar el contrato backend/REST ya iniciado en el plugin y cerrar los pasos pendientes del flujo estándar: `EstimatePrices` interactivo, `LookupBills`, formularios dinámicos por `SettingDefinitions` y reconciliación completa.
+3. Completar en interfaz el soporte de `ReceiptText`, markdown, `ValidityPeriodISO`, promociones y estados no terminales.
 4. Crear credenciales UAT bajo un Test Agent y ejecutar la matriz mínima de pruebas.
 5. Documentar capturas, resultados y errores esperados.
 6. Cerrar hardening de seguridad: 2FA, whitelisting, allowed countries y rotación de claves.
@@ -382,6 +417,27 @@ Recomendación operativa:
 
 - Estado actual: `NO-GO` condicional desde este entorno local.
 - Condición de habilitación: completar evidencia runtime de la matriz fase 6 y mantener `validate_only=true` hasta cierre de validación controlada.
+
+## 16. Matriz manual por proveedor real y criterio operativo (22-04-2026)
+
+Para cubrir las nuevas rutas UX y la política `Submitted`, la fuente operativa vigente es `MATRIZ_PRUEBAS_MANUALES_PROVEEDOR_REAL.md`.
+
+Resumen ejecutivo de esa matriz:
+
+1. Familias obligatorias: DTH, electricidad prepago, PIN/voucher y móvil rango.
+2. Superficies obligatorias: shortcode público, checkout WooCommerce, thank-you, email, notas de pedido y monitor de pendientes.
+3. Señales mínimas a validar en payload:
+  - móvil rango: `ReceiveValue`, `ReceiveValueExcludingTax`, `TaxName`, `TaxCalculation`;
+  - voucher: `ReceiptText`, `ReceiptParams.pin`, `ReceiptParams.providerRef`;
+  - electricidad: `LookupBillsRequired`, `BillRef`, `SettingDefinitions`;
+  - DTH: `ValidationRegex`, `ProcessingState`, `AdditionalInformation` cuando exista.
+4. Regla operativa: `Submitted`, `Pending`, `Processing`, `pending_retry` y `escalado_soporte` nunca deben comunicarse como éxito terminal ni invitar a repetir la compra.
+
+Estado de cierre:
+
+- Estado de código: listo para validar en manual/UAT.
+- Estado operativo: `NO-GO` hasta ejecutar las 4 filas de la matriz con evidencia real o UAT equivalente.
+- Paso para pasar a GO controlado: completar las 4 familias con capturas/payloads y verificar que thank-you/email preservan el mismo copy por familia que el shortcode.
 
 ## 16. Nota sobre los diagramas de flujo
 

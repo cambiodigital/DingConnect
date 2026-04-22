@@ -152,6 +152,8 @@ class DC_Recargas_Frontend {
                             <label class="dc-package-select-label" for="dc-package-select">Paquetes disponibles</label>
                             <select id="dc-package-select" class="dc-package-select"></select>
                             <div id="dc-package-card" class="dc-package-card"></div>
+                            <div id="dc-provider-status" class="dc-provider-status" hidden></div>
+                            <div id="dc-dynamic-fields" class="dc-dynamic-fields" hidden></div>
                             <div class="dc-pane-nav dc-pane-nav--end">
                                 <button type="button" class="dc-confirm-btn" id="dc-btn-continue-confirm">Continuar</button>
                             </div>
