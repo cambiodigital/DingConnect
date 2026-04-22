@@ -26,10 +26,10 @@ Se decidió que el flujo de trabajo procesará los pagos mediante WCommerce y en
 - [ ] \[Jhony Alexander Alvarez Vasquez\] Cambiar Regla Divisa: Modificar la regla de cálculo para mostrar los precios en euros en lugar de dólares. ✅
 - [ ] \[Jhony Alexander Alvarez Vasquez\] Renombrar Botón: Cambiar texto de botón de Crear Bundle desde API a Seleccionar Producto.✅
 - [ ] \[Jhony Alexander Alvarez Vasquez\] Deshabilitar Duplicados: Deshabilitar la validación de duplicados para permitir crear múltiples paquetes con el mismo SKU.✅
-- [ ] \[Jhony Alexander Alvarez Vasquez\] Ordenar Paquetes: Implementar la función para definir el orden de visualización de los paquetes en la página de aterrizaje (front-end).
-- [ ] \[Jhony Alexander Alvarez Vasquez\] Agregar Filtros Landing: Añadir filtros de País y Tipo de Producto en la sección Landings para seleccionar paquetes previamente guardados.
-- [ ] \[Jhony Alexander Alvarez Vasquez\] Usar Excel Directorio: Estudiar la integración del archivo Excel como directorio usando el SKU para obtener información comercial de los paquetes.
-- [ ] \[Jhony Alexander Alvarez Vasquez\] Agregar Campos Precio: Modificar la configuración de paquetes para incluir los campos Coste (costo DIN) y Precio al Público (precio de venta al cliente).
+- [ ] \[Jhony Alexander Alvarez Vasquez\] Ordenar Paquetes: Implementar la función para definir el orden de visualización de los paquetes en la página de aterrizaje (front-end). ✅
+- [ ] \[Jhony Alexander Alvarez Vasquez\] Agregar Filtros Landing: Añadir filtros de País y Tipo de Producto en la sección Landings para seleccionar paquetes previamente guardados. ✅
+- [ ] \[Jhony Alexander Alvarez Vasquez\] Usar Excel Directorio: Estudiar la integración del archivo Excel como directorio usando el SKU para obtener información comercial de los paquetes.✅
+- [ ] \[Jhony Alexander Alvarez Vasquez\] Agregar Campos Precio: Modificar la configuración de paquetes para incluir los campos Coste (costo DIN) y Precio al Público (precio de venta al cliente). ✅
 - [ ] \[Cubakilos\] Instalar Plugin: Instalar el plugin de prueba modificado en la tienda Cuakilos. Revisar las modificaciones mañana.
 - [ ] \[Jhony Alexander Alvarez Vasquez\] Entregar Plugin: Aplicar las modificaciones discutidas al plugin. Entregar el plugin actualizado esta noche para pruebas.
 - [ ] \[Jhony Alexander Alvarez Vasquez\] Comunicar Prioridad: Informar a Sebastián sobre la necesidad de terminar Cero Water y Cuakilos este mes.

@@ -19,6 +19,7 @@
     var loadingEl         = findInApp('dc-loading');
     var feedbackEl        = findInApp('dc-feedback');
     var packageStage      = findInApp('dc-package-stage');
+    var productTypeFilter = findInApp('dc-product-type-filter');
     var packageSelect     = findInApp('dc-package-select');
     var packageCard       = findInApp('dc-package-card');
     var confirmCard       = findInApp('dc-confirm-card');
@@ -412,6 +413,7 @@
         }
 
         setFeedback('', '');
+        renderProductTypeFilter();
         packageStage.hidden = false;
         populatePackageSelect();
     }
@@ -432,29 +434,75 @@
         return parts.join(' · ');
     }
 
-    function populatePackageSelect() {
+    function populatePackageSelect(bundlesOverride) {
+        var bundles = Array.isArray(bundlesOverride) ? bundlesOverride : state.bundles;
         packageSelect.innerHTML = '';
 
-        if (!state.bundles.length) {
+        if (!bundles.length) {
             resetPackageStage(false);
             return;
         }
 
-        state.bundles.forEach(function (bundle, index) {
+        bundles.forEach(function (bundle, index) {
             var option = document.createElement('option');
             option.value = String(index);
             option.textContent = getBundleOptionLabel(bundle);
             packageSelect.appendChild(option);
         });
 
-        if (!state.selected || state.bundles.indexOf(state.selected) === -1) {
-            var featured = state.bundles.find(function (bundle) { return isFeaturedBundle(bundle); });
-            state.selected = featured || state.bundles[0];
+        if (!state.selected || bundles.indexOf(state.selected) === -1) {
+            var featured = bundles.find(function (bundle) { return isFeaturedBundle(bundle); });
+            state.selected = featured || bundles[0];
         }
 
-        packageSelect.value = String(state.bundles.indexOf(state.selected));
+        packageSelect.value = String(bundles.indexOf(state.selected));
         renderPackageCard(state.selected);
         btnContinueConfirm.disabled = !state.selected;
+    }
+
+    function renderProductTypeFilter() {
+        if (!productTypeFilter) return;
+
+        var types = [];
+        state.bundles.forEach(function (bundle) {
+            var type = String(bundle.ProductType || '').trim();
+            if (type !== '' && types.indexOf(type) === -1) {
+                types.push(type);
+            }
+        });
+        types.sort();
+
+        if (types.length < 2) {
+            productTypeFilter.hidden = true;
+            productTypeFilter.innerHTML = '';
+            return;
+        }
+
+        productTypeFilter.innerHTML = '';
+        var allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = 'Todos los tipos';
+        productTypeFilter.appendChild(allOption);
+
+        types.forEach(function (type) {
+            var option = document.createElement('option');
+            option.value = type;
+            option.textContent = type;
+            productTypeFilter.appendChild(option);
+        });
+
+        productTypeFilter.hidden = false;
+
+        productTypeFilter.onchange = function () {
+            var selected = productTypeFilter.value;
+            var filtered = selected === ''
+                ? state.bundles
+                : state.bundles.filter(function (bundle) {
+                    return String(bundle.ProductType || '').trim() === selected;
+                });
+            state.selected = null;
+            populatePackageSelect(filtered);
+        };
     }
 
     function renderPackageCard(bundle) {

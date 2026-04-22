@@ -148,6 +148,7 @@ class DC_Recargas_Frontend {
                                 <h3>Elige un paquete</h3>
                                 <p>Selecciona el paquete disponible para este número y revisa sus beneficios antes de confirmar.</p>
                             </div>
+                            <select id="dc-product-type-filter" class="dc-product-type-filter" hidden aria-label="Filtrar por tipo de producto"></select>
                             <label class="dc-package-select-label" for="dc-package-select">Paquetes disponibles</label>
                             <select id="dc-package-select" class="dc-package-select"></select>
                             <div id="dc-package-card" class="dc-package-card"></div>

@@ -384,7 +384,7 @@ class DC_Recargas_REST {
                 'BundleId' => $bundle['id'] ?? '',
                 'SkuCode' => $bundle['sku_code'] ?? '',
                 'ProviderName' => $bundle['provider_name'] ?? '',
-                'ProductType' => sanitize_text_field((string) ($bundle['product_type'] ?? '')),
+                'ProductType' => sanitize_text_field((string) ($bundle['product_type_raw'] ?? '')),
                 'SendValue' => (float) ($bundle['send_value'] ?? 0),
                 'SendCurrencyIso' => $bundle['send_currency_iso'] ?? '',  // debe venir del bundle guardado; vacío provocará rechazo en el API
                 'DefaultDisplayText' => $bundle['label'] ?? '',

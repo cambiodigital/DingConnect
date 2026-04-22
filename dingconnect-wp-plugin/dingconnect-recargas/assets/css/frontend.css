@@ -310,6 +310,26 @@
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.dc-product-type-filter {
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+.dc-product-type-filter:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.dc-product-type-filter[hidden] { display: none !important; }
+
 .dc-package-card {
     margin-top: 14px;
     padding: 18px;

@@ -10,6 +10,162 @@ if (class_exists('DC_Recargas_Admin')) {
 
 class DC_Recargas_Admin {
     private $api;
+    private $csv_catalog_index = null;
+
+    private function get_expected_catalog_csv_headers() {
+        return ['SkuCode', 'Operator', 'Receive', 'Product type', 'Country', 'Validity'];
+    }
+
+    private function normalize_catalog_csv_headers($headers) {
+        if (!is_array($headers)) {
+            return [];
+        }
+
+        return array_map(static function ($header) {
+            $header = (string) $header;
+            $header = preg_replace('/^\xEF\xBB\xBF/', '', $header);
+            return trim($header);
+        }, $headers);
+    }
+
+    private function validate_catalog_csv_headers($headers) {
+        $headers = $this->normalize_catalog_csv_headers($headers);
+        $missing = [];
+
+        foreach ($this->get_expected_catalog_csv_headers() as $required_header) {
+            if (!in_array($required_header, $headers, true)) {
+                $missing[] = $required_header;
+            }
+        }
+
+        return [
+            'headers' => $headers,
+            'missing' => $missing,
+            'is_valid' => empty($missing),
+        ];
+    }
+
+    private function get_uploaded_catalog_csv_path($options = null) {
+        if (!is_array($options)) {
+            $options = $this->api->get_options();
+        }
+
+        $path = (string) ($options['catalog_csv_path'] ?? '');
+        return ($path !== '' && file_exists($path) && is_readable($path)) ? $path : '';
+    }
+
+    private function get_default_catalog_csv_path() {
+        $default_path = dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'Products-with-sku.csv';
+        return (file_exists($default_path) && is_readable($default_path)) ? $default_path : '';
+    }
+
+    private function get_active_catalog_csv_path($options = null) {
+        $uploaded_path = $this->get_uploaded_catalog_csv_path($options);
+        if ($uploaded_path !== '') {
+            return $uploaded_path;
+        }
+
+        return $this->get_default_catalog_csv_path();
+    }
+
+    private function handle_catalog_csv_upload($current_options) {
+        if (empty($_FILES['dc_catalog_csv_file']) || !is_array($_FILES['dc_catalog_csv_file'])) {
+            return [
+                'options' => $current_options,
+                'message' => '',
+                'type' => 'success',
+            ];
+        }
+
+        $file = $_FILES['dc_catalog_csv_file'];
+        $error_code = isset($file['error']) ? (int) $file['error'] : UPLOAD_ERR_NO_FILE;
+        if ($error_code === UPLOAD_ERR_NO_FILE) {
+            return [
+                'options' => $current_options,
+                'message' => '',
+                'type' => 'success',
+            ];
+        }
+
+        if ($error_code !== UPLOAD_ERR_OK) {
+            return [
+                'options' => $current_options,
+                'message' => 'No se pudo subir el CSV de catálogo. Error de carga: ' . $error_code . '.',
+                'type' => 'error',
+            ];
+        }
+
+        $tmp_name = (string) ($file['tmp_name'] ?? '');
+        $original_name = sanitize_file_name((string) ($file['name'] ?? 'catalog.csv'));
+        $extension = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
+        if ($tmp_name === '' || !is_uploaded_file($tmp_name) || $extension !== 'csv') {
+            return [
+                'options' => $current_options,
+                'message' => 'El archivo de catálogo debe ser un CSV válido.',
+                'type' => 'error',
+            ];
+        }
+
+        $handle = fopen($tmp_name, 'r');
+        if (!$handle) {
+            return [
+                'options' => $current_options,
+                'message' => 'No se pudo leer el CSV cargado.',
+                'type' => 'error',
+            ];
+        }
+
+        $headers = fgetcsv($handle, 0, ';');
+        fclose($handle);
+
+        $validation = $this->validate_catalog_csv_headers($headers);
+        if (!$validation['is_valid']) {
+            return [
+                'options' => $current_options,
+                'message' => 'El CSV no tiene las cabeceras esperadas. Faltan: ' . implode(', ', $validation['missing']) . '.',
+                'type' => 'error',
+            ];
+        }
+
+        $upload_dir = wp_upload_dir();
+        if (!empty($upload_dir['error'])) {
+            return [
+                'options' => $current_options,
+                'message' => 'No se pudo preparar la carpeta de subida para el CSV.',
+                'type' => 'error',
+            ];
+        }
+
+        $target_dir = trailingslashit($upload_dir['basedir']) . 'dingconnect';
+        if (!wp_mkdir_p($target_dir)) {
+            return [
+                'options' => $current_options,
+                'message' => 'No se pudo crear la carpeta destino del CSV.',
+                'type' => 'error',
+            ];
+        }
+
+        $target_file = trailingslashit($target_dir) . 'catalog-products-with-sku.csv';
+        if (!@move_uploaded_file($tmp_name, $target_file)) {
+            return [
+                'options' => $current_options,
+                'message' => 'No se pudo guardar el CSV cargado en el servidor.',
+                'type' => 'error',
+            ];
+        }
+
+        $current_options['catalog_csv_path'] = $target_file;
+        $current_options['catalog_csv_url'] = trailingslashit($upload_dir['baseurl']) . 'dingconnect/catalog-products-with-sku.csv';
+        $current_options['catalog_csv_uploaded_at'] = current_time('mysql');
+        $current_options['catalog_csv_original_name'] = $original_name;
+        $this->csv_catalog_index = null;
+
+        return [
+            'options' => $current_options,
+            'message' => 'CSV de catálogo actualizado correctamente. La hidratación por SKU ya usa este archivo.',
+            'type' => 'updated',
+        ];
+    }
 
     public function __construct($api) {
         $this->api = $api;
@@ -362,6 +518,7 @@ class DC_Recargas_Admin {
     }
 
     public function sanitize_options($input) {
+        $current_options = $this->api->get_options();
         $mode = sanitize_text_field((string) ($input['payment_mode'] ?? 'direct'));
         if (!in_array($mode, ['woocommerce', 'direct'], true)) {
             $mode = 'direct';
@@ -408,7 +565,7 @@ class DC_Recargas_Admin {
             $allow_real_recharge = 1;
         }
 
-        return [
+        $sanitized = [
             'api_base' => esc_url_raw(trim((string) ($input['api_base'] ?? 'https://www.dingconnect.com/api/V1'))),
             'api_key' => sanitize_text_field((string) ($input['api_key'] ?? '')),
             'payment_mode' => $mode,
@@ -416,7 +573,25 @@ class DC_Recargas_Admin {
             'recharge_mode' => $recharge_mode,
             'validate_only' => $validate_only,
             'allow_real_recharge' => $allow_real_recharge,
+            'catalog_csv_path' => sanitize_text_field((string) ($current_options['catalog_csv_path'] ?? '')),
+            'catalog_csv_url' => esc_url_raw((string) ($current_options['catalog_csv_url'] ?? '')),
+            'catalog_csv_uploaded_at' => sanitize_text_field((string) ($current_options['catalog_csv_uploaded_at'] ?? '')),
+            'catalog_csv_original_name' => sanitize_file_name((string) ($current_options['catalog_csv_original_name'] ?? '')),
         ];
+
+        $upload_result = $this->handle_catalog_csv_upload($sanitized);
+        $sanitized = $upload_result['options'];
+
+        if (!empty($upload_result['message'])) {
+            add_settings_error(
+                'dc_recargas_options',
+                'dc_catalog_csv_upload',
+                $upload_result['message'],
+                $upload_result['type'] === 'error' ? 'error' : 'updated'
+            );
+        }
+
+        return $sanitized;
     }
 
     public function handle_add_bundle() {
@@ -433,6 +608,12 @@ class DC_Recargas_Admin {
             'sku_code' => sanitize_text_field($_POST['sku_code'] ?? ''),
             'send_value' => (float) ($_POST['send_value'] ?? 0),
             'send_currency_iso' => strtoupper(sanitize_text_field($_POST['send_currency_iso'] ?? 'USD')),
+            'public_price' => (float) ($_POST['public_price'] ?? 0),
+            'public_price_currency' => strtoupper(sanitize_text_field($_POST['public_price_currency'] ?? 'EUR')),
+            'package_family' => $this->normalize_package_family($_POST['package_family'] ?? '', $_POST['product_type_raw'] ?? ''),
+            'product_type_raw' => sanitize_text_field($_POST['product_type_raw'] ?? ''),
+            'validity_raw' => sanitize_text_field($_POST['validity_raw'] ?? ''),
+            'validity_days' => $this->parse_validity_days($_POST['validity_raw'] ?? ''),
             'provider_name' => sanitize_text_field($_POST['provider_name'] ?? ''),
             'description' => sanitize_text_field($_POST['description'] ?? ''),
             'is_active' => empty($_POST['is_active']) ? 0 : 1,
@@ -489,6 +670,12 @@ class DC_Recargas_Admin {
             'sku_code' => sanitize_text_field(wp_unslash($_POST['sku_code'] ?? '')),
             'send_value' => (float) (wp_unslash($_POST['send_value'] ?? 0)),
             'send_currency_iso' => strtoupper(sanitize_text_field(wp_unslash($_POST['send_currency_iso'] ?? 'USD'))),
+            'public_price' => (float) (wp_unslash($_POST['public_price'] ?? 0)),
+            'public_price_currency' => strtoupper(sanitize_text_field(wp_unslash($_POST['public_price_currency'] ?? 'EUR'))),
+            'package_family' => $this->normalize_package_family(wp_unslash($_POST['package_family'] ?? ''), wp_unslash($_POST['product_type_raw'] ?? '')),
+            'product_type_raw' => sanitize_text_field(wp_unslash($_POST['product_type_raw'] ?? '')),
+            'validity_raw' => sanitize_text_field(wp_unslash($_POST['validity_raw'] ?? '')),
+            'validity_days' => $this->parse_validity_days(wp_unslash($_POST['validity_raw'] ?? '')),
             'provider_name' => sanitize_text_field(wp_unslash($_POST['provider_name'] ?? '')),
             'description' => sanitize_text_field(wp_unslash($_POST['description'] ?? '')),
             'is_active' => empty($_POST['is_active']) ? 0 : 1,
@@ -642,6 +829,11 @@ class DC_Recargas_Admin {
         $receive = sanitize_text_field(wp_unslash($_POST['receive'] ?? ''));
         $send_value = (float) (wp_unslash($_POST['send_value'] ?? 0));
         $send_currency_iso = strtoupper(sanitize_text_field(wp_unslash($_POST['send_currency_iso'] ?? 'EUR')));
+        $package_group = sanitize_text_field(wp_unslash($_POST['package_group'] ?? ''));
+        $product_type_raw = sanitize_text_field(wp_unslash($_POST['product_type'] ?? ''));
+        $validity_raw = sanitize_text_field(wp_unslash($_POST['validity'] ?? ''));
+        $public_price = (float) (wp_unslash($_POST['public_price'] ?? 0));
+        $public_price_currency = strtoupper(sanitize_text_field(wp_unslash($_POST['public_price_currency'] ?? 'EUR')));
         $is_active = empty($_POST['is_active']) ? 0 : 1;
 
         if (empty($country_iso) || empty($sku_code) || empty($operator)) {
@@ -658,6 +850,12 @@ class DC_Recargas_Admin {
             'sku_code' => $sku_code,
             'send_value' => $send_value,
             'send_currency_iso' => !empty($send_currency_iso) ? $send_currency_iso : 'EUR',
+            'public_price' => $public_price,
+            'public_price_currency' => !empty($public_price_currency) ? $public_price_currency : 'EUR',
+            'package_family' => $this->normalize_package_family($package_group, $product_type_raw),
+            'product_type_raw' => $product_type_raw,
+            'validity_raw' => $validity_raw,
+            'validity_days' => $this->parse_validity_days($validity_raw),
             'provider_name' => $operator,
             'description' => $receive,
             'is_active' => $is_active,
@@ -711,6 +909,7 @@ class DC_Recargas_Admin {
         $items = [];
         $group_counts = [];
         $group_labels = $this->get_api_package_group_labels();
+        $csv_catalog = $this->get_csv_catalog_index();
         foreach ($raw_items as $product) {
             $benefits = [];
             if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
@@ -725,7 +924,20 @@ class DC_Recargas_Admin {
 
             $receive = !empty($benefits) ? implode(', ', $benefits) : ($product['DefaultDisplayText'] ?? '');
             $label   = ($product['DefaultDisplayText'] ?? '') ?: ($product['SkuCode'] ?? '');
-            $package_group = $this->classify_api_package_group($product, $receive, $label);
+            $sku_code = (string) ($product['SkuCode'] ?? '');
+            $csv_match = $sku_code !== '' && isset($csv_catalog[$sku_code]) ? $csv_catalog[$sku_code] : null;
+
+            if (is_array($csv_match)) {
+                $receive = $csv_match['receive'] !== '' ? $csv_match['receive'] : $receive;
+                $label = $csv_match['label'] !== '' ? $csv_match['label'] : $label;
+            }
+
+            $package_group = $this->classify_api_package_group(
+                $product,
+                $receive,
+                $label,
+                is_array($csv_match) ? $csv_match['product_type'] : ''
+            );
 
             if (!isset($group_counts[$package_group])) {
                 $group_counts[$package_group] = 0;
@@ -734,16 +946,17 @@ class DC_Recargas_Admin {
 
             $items[] = [
                 'country_iso'       => $country_iso,
-                'sku_code'          => $product['SkuCode'] ?? '',
-                'operator'          => $product['ProviderCode'] ?? '',
-                'product_type'      => $product['ProductType'] ?? '',
+                'sku_code'          => $sku_code,
+                'operator'          => is_array($csv_match) && $csv_match['operator'] !== '' ? $csv_match['operator'] : ($product['ProviderCode'] ?? ''),
+                'product_type'      => is_array($csv_match) && $csv_match['product_type'] !== '' ? $csv_match['product_type'] : ($product['ProductType'] ?? ''),
                 'label'             => $label,
                 'send_value'        => isset($product['Minimum']['SendValue']) ? (float) $product['Minimum']['SendValue'] : 0,
                 'send_currency_iso' => $product['Minimum']['SendCurrencyIso'] ?? 'USD',
                 'receive'           => $receive,
-                'validity'          => $product['ValidityPeriodIso'] ?? '',
+                'validity'          => is_array($csv_match) && $csv_match['validity'] !== '' ? $csv_match['validity'] : ($product['ValidityPeriodIso'] ?? ''),
                 'package_group'     => $package_group,
                 'package_group_label' => $group_labels[$package_group] ?? ($group_labels['other'] ?? 'Otros'),
+                'catalog_source'    => is_array($csv_match) ? 'csv+api' : 'api',
             ];
         }
 
@@ -765,9 +978,24 @@ class DC_Recargas_Admin {
         ];
     }
 
-    private function classify_api_package_group($product, $receive = '', $label = '') {
+    private function classify_api_package_group($product, $receive = '', $label = '', $csv_product_type = '') {
         $product_type = strtolower(trim((string) ($product['ProductType'] ?? '')));
+        $csv_product_type = strtolower(trim((string) $csv_product_type));
         $benefit_types = [];
+
+        if ($csv_product_type !== '') {
+            if (strpos($csv_product_type, 'top-up') !== false || strpos($csv_product_type, 'topup') !== false) {
+                return 'saldo';
+            }
+
+            if (strpos($csv_product_type, 'data') !== false) {
+                return 'data';
+            }
+
+            if (strpos($csv_product_type, 'bundle') !== false) {
+                return 'combo';
+            }
+        }
 
         if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
             foreach ($product['Benefits'] as $benefit) {
@@ -832,6 +1060,125 @@ class DC_Recargas_Admin {
         return false;
     }
 
+    private function get_csv_catalog_index() {
+        if (is_array($this->csv_catalog_index)) {
+            return $this->csv_catalog_index;
+        }
+
+        $this->csv_catalog_index = [];
+        $csv_path = $this->get_active_catalog_csv_path();
+        if (!file_exists($csv_path) || !is_readable($csv_path)) {
+            return $this->csv_catalog_index;
+        }
+
+        $handle = fopen($csv_path, 'r');
+        if (!$handle) {
+            return $this->csv_catalog_index;
+        }
+
+        $headers = fgetcsv($handle, 0, ';');
+        $validation = $this->validate_catalog_csv_headers($headers);
+        if (!$validation['is_valid']) {
+            fclose($handle);
+            return $this->csv_catalog_index;
+        }
+
+        $headers = $validation['headers'];
+
+        while (($row = fgetcsv($handle, 0, ';')) !== false) {
+            if (!is_array($row) || count($row) < count($headers)) {
+                continue;
+            }
+
+            $record = array_combine($headers, array_slice($row, 0, count($headers)));
+            if (!is_array($record)) {
+                continue;
+            }
+
+            $sku_code = trim((string) ($record['SkuCode'] ?? ''));
+            if ($sku_code === '') {
+                continue;
+            }
+
+            $operator = trim((string) ($record['Operator'] ?? ''));
+            $receive = trim((string) ($record['Receive'] ?? ''));
+
+            $this->csv_catalog_index[$sku_code] = [
+                'sku_code' => $sku_code,
+                'operator' => $operator,
+                'receive' => $receive,
+                'product_type' => trim((string) ($record['Product type'] ?? '')),
+                'country' => trim((string) ($record['Country'] ?? '')),
+                'validity' => trim((string) ($record['Validity'] ?? '')),
+                'label' => trim($operator . ($receive !== '' ? ' - ' . $receive : '')),
+            ];
+        }
+
+        fclose($handle);
+
+        return $this->csv_catalog_index;
+    }
+
+    private function normalize_package_family($raw_family, $raw_product_type = '') {
+        $family = strtolower(trim((string) $raw_family));
+        $product_type = strtolower(trim((string) $raw_product_type));
+
+        $aliases = [
+            'saldo' => 'topup',
+            'top-up' => 'topup',
+            'topup' => 'topup',
+            'data' => 'data',
+            'combo' => 'combo',
+            'voucher' => 'voucher',
+            'pin' => 'voucher',
+            'dth' => 'dth',
+            'other' => 'other',
+        ];
+
+        if ($family !== '' && isset($aliases[$family])) {
+            return $aliases[$family];
+        }
+
+        if (strpos($product_type, 'top-up') !== false || strpos($product_type, 'topup') !== false) {
+            return 'topup';
+        }
+
+        if (strpos($product_type, 'data') !== false) {
+            return 'data';
+        }
+
+        if (strpos($product_type, 'bundle') !== false) {
+            return 'combo';
+        }
+
+        if (strpos($product_type, 'voucher') !== false || strpos($product_type, 'pin') !== false) {
+            return 'voucher';
+        }
+
+        if (strpos($product_type, 'dth') !== false) {
+            return 'dth';
+        }
+
+        return 'other';
+    }
+
+    private function parse_validity_days($raw_validity) {
+        $validity = trim((string) $raw_validity);
+        if ($validity === '' || strtoupper($validity) === 'N/A') {
+            return null;
+        }
+
+        if (preg_match('/^P(\d+)D$/i', $validity, $iso_match)) {
+            return (int) $iso_match[1];
+        }
+
+        if (preg_match('/\b(\d{1,4})\s*(?:d|day|days|dia|dias|días)\b/i', $validity, $days_match)) {
+            return (int) $days_match[1];
+        }
+
+        return null;
+    }
+
     public function render_page() {
         $options = $this->api->get_options();
         $bundles = get_option('dc_recargas_bundles', []);
@@ -860,10 +1207,12 @@ class DC_Recargas_Admin {
         $dl_country_iso     = array_column($landing_country_choices, 'iso');
         $dl_label           = array_values(array_unique(array_filter(array_column($bundles, 'label'))));
         $dl_send_currency   = array_values(array_unique(array_filter(array_column($bundles, 'send_currency_iso'))));
+        $dl_public_currency = array_values(array_unique(array_filter(array_column($bundles, 'public_price_currency'))));
         $dl_provider_name   = array_values(array_unique(array_filter(array_column($bundles, 'provider_name'))));
         sort($dl_country_iso);
         sort($dl_label);
         sort($dl_send_currency);
+        sort($dl_public_currency);
         sort($dl_provider_name);
 
         $total_bundles = count($bundles);
@@ -900,6 +1249,7 @@ class DC_Recargas_Admin {
         }
         ?>
         <div class="wrap dc-admin-wrap">
+            <?php settings_errors('dc_recargas_options'); ?>
             <div class="dc-admin-hero">
                 <div class="dc-admin-hero__content">
                     <p><em>Hecho por Cambiodigital.net, personalizado para cubakilos.com.</em></p>
@@ -1534,6 +1884,26 @@ class DC_Recargas_Admin {
                     width: min(100%, 480px);
                 }
 
+                .dc-landing-bundles-filters {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                }
+
+                .dc-landing-bundles-filters label {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                    font-size: 12px;
+                    color: #334155;
+                    font-weight: 600;
+                }
+
+                .dc-landing-bundles-filters select {
+                    min-width: 150px;
+                }
+
                 .dc-landing-bundles-checklist {
                     max-height: 240px;
                     overflow: auto;
@@ -1858,7 +2228,7 @@ class DC_Recargas_Admin {
                 <section id="dc-tab-setup" class="dc-tab-panel" data-dc-tab-panel="tab_setup">
 
             <h2>Credenciales y modo de operación</h2>
-            <form method="post" action="options.php">
+            <form method="post" action="options.php" enctype="multipart/form-data">
                 <?php settings_fields('dc_recargas_group'); ?>
 
                 <table class="form-table" role="presentation">
@@ -1928,7 +2298,8 @@ class DC_Recargas_Admin {
                                 </p>
                             <?php endif; ?>
                         </td>
-                                        <button type="button" class="button button-primary" id="dc_api_load_manual_btn" disabled>Seleccionar producto</button>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="dc_recharge_mode">Modo de recargas</label></th>
                         <td>
                             <select id="dc_recharge_mode" name="dc_recargas_options[recharge_mode]">
@@ -1946,6 +2317,32 @@ class DC_Recargas_Admin {
                                 <strong>Simular siempre:</strong> Todas las transacciones son simuladas, sin opción de cambio.<br>
                                 <strong>Permitir cambio:</strong> Por defecto simula, pero frontend puede enviar <code>ValidateOnly: false</code> para probar reales.<br>
                                 <strong>Producción:</strong> Transacciones reales sin simulación.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_catalog_csv_file">CSV catálogo por SKU</label></th>
+                        <td>
+                            <input type="file" id="dc_catalog_csv_file" name="dc_catalog_csv_file" accept=".csv,text/csv">
+                            <p class="description">Sube un CSV con cabeceras fijas: <strong>SkuCode</strong>, <strong>Operator</strong>, <strong>Receive</strong>, <strong>Product type</strong>, <strong>Country</strong>, <strong>Validity</strong>. El sistema identifica cada columna por su nombre, no por su posición.</p>
+                            <p class="description">
+                                <?php
+                                $active_csv_path = $this->get_active_catalog_csv_path($options);
+                                $uploaded_csv_path = $this->get_uploaded_catalog_csv_path($options);
+                                $csv_source_label = $uploaded_csv_path !== '' ? 'CSV subido desde admin' : 'CSV del repositorio';
+                                ?>
+                                <strong>Fuente activa:</strong> <?php echo esc_html($csv_source_label); ?>.<br>
+                                <?php if (!empty($options['catalog_csv_original_name'])): ?>
+                                    <strong>Último archivo:</strong> <?php echo esc_html($options['catalog_csv_original_name']); ?>.<br>
+                                <?php endif; ?>
+                                <?php if (!empty($options['catalog_csv_uploaded_at'])): ?>
+                                    <strong>Actualizado:</strong> <?php echo esc_html($options['catalog_csv_uploaded_at']); ?>.<br>
+                                <?php endif; ?>
+                                <?php if ($active_csv_path !== ''): ?>
+                                    <strong>Ruta activa:</strong> <?php echo esc_html($active_csv_path); ?>
+                                <?php else: ?>
+                                    <strong>Ruta activa:</strong> No hay CSV disponible.
+                                <?php endif; ?>
                             </p>
                         </td>
                     </tr>
@@ -1998,11 +2395,25 @@ class DC_Recargas_Admin {
                     <tr>
                         <th scope="row"><label for="dc_landing_bundle_ids">Bundles de la landing</label></th>
                         <td>
+                            <div class="dc-landing-bundles-filters" data-dc-landing-filters>
+                                <label>País
+                                    <select id="dc_landing_filter_country" class="small-text" data-filter="country">
+                                        <option value="all">Todos</option>
+                                    </select>
+                                </label>
+                                <label>Tipo de producto
+                                    <select id="dc_landing_filter_family" class="small-text" data-filter="family">
+                                        <option value="all">Todos</option>
+                                    </select>
+                                </label>
+                            </div>
                             <div id="dc_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para la landing">
                                 <?php foreach ($bundles as $bundle) : ?>
                                     <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
                                     <?php if ($bundle_id === '') { continue; } ?>
-                                    <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" draggable="true">
+                                    <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
+                                    <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
+                                    <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" draggable="true">
                                         <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
                                         <span class="dc-landing-bundles-checklist__main">
                                             <input type="checkbox" class="dc-create-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
@@ -2110,15 +2521,29 @@ class DC_Recargas_Admin {
                             <tr>
                                 <th scope="row"><label for="dc_edit_landing_bundle_ids">Bundles de la landing</label></th>
                                 <td>
+                                    <div class="dc-landing-bundles-filters" data-dc-landing-filters>
+                                        <label>País
+                                            <select id="dc_edit_landing_filter_country" class="small-text" data-filter="country">
+                                                <option value="all">Todos</option>
+                                            </select>
+                                        </label>
+                                        <label>Tipo de producto
+                                            <select id="dc_edit_landing_filter_family" class="small-text" data-filter="family">
+                                                <option value="all">Todos</option>
+                                            </select>
+                                        </label>
+                                    </div>
                                     <div id="dc_edit_landing_bundle_ids" class="dc-landing-bundles-checklist" role="group" aria-label="Bundles disponibles para editar la landing">
                                         <?php foreach ($bundles as $bundle) : ?>
                                             <?php $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? '')); ?>
                                             <?php if ($bundle_id === '') { continue; } ?>
-                                                <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" draggable="true">
+                                            <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
+                                            <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
+                                                <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" draggable="true">
                                                     <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
                                                 <span class="dc-landing-bundles-checklist__main">
                                                     <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
-                                                    <span>[<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
+                                                    <span>[<?php echo esc_html($bundle_country); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
                                                 </span>
                                                 <span class="dc-landing-bundles-checklist__controls">
                                                     <span class="dc-landing-bundles-checklist__order">Orden
@@ -2227,7 +2652,7 @@ class DC_Recargas_Admin {
                 <!-- ── Sub-panel 2: API ── -->
                 <div class="dc-catalog-subpanel is-active" data-catalog-panel="api" aria-hidden="false">
 
-            <p class="dc-catalog-subpanel__intro">Consulta los paquetes disponibles directamente desde DingConnect en tiempo real. No necesitas el CSV; los resultados se guardan en caché por <strong>10 minutos</strong> por país.</p>
+            <p class="dc-catalog-subpanel__intro">Consulta SKUs y coste directamente desde DingConnect en tiempo real. El panel hidrata operador, receive, tipo y vigencia desde el CSV local por SKU; los resultados se guardan en caché por <strong>10 minutos</strong> por país.</p>
 
             <table class="form-table" role="presentation">
                 <tr>
@@ -2278,6 +2703,7 @@ class DC_Recargas_Admin {
                         <input type="text" id="dc_api_search" class="regular-text" placeholder="Buscar por operador, beneficio o SKU..." disabled style="margin-bottom:6px;width:100%;box-sizing:border-box;">
                         <select id="dc_api_results" size="10" class="large-text"></select>
                         <p class="description" id="dc_api_help">Selecciona un país y haz clic en «Buscar en API». Luego selecciona un paquete y usa los botones abajo.</p>
+                        <p class="description" id="dc_api_csv_warn" hidden style="color:#a00;margin-top:4px;"></p>
                         <p>
                                <button type="button" class="button button-primary" id="dc_api_load_manual_btn" disabled>Seleccionar producto</button>
                         </p>
@@ -2295,6 +2721,7 @@ class DC_Recargas_Admin {
                 var apiResultsEl = document.getElementById('dc_api_results');
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiLoadManualBtn = document.getElementById('dc_api_load_manual_btn');
+                var apiCsvWarnEl     = document.getElementById('dc_api_csv_warn');
                 var catalogSubtabsEl = document.querySelector('.dc-catalog-subtabs');
                 var manualCountryIsoEl = null;
                 var manualLabelEl = null;
@@ -2303,6 +2730,11 @@ class DC_Recargas_Admin {
                 var manualSendCurrencyEl = null;
                 var manualProviderEl = null;
                 var manualDescriptionEl = null;
+                var manualPublicPriceEl = null;
+                var manualPublicPriceCurrencyEl = null;
+                var manualPackageFamilyEl = null;
+                var manualProductTypeRawEl = null;
+                var manualValidityRawEl = null;
                 var manualBundleSourceEl = null;
                 var apiSelected  = null;
                 var apiItems = [];
@@ -2395,7 +2827,8 @@ class DC_Recargas_Admin {
                 }
 
                 function apiOptionLabel(item) {
-                    var parts = [item.operator, item.receive || item.label];
+                    var prefix = (item.catalog_source === 'api') ? '[sin CSV] ' : '';
+                    var parts = [prefix + (item.operator || ''), item.receive || item.label];
                     if (item.send_value && item.send_currency_iso) {
                         parts.push(item.send_value + ' ' + item.send_currency_iso);
                     }
@@ -2584,12 +3017,22 @@ class DC_Recargas_Admin {
                     var sendCurrencyEl = document.getElementById('dc_send_currency_iso');
                     var providerEl = document.getElementById('dc_provider_name');
                     var descriptionEl = document.getElementById('dc_description');
+                    var publicPriceEl = document.getElementById('dc_public_price');
+                    var publicPriceCurrencyEl = document.getElementById('dc_public_price_currency');
+                    var packageFamilyEl = document.getElementById('dc_package_family');
+                    var productTypeRawEl = document.getElementById('dc_product_type_raw');
+                    var validityRawEl = document.getElementById('dc_validity_raw');
 
                     if (countryEl) countryEl.value = item.country_iso || '';
                     if (labelEl) labelEl.value = (item.operator || 'Producto') + ' - ' + (item.receive || item.label || item.sku_code || '');
                     if (skuEl) skuEl.value = item.sku_code || '';
                     if (sendValueEl) sendValueEl.value = item.send_value != null ? item.send_value : '';
                     if (sendCurrencyEl) sendCurrencyEl.value = item.send_currency_iso || 'USD';
+                    if (publicPriceEl) publicPriceEl.value = '';
+                    if (publicPriceCurrencyEl) publicPriceCurrencyEl.value = 'EUR';
+                    if (packageFamilyEl) packageFamilyEl.value = item.package_group || 'other';
+                    if (productTypeRawEl) productTypeRawEl.value = item.product_type || '';
+                    if (validityRawEl) validityRawEl.value = item.validity || '';
                     if (providerEl) providerEl.value = item.operator || '';
                     if (descriptionEl) descriptionEl.value = item.receive || item.label || '';
                     updateManualBundleSource(item);
@@ -2702,12 +3145,15 @@ class DC_Recargas_Admin {
                             apiResultsEl.appendChild(optgroup);
                         });
 
+                    var apiOnlyCount = items.filter(function (i) { return i.catalog_source === 'api'; }).length;
+                    var csvSuffix = apiOnlyCount > 0 ? ' (' + apiOnlyCount + ' sin match en CSV)' : '';
+
                     if (apiFilterEl && apiFilterEl.value !== 'all') {
-                        apiHelpEl.textContent = items.length + ' paquete(s) en «' + (apiGroupLabels[apiFilterEl.value] || apiFilterEl.value) + '». Selecciona uno para crear el bundle o cargarlo en alta manual.';
+                        apiHelpEl.textContent = items.length + ' paquete(s) en «' + (apiGroupLabels[apiFilterEl.value] || apiFilterEl.value) + '»' + csvSuffix + '. Selecciona uno para crear el bundle o cargarlo en alta manual.';
                         return;
                     }
 
-                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s), agrupados por tipo. Selecciona uno para crear el bundle o cargarlo en alta manual.';
+                    apiHelpEl.textContent = items.length + ' paquete(s) encontrado(s), agrupados por tipo' + csvSuffix + '. Selecciona uno para crear el bundle o cargarlo en alta manual.';
                 }
 
                 function refreshApiResults() {
@@ -2781,14 +3227,24 @@ class DC_Recargas_Admin {
                     if (!opt) {
                         apiSelected = null;
                         apiLoadManualBtn.disabled = true;
+                        if (apiCsvWarnEl) { apiCsvWarnEl.hidden = true; }
                         return;
                     }
                     try {
                         apiSelected = JSON.parse(opt.dataset.item);
                         apiLoadManualBtn.disabled = false;
+                        if (apiCsvWarnEl) {
+                            if (apiSelected.catalog_source === 'api') {
+                                apiCsvWarnEl.textContent = '⚠ Este SKU (' + (apiSelected.sku_code || '') + ') no tiene match en el CSV del catálogo. Los datos de operador y beneficio provienen directamente de la API.';
+                                apiCsvWarnEl.hidden = false;
+                            } else {
+                                apiCsvWarnEl.hidden = true;
+                            }
+                        }
                     } catch (e) {
                         apiSelected = null;
                         apiLoadManualBtn.disabled = true;
+                        if (apiCsvWarnEl) { apiCsvWarnEl.hidden = true; }
                     }
                 });
 
@@ -2825,6 +3281,9 @@ class DC_Recargas_Admin {
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="dc_add_bundle">
                 <?php wp_nonce_field('dc_add_bundle'); ?>
+                <input type="hidden" id="dc_package_family" name="package_family" value="other">
+                <input type="hidden" id="dc_product_type_raw" name="product_type_raw" value="">
+                <input type="hidden" id="dc_validity_raw" name="validity_raw" value="">
 
                 <table class="form-table" role="presentation">
                     <tr>
@@ -2840,12 +3299,20 @@ class DC_Recargas_Admin {
                         <td><input required type="text" id="dc_sku_code" name="sku_code" class="regular-text" placeholder="SKU_REAL_DING" value=""></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="dc_send_value">Monto</label></th>
+                        <th scope="row"><label for="dc_send_value">Coste DIN</label></th>
                         <td><input type="number" step="0.01" id="dc_send_value" name="send_value" class="small-text" value="0"></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="dc_send_currency_iso">Moneda</label></th>
+                        <th scope="row"><label for="dc_send_currency_iso">Moneda coste</label></th>
                         <td><input type="text" id="dc_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="USD" list="dc_dl_send_currency"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_public_price">Precio al Público</label></th>
+                        <td><input type="number" step="0.01" id="dc_public_price" name="public_price" class="small-text" value=""></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_public_price_currency">Moneda pública</label></th>
+                        <td><input type="text" id="dc_public_price_currency" name="public_price_currency" class="small-text dc-combo-input" value="EUR" list="dc_dl_public_currency"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_provider_name">Operador</label></th>
@@ -2900,8 +3367,10 @@ class DC_Recargas_Admin {
                         <th>País</th>
                         <th>Nombre</th>
                         <th>SKU</th>
-                        <th>Monto</th>
-                        <th>Moneda</th>
+                        <th>Coste DIN</th>
+                        <th>Moneda coste</th>
+                        <th>Precio público</th>
+                        <th>Moneda pública</th>
                         <th>Operador</th>
                         <th>Estado</th>
                         <th>Acciones</th>
@@ -2910,7 +3379,7 @@ class DC_Recargas_Admin {
                 <tbody>
                 <?php if (empty($bundles)) : ?>
                     <tr>
-                        <td colspan="9">Aún no has agregado bundles.</td>
+                        <td colspan="11">Aún no has agregado bundles.</td>
                     </tr>
                 <?php else : ?>
                     <?php foreach ($bundles as $bundle) : ?>
@@ -2923,6 +3392,8 @@ class DC_Recargas_Admin {
                             <td><?php echo esc_html($bundle['sku_code'] ?? ''); ?></td>
                             <td><?php echo esc_html(number_format((float) ($bundle['send_value'] ?? 0), 2)); ?></td>
                             <td><?php echo esc_html($bundle['send_currency_iso'] ?? ''); ?></td>
+                            <td><?php echo esc_html(isset($bundle['public_price']) && $bundle['public_price'] !== '' ? number_format((float) $bundle['public_price'], 2) : ''); ?></td>
+                            <td><?php echo esc_html($bundle['public_price_currency'] ?? 'EUR'); ?></td>
                             <td><?php echo esc_html($bundle['provider_name'] ?? ''); ?></td>
                             <td><?php echo !empty($bundle['is_active']) ? 'Activo' : 'Inactivo'; ?></td>
                             <td>
@@ -2971,6 +3442,9 @@ class DC_Recargas_Admin {
                         <input type="hidden" name="action" value="dc_update_bundle">
                         <?php wp_nonce_field('dc_update_bundle'); ?>
                         <input type="hidden" id="dc_edit_bundle_id" name="bundle_id" value="<?php echo esc_attr($editing_bundle['id'] ?? ''); ?>">
+                        <input type="hidden" id="dc_edit_package_family" name="package_family" value="<?php echo esc_attr($editing_bundle['package_family'] ?? 'other'); ?>">
+                        <input type="hidden" id="dc_edit_product_type_raw" name="product_type_raw" value="<?php echo esc_attr($editing_bundle['product_type_raw'] ?? ''); ?>">
+                        <input type="hidden" id="dc_edit_validity_raw" name="validity_raw" value="<?php echo esc_attr($editing_bundle['validity_raw'] ?? ''); ?>">
 
                         <table class="form-table" role="presentation">
                             <tr>
@@ -2986,12 +3460,20 @@ class DC_Recargas_Admin {
                                 <td><input required type="text" id="dc_edit_sku_code" name="sku_code" class="regular-text" placeholder="SKU_REAL_DING" value="<?php echo esc_attr($editing_bundle['sku_code'] ?? ''); ?>"></td>
                             </tr>
                             <tr>
-                                <th scope="row"><label for="dc_edit_send_value">Monto</label></th>
+                                <th scope="row"><label for="dc_edit_send_value">Coste DIN</label></th>
                                 <td><input type="number" step="0.01" id="dc_edit_send_value" name="send_value" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['send_value']) ? (float) $editing_bundle['send_value'] : 0); ?>"></td>
                             </tr>
                             <tr>
-                                <th scope="row"><label for="dc_edit_send_currency_iso">Moneda</label></th>
+                                <th scope="row"><label for="dc_edit_send_currency_iso">Moneda coste</label></th>
                                 <td><input type="text" id="dc_edit_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="<?php echo esc_attr($editing_bundle['send_currency_iso'] ?? 'USD'); ?>" list="dc_dl_send_currency"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_public_price">Precio al Público</label></th>
+                                <td><input type="number" step="0.01" id="dc_edit_public_price" name="public_price" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['public_price']) ? (float) $editing_bundle['public_price'] : ''); ?>"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_public_price_currency">Moneda pública</label></th>
+                                <td><input type="text" id="dc_edit_public_price_currency" name="public_price_currency" class="small-text dc-combo-input" value="<?php echo esc_attr($editing_bundle['public_price_currency'] ?? 'EUR'); ?>" list="dc_dl_public_currency"></td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_provider_name">Operador</label></th>
@@ -3445,6 +3927,12 @@ class DC_Recargas_Admin {
                 <option value="<?php echo esc_attr($v); ?>">
             <?php endforeach; ?>
         </datalist>
+        <datalist id="dc_dl_public_currency">
+            <?php foreach ($dl_public_currency as $v) : ?>
+                <option value="<?php echo esc_attr($v); ?>">
+            <?php endforeach; ?>
+            <option value="EUR">
+        </datalist>
         <datalist id="dc_dl_provider_name">
             <?php foreach ($dl_provider_name as $v) : ?>
                 <option value="<?php echo esc_attr($v); ?>">
@@ -3471,6 +3959,11 @@ class DC_Recargas_Admin {
                 var editSkuEl = document.getElementById('dc_edit_sku_code');
                 var editSendValueEl = document.getElementById('dc_edit_send_value');
                 var editSendCurrencyEl = document.getElementById('dc_edit_send_currency_iso');
+                var editPublicPriceEl = document.getElementById('dc_edit_public_price');
+                var editPublicPriceCurrencyEl = document.getElementById('dc_edit_public_price_currency');
+                var editPackageFamilyEl = document.getElementById('dc_edit_package_family');
+                var editProductTypeRawEl = document.getElementById('dc_edit_product_type_raw');
+                var editValidityRawEl = document.getElementById('dc_edit_validity_raw');
                 var editProviderEl = document.getElementById('dc_edit_provider_name');
                 var editDescriptionEl = document.getElementById('dc_edit_description');
                 var editIsActiveEl = document.getElementById('dc_edit_is_active');
@@ -3484,6 +3977,10 @@ class DC_Recargas_Admin {
                 var landingEditSubtitleEl = document.getElementById('dc_edit_landing_subtitle');
                 var landingCreateChecklistEl = document.getElementById('dc_landing_bundle_ids');
                 var landingEditChecklistEl = document.getElementById('dc_edit_landing_bundle_ids');
+                var landingCreateCountryFilterEl = document.getElementById('dc_landing_filter_country');
+                var landingCreateFamilyFilterEl = document.getElementById('dc_landing_filter_family');
+                var landingEditCountryFilterEl = document.getElementById('dc_edit_landing_filter_country');
+                var landingEditFamilyFilterEl = document.getElementById('dc_edit_landing_filter_family');
                 var landingCreateBundleCheckboxEls = document.querySelectorAll('.dc-create-landing-bundle-checkbox');
                 var landingCreateBundleOrderEls = document.querySelectorAll('.dc-create-landing-bundle-order');
                 var landingCreateFeaturedRadioEls = document.querySelectorAll('.dc-create-landing-featured-radio');
@@ -3697,6 +4194,11 @@ class DC_Recargas_Admin {
                     if (editSkuEl) editSkuEl.value = bundle.sku_code || '';
                     if (editSendValueEl) editSendValueEl.value = typeof bundle.send_value !== 'undefined' ? bundle.send_value : 0;
                     if (editSendCurrencyEl) editSendCurrencyEl.value = bundle.send_currency_iso || 'USD';
+                    if (editPublicPriceEl) editPublicPriceEl.value = typeof bundle.public_price !== 'undefined' ? bundle.public_price : '';
+                    if (editPublicPriceCurrencyEl) editPublicPriceCurrencyEl.value = bundle.public_price_currency || 'EUR';
+                    if (editPackageFamilyEl) editPackageFamilyEl.value = bundle.package_family || 'other';
+                    if (editProductTypeRawEl) editProductTypeRawEl.value = bundle.product_type_raw || '';
+                    if (editValidityRawEl) editValidityRawEl.value = bundle.validity_raw || '';
                     if (editProviderEl) editProviderEl.value = bundle.provider_name || '';
                     if (editDescriptionEl) editDescriptionEl.value = bundle.description || '';
                     if (editIsActiveEl) editIsActiveEl.checked = !!Number(bundle.is_active || 0) || bundle.is_active === true;
@@ -3741,7 +4243,7 @@ class DC_Recargas_Admin {
                     window.history.replaceState({}, '', url.toString());
                 }
 
-                function initLandingBundleChecklist(checklistEl) {
+                function initLandingBundleChecklist(checklistEl, countryFilterEl, familyFilterEl) {
                     if (!checklistEl) {
                         return;
                     }
@@ -3760,11 +4262,76 @@ class DC_Recargas_Admin {
                         return rowEl ? rowEl.querySelector('input[type="checkbox"][name="bundle_ids[]"]') : null;
                     }
 
+                    function getFamilyLabel(family) {
+                        var labels = {
+                            topup: 'Top-up',
+                            data: 'Data',
+                            combo: 'Combo',
+                            voucher: 'Voucher',
+                            dth: 'DTH',
+                            other: 'Otros'
+                        };
+                        return labels[family] || family;
+                    }
+
                     function syncSelectedState() {
                         getRows().forEach(function (rowEl) {
                             var checkboxEl = getCheckboxFromRow(rowEl);
                             rowEl.classList.toggle('is-selected', !!(checkboxEl && checkboxEl.checked));
                         });
+                    }
+
+                    function applyRowFilters() {
+                        var selectedCountry = countryFilterEl ? String(countryFilterEl.value || 'all') : 'all';
+                        var selectedFamily = familyFilterEl ? String(familyFilterEl.value || 'all') : 'all';
+
+                        getRows().forEach(function (rowEl) {
+                            var checkboxEl = getCheckboxFromRow(rowEl);
+                            var isSelected = !!(checkboxEl && checkboxEl.checked);
+                            var rowCountry = String(rowEl.getAttribute('data-country-iso') || '').toUpperCase();
+                            var rowFamily = String(rowEl.getAttribute('data-package-family') || 'other').toLowerCase();
+                            var countryMatch = selectedCountry === 'all' || rowCountry === selectedCountry;
+                            var familyMatch = selectedFamily === 'all' || rowFamily === selectedFamily;
+                            rowEl.hidden = !(isSelected || (countryMatch && familyMatch));
+                        });
+                    }
+
+                    function syncFilterOptions() {
+                        var countries = {};
+                        var families = {};
+
+                        getRows().forEach(function (rowEl) {
+                            var rowCountry = String(rowEl.getAttribute('data-country-iso') || '').toUpperCase();
+                            var rowFamily = String(rowEl.getAttribute('data-package-family') || 'other').toLowerCase();
+                            if (rowCountry) {
+                                countries[rowCountry] = true;
+                            }
+                            families[rowFamily] = true;
+                        });
+
+                        if (countryFilterEl) {
+                            var currentCountry = String(countryFilterEl.value || 'all');
+                            countryFilterEl.innerHTML = '<option value="all">Todos</option>';
+                            Object.keys(countries).sort().forEach(function (countryIso) {
+                                var optionEl = document.createElement('option');
+                                optionEl.value = countryIso;
+                                optionEl.textContent = countryIso;
+                                countryFilterEl.appendChild(optionEl);
+                            });
+                            countryFilterEl.value = countryFilterEl.querySelector('option[value="' + currentCountry + '"]') ? currentCountry : 'all';
+                        }
+
+                        if (familyFilterEl) {
+                            var currentFamily = String(familyFilterEl.value || 'all');
+                            familyFilterEl.innerHTML = '<option value="all">Todos</option>';
+                            Object.keys(families).sort().forEach(function (family) {
+                                var optionEl = document.createElement('option');
+                                optionEl.value = family;
+                                optionEl.textContent = getFamilyLabel(family);
+                                familyFilterEl.appendChild(optionEl);
+                            });
+                            familyFilterEl.value = familyFilterEl.querySelector('option[value="' + currentFamily + '"]') ? currentFamily : 'all';
+                        }
                     }
 
                     function refreshOrderFromDom() {
@@ -3802,6 +4369,15 @@ class DC_Recargas_Admin {
                     reorderRowsByOrderInput();
                     refreshOrderFromDom();
                     syncSelectedState();
+                    syncFilterOptions();
+                    applyRowFilters();
+
+                    if (countryFilterEl) {
+                        countryFilterEl.addEventListener('change', applyRowFilters);
+                    }
+                    if (familyFilterEl) {
+                        familyFilterEl.addEventListener('change', applyRowFilters);
+                    }
 
                     checklistEl.addEventListener('change', function (event) {
                         var target = event.target;
@@ -3809,6 +4385,7 @@ class DC_Recargas_Admin {
 
                         if (target.matches('input[type="checkbox"][name="bundle_ids[]"]')) {
                             syncSelectedState();
+                            applyRowFilters();
                             return;
                         }
 
@@ -3819,6 +4396,7 @@ class DC_Recargas_Admin {
                                 featuredCheckboxEl.checked = true;
                             }
                             syncSelectedState();
+                            applyRowFilters();
                         }
                     });
 
@@ -3833,6 +4411,7 @@ class DC_Recargas_Admin {
                                 checkboxEl.checked = true;
                             }
                             syncSelectedState();
+                            applyRowFilters();
                         }
                     });
 
@@ -3891,6 +4470,8 @@ class DC_Recargas_Admin {
                         event.preventDefault();
                         clearDragOverStyles();
                         refreshOrderFromDom();
+                        syncFilterOptions();
+                        applyRowFilters();
                     });
 
                     checklistEl.addEventListener('dragend', function () {
@@ -3902,15 +4483,19 @@ class DC_Recargas_Admin {
                         draggingRowEl = null;
                         clearDragOverStyles();
                         refreshOrderFromDom();
+                        syncFilterOptions();
+                        applyRowFilters();
                     });
 
                     checklistEl.__dcReorderRowsByOrderInput = reorderRowsByOrderInput;
                     checklistEl.__dcRefreshOrderFromDom = refreshOrderFromDom;
                     checklistEl.__dcSyncSelectedState = syncSelectedState;
+                    checklistEl.__dcApplyFilters = applyRowFilters;
+                    checklistEl.__dcSyncFilterOptions = syncFilterOptions;
                 }
 
-                initLandingBundleChecklist(landingCreateChecklistEl);
-                initLandingBundleChecklist(landingEditChecklistEl);
+                initLandingBundleChecklist(landingCreateChecklistEl, landingCreateCountryFilterEl, landingCreateFamilyFilterEl);
+                initLandingBundleChecklist(landingEditChecklistEl, landingEditCountryFilterEl, landingEditFamilyFilterEl);
 
                 function openLandingEditModal(landing) {
                     if (!landingEditModalEl || !landing) {
@@ -3964,6 +4549,12 @@ class DC_Recargas_Admin {
                         }
                         if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcSyncSelectedState === 'function') {
                             landingEditChecklistEl.__dcSyncSelectedState();
+                        }
+                        if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcSyncFilterOptions === 'function') {
+                            landingEditChecklistEl.__dcSyncFilterOptions();
+                        }
+                        if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcApplyFilters === 'function') {
+                            landingEditChecklistEl.__dcApplyFilters();
                         }
                     }
 
@@ -4052,6 +4643,11 @@ class DC_Recargas_Admin {
                 var skuEl = document.getElementById('dc_sku_code');
                 var sendValueEl = document.getElementById('dc_send_value');
                 var sendCurrencyEl = document.getElementById('dc_send_currency_iso');
+                var publicPriceEl = document.getElementById('dc_public_price');
+                var publicPriceCurrencyEl = document.getElementById('dc_public_price_currency');
+                var packageFamilyEl = document.getElementById('dc_package_family');
+                var productTypeRawEl = document.getElementById('dc_product_type_raw');
+                var validityRawEl = document.getElementById('dc_validity_raw');
                 var providerEl = document.getElementById('dc_provider_name');
                 var descriptionEl = document.getElementById('dc_description');
 
@@ -4061,6 +4657,11 @@ class DC_Recargas_Admin {
                     if (skuEl) skuEl.value = item.sku_code || '';
                     if (sendValueEl) sendValueEl.value = item.send_value != null ? item.send_value : '';
                     if (sendCurrencyEl) sendCurrencyEl.value = item.send_currency_iso || 'EUR';
+                    if (publicPriceEl) publicPriceEl.value = '';
+                    if (publicPriceCurrencyEl) publicPriceCurrencyEl.value = 'EUR';
+                    if (packageFamilyEl) packageFamilyEl.value = item.package_group || 'other';
+                    if (productTypeRawEl) productTypeRawEl.value = item.product_type || '';
+                    if (validityRawEl) validityRawEl.value = item.validity || '';
                     if (providerEl) providerEl.value = item.operator || '';
                     if (descriptionEl) descriptionEl.value = item.receive || '';
                 }
@@ -4069,6 +4670,7 @@ class DC_Recargas_Admin {
                     dc_dl_country_iso: ['dc_country_iso', 'dc_edit_country_iso'],
                     dc_dl_label: ['dc_label', 'dc_edit_label'],
                     dc_dl_send_currency: ['dc_send_currency_iso', 'dc_edit_send_currency_iso'],
+                    dc_dl_public_currency: ['dc_public_price_currency', 'dc_edit_public_price_currency'],
                     dc_dl_provider_name: ['dc_provider_name', 'dc_edit_provider_name']
                 };
                 var comboboxRegistry = [];

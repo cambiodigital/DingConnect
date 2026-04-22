@@ -170,6 +170,12 @@ Nota operativa WooCommerce (abril 2026):
 
 - En la subpestaña `Buscar en API` del admin, los bundles creados desde resultados live se guardan como inactivos por defecto.
 - La activación/desactivación de bundles se realiza exclusivamente desde `Bundles guardados`, para mantener un único punto de control operativo.
+- La búsqueda live del admin sigue consultando DingConnect para obtener SKUs disponibles y coste vigente, pero hidrata `operator`, `receive`, `product_type` y `validity` desde `Products-with-sku.csv` cuando encuentra coincidencia exacta por `SkuCode`.
+- El admin permite reemplazar ese CSV curado desde la pestaña `Credenciales`. La validación se hace por nombre de cabeceras, de modo que el archivo puede cambiar de contenido cuando se quiera, siempre que mantenga los nombres esperados de columna.
+- El modelo de bundle soporta precio dual por registro: `send_value` (Coste DIN) y `public_price` (Precio al Público editable), con moneda pública por defecto en EUR.
+- La clasificación comercial por bundle usa `package_family` (`topup | data | combo | voucher | dth | other`) y conserva `product_type_raw` para trazabilidad contra API/CSV.
+- La vigencia del producto se guarda en texto (`validity_raw`) y, cuando es interpretable (por ejemplo `P30D` o `30 days`), se deriva `validity_days` para filtros o reglas futuras.
+- En landings dinámicas, el checklist de bundles incorpora filtros de País y Tipo de producto; los bundles ya seleccionados permanecen visibles aunque no coincidan con el filtro activo.
 
 ## 7.2 PIN, vouchers y productos de lectura de recibo
 

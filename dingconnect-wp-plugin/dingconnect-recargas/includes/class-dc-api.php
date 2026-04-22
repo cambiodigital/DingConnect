@@ -17,6 +17,10 @@ class DC_Recargas_API {
             'validate_only' => 1,
             'allow_real_recharge' => 0,
             'woo_allowed_gateways' => [],
+            'catalog_csv_path' => '',
+            'catalog_csv_url' => '',
+            'catalog_csv_uploaded_at' => '',
+            'catalog_csv_original_name' => '',
         ];
 
         return wp_parse_args(get_option('dc_recargas_options', []), $defaults);
