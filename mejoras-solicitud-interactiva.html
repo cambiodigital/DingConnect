@@ -203,7 +203,7 @@
                         return;
                     }
                 }
-            }, [system]);
+            }, [system, selectedNode]);
 
             const logChange = (action, entity, details) => {
                 setChangeLog(prev => [...prev, { id: Date.now(), action, entity, details, time: new Date().toLocaleTimeString() }]);
@@ -216,7 +216,7 @@
                     prop => prop.name.toLowerCase() === newProp.name.toLowerCase()
                 );
                 if (alreadyExists) {
-                    alert('Ese campo ya existe en esta entidad.');
+                    alert('Ya existe un campo con ese nombre (sin distinguir mayúsculas/minúsculas).');
                     return;
                 }
 
@@ -307,7 +307,7 @@
                 }
             };
 
-            const handleUndoLog = () => {
+            const handleRemoveLastLog = () => {
                 if (changeLog.length === 0) return;
                 setChangeLog(prev => prev.slice(0, -1));
             };
@@ -428,10 +428,10 @@
                     </select>
                     <div className="flex gap-2">
                         <button
-                            onClick={handleUndoLog}
+                            onClick={handleRemoveLastLog}
                             className="flex-1 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg px-3 py-2 text-xs font-semibold"
                         >
-                            Deshacer historial
+                            Quitar último log
                         </button>
                         <button
                             onClick={handleResetSession}
@@ -498,7 +498,7 @@
                     <div className="mt-6 bg-white rounded-xl border border-slate-200 p-4">
                         <h3 className="font-semibold text-slate-800 mb-3">Cambios recientes</h3>
                         <ul className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                            {[...changeLog].slice(-8).reverse().map((log) => (
+                            {changeLog.slice(-8).reverse().map((log) => (
                                 <li key={log.id} className="text-xs bg-slate-50 border border-slate-200 rounded p-2">
                                     <span className="font-semibold text-indigo-700">[{log.action}]</span> {log.details}
                                     <div className="text-slate-500 mt-1">{log.entity} · {log.time}</div>
