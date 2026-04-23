@@ -1,12 +1,16 @@
 ---
 deployment:
   tasks:
-    # Deploy solo archivos esenciales del plugin (excluye docs/, .git/, config, etc)
+    # Deploy solo archivos esenciales del plugin.
+    # Soporta dos estructuras del repo:
+    # 1) Plugin en raiz
+    # 2) Plugin en dingconnect-wp-plugin/dingconnect-recargas
     - export DEPLOYPATH=/home/otfidqlcuq/prueba.today/wp-content/plugins/dingconnect-recargas
-    - rm -rf $DEPLOYPATH
-    - mkdir -p $DEPLOYPATH
-    - cp -R ./dingconnect-recargas.php $DEPLOYPATH/
-    - cp -R ./assets $DEPLOYPATH/
-    - cp -R ./includes $DEPLOYPATH/
-    - cp -R ./MANUAL-USUARIO.md $DEPLOYPATH/
-    - cp -R ./README-INSTALACION.md $DEPLOYPATH/
+    - if [ -f ./dingconnect-recargas.php ]; then export SRCPATH=.; elif [ -f ./dingconnect-wp-plugin/dingconnect-recargas/dingconnect-recargas.php ]; then export SRCPATH=./dingconnect-wp-plugin/dingconnect-recargas; else echo "ERROR: no se encontro un checkout valido del plugin en el repo clonado"; exit 1; fi
+    - rm -rf "$DEPLOYPATH"
+    - mkdir -p "$DEPLOYPATH"
+    - cp -R "$SRCPATH/dingconnect-recargas.php" "$DEPLOYPATH/"
+    - cp -R "$SRCPATH/assets" "$DEPLOYPATH/"
+    - cp -R "$SRCPATH/includes" "$DEPLOYPATH/"
+    - if [ -f "$SRCPATH/MANUAL-USUARIO.md" ]; then cp -R "$SRCPATH/MANUAL-USUARIO.md" "$DEPLOYPATH/"; fi
+    - if [ -f "$SRCPATH/README-INSTALACION.md" ]; then cp -R "$SRCPATH/README-INSTALACION.md" "$DEPLOYPATH/"; fi
