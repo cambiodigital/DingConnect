@@ -167,6 +167,7 @@ Una iniciativa se considera lista cuando cumple:
 100. Estabilidad de estimaciones en frontend: el cálculo de `EstimatePrices` ahora invalida respuestas asíncronas tardías al cambiar importe o paquete, evitando que una estimación vieja sobrescriba la selección actual del usuario.
 101. Mejora de usabilidad en `Bundles guardados` (admin): la tabla ahora se renderiza dentro de contenedor con scroll horizontal interno para evitar desbordes y la columna de checkboxes (incluyendo `seleccionar todos`) queda centrada y con espaciado consistente respecto al resto de filas.
 102. Limpieza final API-only en panel admin: `Catálogo y alta` eliminó referencias visuales y lógicas a CSV (avisos, badge condicional, sufijos de conteo y copy heredado), por lo que la búsqueda live muestra fuente única `API` y la carga de formulario manual se alimenta exclusivamente de respuesta DingConnect.
+103. Mejora integral del mini sistema interactivo `mejoras-solicitud-interactiva.html`: se añadieron panel de métricas visuales, búsqueda/filtros por módulo, historial reciente, plantillas rápidas de cambios, formulario guiado de solicitud (objetivo/prioridad/impacto/criterios/notas), deduplicación de campos y acciones de productividad (deshacer historial y reinicio de sesión) para facilitar solicitudes precisas de evolución del plugin.
 
 ## Backlog actualizado por impacto
 
