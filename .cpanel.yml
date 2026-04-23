@@ -1,7 +1,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/otfidqlcuq/public_html/wp-content/plugins/dingconnect-recargas
-    - rm -rf $DEPLOYPATH
+    - export DEPLOYPATH=/home/otfidqlcuq/public_html/wp-content/plugins
+    - rm -rf $DEPLOYPATH/dingconnect-recargas
     - mkdir -p $DEPLOYPATH
-    - cp -R ./dingconnect-wp-plugin/dingconnect-recargas/* $DEPLOYPATH
+    - cp -R ./dingconnect-wp-plugin/* $DEPLOYPATH
