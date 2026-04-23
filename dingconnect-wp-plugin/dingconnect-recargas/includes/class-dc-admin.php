@@ -1639,37 +1639,43 @@ class DC_Recargas_Admin {
                     overflow: auto;
                     background: #ffffff;
                     border-radius: 16px;
-                    padding: 22px 24px;
+                    padding: 16px 20px;
                 }
 
                 .dc-edit-modal__header {
                     display: flex;
                     align-items: start;
                     justify-content: space-between;
-                    gap: 16px;
-                    margin-bottom: 12px;
+                    gap: 12px;
+                    margin-bottom: 8px;
                 }
 
                 .dc-edit-modal__header h3 {
                     margin: 0;
-                    font-size: 22px;
+                    font-size: 18px;
                 }
 
                 .dc-edit-modal__header p {
-                    margin: 6px 0 0;
+                    margin: 4px 0 0;
                     color: var(--dc-muted);
+                    font-size: 13px;
                 }
 
                 .dc-edit-modal__close {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-shrink: 0;
                     border: 1px solid var(--dc-border);
                     background: #ffffff;
                     border-radius: 999px;
-                    width: 36px;
-                    height: 36px;
-                    font-size: 22px;
+                    width: 32px;
+                    height: 32px;
+                    font-size: 18px;
                     line-height: 1;
                     cursor: pointer;
                     color: #334155;
+                    padding: 0;
                 }
 
                 .dc-bundle-actions {
@@ -1951,6 +1957,18 @@ class DC_Recargas_Admin {
 
                 .dc-edit-modal .form-table td .dc-combo-input.regular-text {
                     width: min(100%, 480px);
+                }
+
+                /* Compactar form-table dentro del modal */
+                .dc-edit-modal .form-table th,
+                .dc-edit-modal .form-table td {
+                    padding-top: 5px;
+                    padding-bottom: 5px;
+                }
+
+                .dc-edit-modal .form-table th {
+                    width: 140px;
+                    font-size: 13px;
                 }
 
                 .dc-admin-wrap select,
@@ -2286,12 +2304,44 @@ class DC_Recargas_Admin {
                     box-shadow: none;
                 }
 
-                .dc-saved-bundles-table-wrap .check-column {
-                    width: 54px;
-                    min-width: 54px;
+                /* Filas compactas igual que la tabla API */
+                .dc-saved-bundles-table-wrap .widefat th,
+                .dc-saved-bundles-table-wrap .widefat td {
+                    padding: 7px 8px;
+                    font-size: 12px;
+                    vertical-align: middle;
+                }
+
+                /* Columna logo igual que API */
+                .dc-saved-bundles-table-wrap .dc-saved-col-logo {
+                    width: 44px;
+                    min-width: 44px;
                     text-align: center;
-                    padding-left: 12px;
-                    padding-right: 12px;
+                    padding-left: 10px;
+                    padding-right: 6px;
+                }
+
+                .dc-saved-bundles-table-wrap .dc-saved-col-logo img {
+                    display: block;
+                    margin: 0 auto;
+                    width: 28px;
+                    height: 28px;
+                    object-fit: contain;
+                    border-radius: 4px;
+                }
+
+                /* Acciones: siempre horizontal, centradas */
+                .dc-saved-bundles-table-wrap .dc-table-actions {
+                    flex-wrap: nowrap;
+                    justify-content: center;
+                }
+
+                .dc-saved-bundles-table-wrap .check-column {
+                    width: 44px;
+                    min-width: 44px;
+                    text-align: center;
+                    padding-left: 10px;
+                    padding-right: 10px;
                     vertical-align: middle;
                 }
 
@@ -3235,7 +3285,7 @@ class DC_Recargas_Admin {
                 function openManualModal() {
                     var countryEl = document.getElementById('dc_country_iso');
 
-                    // Lazy lookup: el HTML del modal está después del <script>, así que
+                    // Lazy lookup: el HTML del modal está después de este bloque JS inline, así que
                     // manualModalEl puede ser null al inicializar. Resolverlo aquí.
                     if (!manualModalEl) {
                         manualModalEl = document.getElementById('dc-manual-modal');
@@ -3429,41 +3479,43 @@ class DC_Recargas_Admin {
                     }
                 }
 
-                apiFetchBtn.addEventListener('click', function () {
-                    var iso = apiCountryEl.value;
-                    if (!iso) {
-                        setApiCountryWarning('Selecciona un país antes de buscar.');
-                        apiCountryEl.focus();
-                        return;
-                    }
+                if (apiFetchBtn) {
+                    apiFetchBtn.addEventListener('click', function () {
+                        var iso = apiCountryEl.value;
+                        if (!iso) {
+                            setApiCountryWarning('Selecciona un país antes de buscar.');
+                            apiCountryEl.focus();
+                            return;
+                        }
 
-                    setApiCountryWarning('');
-                    apiFetchBtn.disabled = true;
-                    resetApiState('Consultando la API de DingConnect...');
+                        setApiCountryWarning('');
+                        apiFetchBtn.disabled = true;
+                        resetApiState('Consultando la API de DingConnect...');
 
-                    var url = ajaxurl + '?action=dc_fetch_api_products&nonce=' + encodeURIComponent(apiNonce) + '&country_iso=' + encodeURIComponent(iso);
+                        var url = ajaxurl + '?action=dc_fetch_api_products&nonce=' + encodeURIComponent(apiNonce) + '&country_iso=' + encodeURIComponent(iso);
 
-                    fetch(url, { credentials: 'same-origin' })
-                        .then(function (res) { return res.json(); })
-                        .then(function (data) {
-                            apiFetchBtn.disabled = false;
-                            if (data.success) {
-                                apiItems = (data.data && data.data.items) ? data.data.items : [];
-                                apiGroupCounts = (data.data && data.data.group_counts) ? data.data.group_counts : {};
-                                apiGroupLabels = (data.data && data.data.group_labels) ? data.data.group_labels : apiGroupLabels;
-                                refreshApiResults();
-                                saveStoredApiState();
-                            } else {
+                        fetch(url, { credentials: 'same-origin' })
+                            .then(function (res) { return res.json(); })
+                            .then(function (data) {
+                                apiFetchBtn.disabled = false;
+                                if (data.success) {
+                                    apiItems = (data.data && data.data.items) ? data.data.items : [];
+                                    apiGroupCounts = (data.data && data.data.group_counts) ? data.data.group_counts : {};
+                                    apiGroupLabels = (data.data && data.data.group_labels) ? data.data.group_labels : apiGroupLabels;
+                                    refreshApiResults();
+                                    saveStoredApiState();
+                                } else {
+                                    resetApiState();
+                                    apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo conectar a la API.');
+                                }
+                            })
+                            .catch(function () {
+                                apiFetchBtn.disabled = false;
                                 resetApiState();
-                                apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo conectar a la API.');
-                            }
-                        })
-                        .catch(function () {
-                            apiFetchBtn.disabled = false;
-                            resetApiState();
-                            apiHelpEl.textContent = 'Error de red al consultar la API.';
-                        });
-                });
+                                apiHelpEl.textContent = 'Error de red al consultar la API.';
+                            });
+                    });
+                }
 
                 if (apiFilterEl) {
                     apiFilterEl.addEventListener('change', function () {
@@ -3533,11 +3585,15 @@ class DC_Recargas_Admin {
                     }
                 });
 
-                if (manualModalCloseEls.length) {
-                    manualModalCloseEls.forEach(function (el) {
-                        el.addEventListener('click', closeManualModal);
-                    });
-                }
+                // Event delegation: el HTML del modal está después de este bloque JS inline, así que
+                // los elementos [data-dc-manual-close] no existen al inicializar.
+                document.addEventListener('click', function (event) {
+                    if (event.target && event.target.closest && event.target.closest('[data-dc-manual-close]')) {
+                        if (manualModalEl && !manualModalEl.hidden) {
+                            closeManualModal();
+                        }
+                    }
+                });
 
                 document.addEventListener('keydown', function (event) {
                     if (event.key === 'Escape' && manualModalEl && !manualModalEl.hidden) {
@@ -3708,6 +3764,7 @@ class DC_Recargas_Admin {
                         <th class="check-column">
                             <input type="checkbox" id="dc_bundles_select_all" aria-label="Seleccionar todos los productos">
                         </th>
+                        <th class="dc-saved-col-logo">Logo</th>
                         <th>País</th>
                         <th>Tipo</th>
                         <th>Nombre</th>
@@ -3724,7 +3781,7 @@ class DC_Recargas_Admin {
                 <tbody>
                 <?php if (empty($bundles)) : ?>
                     <tr>
-                        <td colspan="12">Aún no has agregado productos.</td>
+                        <td colspan="13">Aún no has agregado productos.</td>
                     </tr>
                 <?php else : ?>
                     <?php foreach ($bundles as $bundle) : ?>
@@ -3751,6 +3808,11 @@ class DC_Recargas_Admin {
                         <tr class="dc-row-editable" tabindex="0" role="button" data-edit-bundle="<?php echo esc_attr(wp_json_encode($bundle)); ?>" data-family="<?php echo esc_attr($bundle_package_family); ?>" data-country-iso="<?php echo esc_attr($bundle_country_iso); ?>" data-operator-name="<?php echo esc_attr($bundle_operator_name); ?>" data-search-index="<?php echo esc_attr($bundle_search_index); ?>" aria-label="Editar producto <?php echo esc_attr($bundle['label'] ?? ''); ?>">
                             <td class="check-column">
                                 <input type="checkbox" class="dc-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle['id'] ?? ''); ?>" aria-label="Seleccionar producto <?php echo esc_attr($bundle['label'] ?? ''); ?>">
+                            </td>
+                            <td class="dc-saved-col-logo">
+                                <?php if (!empty($bundle['logo_url'])) : ?>
+                                    <img src="<?php echo esc_url($bundle['logo_url']); ?>" alt="<?php echo esc_attr($bundle_operator_name); ?>" width="28" height="28">
+                                <?php endif; ?>
                             </td>
                             <td><?php echo esc_html($bundle_country_iso); ?></td>
                             <td><?php echo esc_html($bundle_family_label); ?></td>

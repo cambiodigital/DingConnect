@@ -216,6 +216,23 @@
         return String((bundle && (bundle.ProviderName || bundle.ProviderCode)) || 'Operador');
     }
 
+    function getBundleLogoUrl(bundle) {
+        return String((bundle && bundle.LogoUrl) || '').trim();
+    }
+
+    function buildBundleLogoMarkup(bundle) {
+        var logoUrl = getBundleLogoUrl(bundle);
+        if (!logoUrl) return '';
+
+        var providerLabel = getProviderLabel(bundle);
+        var title = String((bundle && (bundle.DefaultDisplayText || bundle.SkuCode)) || 'Paquete');
+
+        return ''
+            + '<div class="dc-package-logo-wrap">'
+            +   '<img class="dc-package-logo" src="' + escapeHtml(logoUrl) + '" alt="' + escapeHtml(providerLabel + ' · ' + title) + '" loading="eager" decoding="async" referrerpolicy="no-referrer">'
+            + '</div>';
+    }
+
     function getBundleId(bundle) {
         return String((bundle && bundle.BundleId) || '').trim();
     }
@@ -1330,6 +1347,7 @@
         var featuredBadge = isFeaturedBundle(bundle)
             ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
             : '';
+        var logoMarkup = buildBundleLogoMarkup(bundle);
 
         packageCard.innerHTML = ''
             + '<div class="dc-package-card-head' + featuredClass + '">'
@@ -1347,8 +1365,11 @@
             +   '<div class="dc-package-iso-chip">' + escapeHtml(countryIso || 'N/A') + '</div>'
             + '</div>'
             + '<div class="dc-package-card-meta">'
-            +   '<span class="dc-package-meta-label">Operador</span>'
-            +   '<span class="dc-package-meta-value">' + escapeHtml(providerLabel) + '</span>'
+            +   '<div class="dc-package-card-meta-copy">'
+            +     '<span class="dc-package-meta-label">Operador</span>'
+            +     '<span class="dc-package-meta-value">' + escapeHtml(providerLabel) + '</span>'
+            +   '</div>'
+            +   logoMarkup
             + '</div>';
 
         renderProviderStatus(cachedProviderStatus);

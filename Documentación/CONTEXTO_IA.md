@@ -135,6 +135,9 @@ Namespace actual: `dingconnect/v1`
 51. Regla de país en frontend de landings: el selector de país ya no se bloquea por configuración fija y se alimenta con los `country_iso` de los bundles permitidos en esa landing.
 52. Estabilidad reforzada en `Catálogo y alta`: el cambio entre `Buscar en API` y `Alta manual` quedó centralizado en un único controlador JS con estado explícito, para evitar bloqueos o navegación inconsistente al alternar subpestañas.
 53. Contrato REST de catálogo live enriquecido: el endpoint `/wp-json/dingconnect/v1/products` del plugin ahora incluye `ProductType` por producto al normalizar `GetProducts`, y el flujo AJAX de catálogo admin (`dc_fetch_api_products`) también expone `product_type` para reglas de clasificación basadas en tipo real del API.
+54. Corrección de cierre en modal de `Alta manual`: los controles `Cancelar`, `X` y backdrop ahora cierran de forma consistente mediante delegación de eventos, evitando fallos de binding cuando el modal se renderiza después del script.
+55. Compactación UI de `Alta manual`: se redujo densidad vertical del formulario (header y `form-table`) para disminuir el scroll y acelerar carga/edición operativa.
+56. Homologación visual de `Productos guardados` con `Paquetes encontrados`: la tabla ahora incluye columna inicial `Logo`, filas/celdas más compactas y bloque de acciones horizontal centrado.
 
 ## Hallazgos clave para futuras IA
 

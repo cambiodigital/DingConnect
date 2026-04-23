@@ -78,6 +78,13 @@ Una iniciativa se considera lista cuando cumple:
 15. Corrección de sincronización frontend-admin: el caché de búsqueda por país+número en el frontend ahora expira (TTL 10 segundos) para refrescar operadores y bundles nuevos sin recargar toda la página.
 16. Corrección estructural en tabs del admin: se cerró correctamente la sección "Wizard y landings" para evitar que "Catálogo y alta", "Bundles guardados" y "Registros" quedaran anidados dentro de un panel oculto (síntoma: pestaña activa sin contenido visible).
 16. Corrección de robustez en frontend público: el script del shortcode ahora valida nodos requeridos y maneja markup parcial sin lanzar errores de JavaScript como `Cannot set properties of null (setting 'innerHTML')` durante la búsqueda automática de paquetes.
+
+## Avances implementados (23-04-2026)
+
+1. Corrección funcional en `Catálogo y alta`: el modal de `Alta manual` ahora cierra correctamente con `Cancelar`, con el botón `X` y con clic en backdrop, incluso cuando el HTML del modal está después del bloque `<script>`.
+2. Compactación visual del modal de `Alta manual`: se redujeron paddings y separación entre campos/columnas para una edición más rápida en escritorio.
+3. Mejora de alineación del botón de cierre del modal: la `X` quedó centrada en su contenedor circular con layout flex.
+4. Optimización de `Productos guardados`: filas y celdas más compactas, acciones organizadas en horizontal y centradas, y nueva columna `Logo` para homologar estructura visual con `Paquetes encontrados`.
 17. Corrección productiva en recargas: el backend REST ahora normaliza `AccountNumber` a solo dígitos (sin símbolo `+`) para cumplir validación regex de DingConnect en `SendTransfer`, y propaga el código HTTP real del error para diagnóstico operativo.
 18. Mejora de diagnóstico productivo: el cliente API del plugin ahora traduce códigos de negocio de DingConnect (incluyendo `InsufficientBalance`) a mensajes claros para operación y soporte, manteniendo el detalle técnico en `error_data`.
 19. Corrección de catálogo multioperador: el endpoint `/products` del plugin ahora consulta productos por país cuando existe `country_iso`, normaliza precios y campos clave al contrato del frontend y completa `ProviderName` a partir de `ProviderCode`, evitando que operadores válidos queden ocultos en países como Colombia.
@@ -179,6 +186,9 @@ Una iniciativa se considera lista cuando cumple:
 111. Mejora UX en `Productos guardados` (antes `Bundles guardados`): se renombró la sección del admin y se incorporó filtrado en tiempo real sobre la tabla con buscador automático + filtros por tipo de producto (`package_family`), país (`country_iso`) y operador (`provider_name`) para acelerar operación sobre catálogos amplios.
 111. Simplificación de `Catálogo y alta`: se eliminaron las subpestañas internas del panel y quedó visible solo el flujo `Buscar en API`; `Alta manual` pasa a abrirse como modal desde `Seleccionar producto`, precargando el bundle elegido para revisión y guardado sin cambiar de vista.
 112. Mejora de legibilidad en `Buscar en API`: la columna `Vigencia` ahora presenta el valor del API en lenguaje natural (por ejemplo, `P7D` -> `7 días`, `P2W` -> `2 semanas`, `P1M` -> `1 mes`) manteniendo el valor original para persistencia interna del bundle.
+113. Corrección crítica en `Catálogo y alta`: se eliminó el literal `<script>` de comentarios dentro del bloque JavaScript inline del admin, porque el parser HTML truncaba el script en esa secuencia y rompía la ejecución de `Buscar en API` y del modal de `Alta manual`.
+114. Corrección visual en frontend público: el selector `Paquetes disponibles` del shortcode ahora fuerza tipografía heredada, elimina la apariencia nativa del navegador y usa un indicador visual propio para mantener consistencia con el diseño general del flujo.
+115. Mejora visual en el shortcode público `dingconnect_recargas`: la ficha `Paquete activo` ahora muestra el icono/logo del paquete a la derecha del bloque `Operador`, reutilizando `LogoUrl` tanto en catálogo live como en bundles guardados para mantener la imagen estable entre selección, render y persistencia.
 
 ## Backlog actualizado por impacto
 
