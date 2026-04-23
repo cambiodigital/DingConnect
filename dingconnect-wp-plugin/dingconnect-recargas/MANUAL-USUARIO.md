@@ -51,11 +51,11 @@ En `Catálogo y alta`, el panel permite:
 - Filtrar resultados por tipo de paquete.
 - Seleccionar un resultado live de la API.
 - Crear un bundle automáticamente desde la selección.
-- Cargar un paquete en `Alta manual` con doble click para revisarlo antes de guardarlo.
+- Abrir el modal de `Alta manual` desde `Seleccionar producto` o con doble click sobre un resultado para revisarlo antes de guardarlo.
 
 ### 5.2 Añadir bundles manualmente
 
-En `Anadir bundle curado`, completa:
+En el modal `Alta manual`, completa o ajusta:
 
 - País ISO.
 - Nombre comercial.
@@ -67,9 +67,9 @@ En `Anadir bundle curado`, completa:
 
 Después pulsa `Anadir bundle`.
 
-### 5.3 Gestionar bundles guardados
+### 5.3 Gestionar productos guardados
 
-En `Bundles guardados` puedes revisar el catálogo activo y eliminar bundles que ya no deban mostrarse. No existe edición directa desde la tabla; si necesitas ajustar un bundle, debes eliminarlo y volver a crearlo.
+En `Productos guardados` puedes revisar el catálogo activo y eliminar productos que ya no deban mostrarse. También puedes filtrar rápidamente por tipo de producto, país u operador y usar el buscador para encontrar filas en tablas grandes.
 
 ## 6. Publicación del frontend
 

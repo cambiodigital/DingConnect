@@ -31,27 +31,360 @@
         const IconXCircle = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>;
         const IconSave = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>;
 
+        const createApiFieldCatalog = () => ([
+            { name: "ProviderCode", type: "string", description: "Código único del proveedor en DingConnect (clave técnica para status, lookup y transferencia)." },
+            { name: "ProviderName", type: "string", description: "Nombre comercial del proveedor/operador mostrado al usuario." },
+            { name: "SkuCode", type: "string", description: "Identificador único del producto/SKU a recargar o vender." },
+            { name: "ProductType", type: "string", description: "Tipo de producto (topup, data, voucher, dth, electricity, etc.)." },
+            { name: "CountryIso", type: "string", description: "Código ISO del país asociado al proveedor o producto." },
+            { name: "RegionCode", type: "string", description: "Código de región principal del producto dentro del país." },
+            { name: "RegionCodes[]", type: "array", description: "Listado de regiones soportadas por proveedor/producto." },
+            { name: "SendValue", type: "float", description: "Monto que se envía/paga en la transacción." },
+            { name: "SendCurrencyIso", type: "string", description: "Moneda del monto de envío (SendValue)." },
+            { name: "ReceiveValue", type: "float", description: "Valor que recibe el destinatario tras la recarga." },
+            { name: "ReceiveCurrencyIso", type: "string", description: "Moneda del valor recibido por el destinatario." },
+            { name: "ReceiveValueExcludingTax", type: "float", description: "Valor recibido sin impuestos incluidos." },
+            { name: "MinimumSendValue", type: "float", description: "Monto mínimo permitido cuando el producto es de rango." },
+            { name: "MaximumSendValue", type: "float", description: "Monto máximo permitido cuando el producto es de rango." },
+            { name: "MinimumReceiveValue", type: "float", description: "Valor mínimo que puede recibir el destinatario." },
+            { name: "MaximumReceiveValue", type: "float", description: "Valor máximo que puede recibir el destinatario." },
+            { name: "CustomerFee", type: "float", description: "Comisión/costo aplicado al cliente final." },
+            { name: "DistributorFee", type: "float", description: "Comisión/costo interno del distribuidor." },
+            { name: "TaxRate", type: "float", description: "Porcentaje/impuesto aplicable al producto o transacción." },
+            { name: "TaxName", type: "string", description: "Nombre del impuesto aplicado." },
+            { name: "TaxCalculation", type: "string", description: "Modo de cálculo de impuestos informado por API." },
+            { name: "DefaultDisplayText", type: "string", description: "Texto comercial base para mostrar el producto en UI." },
+            { name: "DisplayText", type: "string", description: "Texto final enriquecido para visualización en frontend." },
+            { name: "Description", type: "string", description: "Descripción legible del producto para usuario/operación." },
+            { name: "DescriptionMarkdown", type: "string", description: "Descripción extendida en markdown desde ProductDescriptions." },
+            { name: "ReadMoreMarkdown", type: "string", description: "Texto markdown adicional de detalle o instrucciones." },
+            { name: "AdditionalInformation", type: "string", description: "Información extra operacional del producto." },
+            { name: "IsPromotion", type: "boolean", description: "Indica si el producto está en promoción." },
+            { name: "IsRange", type: "boolean", description: "Indica si el producto permite importes variables (rango)." },
+            { name: "Benefits[]", type: "array", description: "Beneficios declarados por el proveedor (datos, bonus, etc.)." },
+            { name: "ValidityPeriodIso", type: "string", description: "Periodo de vigencia del producto en formato ISO." },
+            { name: "RedemptionMechanism", type: "string", description: "Mecanismo de redención/uso del producto (Immediate, ReadReceipt, etc.)." },
+            { name: "ProcessingMode", type: "string", description: "Modo de procesamiento operativo del proveedor." },
+            { name: "LookupBillsRequired", type: "boolean", description: "Indica si el producto exige consulta de facturas previa (LookupBills)." },
+            { name: "SettingDefinitions[]", type: "array", description: "Definiciones de campos dinámicos requeridos por el proveedor." },
+            { name: "ValidationRegex", type: "string", description: "Expresión regular para validar cuenta/número destino." },
+            { name: "CustomerCareNumber", type: "string", description: "Teléfono de soporte al cliente del proveedor." },
+            { name: "LogoUrl", type: "string", description: "URL del logo oficial del proveedor/operador." },
+            { name: "PaymentTypes[]", type: "array", description: "Tipos de pago admitidos para el producto/proveedor." },
+            { name: "UatNumber", type: "string", description: "Número de pruebas UAT para simular respuestas/códigos de error." },
+        ]);
+
+        const createApiSearchResponseCatalog = () => ([
+            { name: "Tipo (package_group_label)", type: "string", description: "Columna visible en tabla de resultados API." },
+            { name: "Operador (operator)", type: "string", description: "Columna visible en tabla de resultados API." },
+            { name: "Beneficios (receive)", type: "string", description: "Columna visible en tabla de resultados API." },
+            { name: "SKU (sku_code)", type: "string", description: "Columna visible en tabla de resultados API." },
+            { name: "Coste (send_value)", type: "float", description: "Columna visible en tabla de resultados API." },
+            { name: "Moneda (send_currency_iso)", type: "string", description: "Columna visible en tabla de resultados API." },
+            { name: "Vigencia (validity)", type: "string", description: "Columna visible en tabla de resultados API." },
+            { name: "Fuente (catalog_source)", type: "string", description: "Columna visible en tabla de resultados API (API)." },
+        ]);
+
+        const createApiSearchInternalPayloadCatalog = () => ([
+            { name: "country_iso", type: "string", description: "País buscado en admin para filtrar catálogo de DingConnect." },
+            { name: "sku_code", type: "string", description: "SKU del producto devuelto por API." },
+            { name: "operator", type: "string", description: "Nombre de operador (ProviderName o fallback ProviderCode)." },
+            { name: "provider_code", type: "string", description: "Código técnico de proveedor para status y transferencias." },
+            { name: "product_type", type: "string", description: "Tipo de producto (topup, data, bundle, etc.)." },
+            { name: "label", type: "string", description: "Texto comercial base mostrado en admin." },
+            { name: "send_value", type: "float", description: "Costo base enviado por producto." },
+            { name: "send_currency_iso", type: "string", description: "Moneda del costo base." },
+            { name: "receive", type: "string", description: "Resumen de beneficios para carga rápida en alta manual." },
+            { name: "receive_value", type: "float", description: "Valor recibido (API)." },
+            { name: "receive_currency_iso", type: "string", description: "Moneda del valor recibido." },
+            { name: "is_range", type: "boolean", description: "Indica si es producto de rango según mínimos/máximos." },
+            { name: "lookup_bills_required", type: "boolean", description: "Indica si exige LookupBills antes de confirmar." },
+            { name: "setting_definitions", type: "array", description: "Campos dinámicos requeridos por el proveedor." },
+            { name: "validation_regex", type: "string", description: "Regex de validación de cuenta/telefono." },
+            { name: "benefits", type: "array", description: "Beneficios detallados del paquete." },
+            { name: "payment_types", type: "array", description: "Tipos de pago permitidos por proveedor/API." },
+            { name: "catalog_source", type: "string", description: "Fuente de listado en admin (actual: api)." },
+        ]);
+
+        const createManualHydrationCatalog = () => ([
+            { name: "country_iso -> dc_country_iso", type: "map", description: "Pais del resultado API al formulario manual." },
+            { name: "operator/receive -> dc_label", type: "map", description: "Construye nombre comercial inicial del bundle." },
+            { name: "sku_code -> dc_sku_code", type: "map", description: "SKU técnico para persistencia y salida REST." },
+            { name: "send_value -> dc_send_value", type: "map", description: "Costo DIN inicial del bundle." },
+            { name: "send_currency_iso -> dc_send_currency_iso", type: "map", description: "Moneda de coste en alta manual." },
+            { name: "operator -> dc_provider_name", type: "map", description: "Operador visible en admin/frontend." },
+            { name: "receive/label -> dc_description", type: "map", description: "Resumen de beneficios visibles." },
+            { name: "provider_code -> dc_provider_code", type: "map", description: "Hidratacion técnica para no perder metadatos." },
+            { name: "is_range -> dc_is_range", type: "map", description: "Mantiene condición de rango en bundle guardado." },
+            { name: "lookup_bills_required -> dc_lookup_bills_required", type: "map", description: "Mantiene necesidad de lookup en saved." },
+            { name: "setting_definitions -> dc_setting_definitions", type: "map", description: "Transporta settings dinámicos en hidden field." },
+            { name: "benefits -> dc_benefits", type: "map", description: "Transporta beneficios a persistencia del bundle." },
+            { name: "payment_types -> dc_payment_types", type: "map", description: "Transporta tipos de pago al bundle guardado." },
+        ]);
+
+        const createManualVisibleFormCatalog = () => ([
+            { name: "country_iso", type: "string", description: "Input visible requerido en formulario manual." },
+            { name: "label", type: "string", description: "Input visible requerido para nombre comercial del bundle." },
+            { name: "sku_code", type: "string", description: "Input visible requerido del SKU." },
+            { name: "send_value", type: "float", description: "Input visible de coste DIN." },
+            { name: "send_currency_iso", type: "string", description: "Input visible de moneda de coste." },
+            { name: "public_price", type: "float", description: "Input visible de precio público." },
+            { name: "public_price_currency", type: "string", description: "Input visible de moneda pública." },
+            { name: "provider_name", type: "string", description: "Input visible de operador." },
+            { name: "description", type: "string", description: "Textarea visible de beneficios recibidos." },
+            { name: "is_active", type: "boolean", description: "Checkbox visible para activar/inactivar bundle." },
+        ]);
+
+        const createManualHiddenFieldCatalog = () => ([
+            { name: "package_family", type: "hidden", description: "Hidden de clasificación comercial." },
+            { name: "product_type_raw", type: "hidden", description: "Hidden de ProductType original API." },
+            { name: "validity_raw", type: "hidden", description: "Hidden de vigencia original API." },
+            { name: "provider_code", type: "hidden", description: "Hidden técnico de proveedor." },
+            { name: "region_code", type: "hidden", description: "Hidden de región principal." },
+            { name: "region_codes", type: "hidden", description: "Hidden de arreglo de regiones." },
+            { name: "receive_value", type: "hidden", description: "Hidden de valor recibido." },
+            { name: "receive_currency_iso", type: "hidden", description: "Hidden de moneda recibida." },
+            { name: "receive_value_excluding_tax", type: "hidden", description: "Hidden de valor sin impuesto." },
+            { name: "minimum_send_value", type: "hidden", description: "Hidden de mínimo de envío." },
+            { name: "maximum_send_value", type: "hidden", description: "Hidden de máximo de envío." },
+            { name: "minimum_receive_value", type: "hidden", description: "Hidden de mínimo recibido." },
+            { name: "maximum_receive_value", type: "hidden", description: "Hidden de máximo recibido." },
+            { name: "customer_fee", type: "hidden", description: "Hidden de comisión cliente." },
+            { name: "distributor_fee", type: "hidden", description: "Hidden de comisión distribuidor." },
+            { name: "tax_rate", type: "hidden", description: "Hidden de tasa impuesto." },
+            { name: "tax_name", type: "hidden", description: "Hidden de nombre impuesto." },
+            { name: "tax_calculation", type: "hidden", description: "Hidden de cálculo de impuesto." },
+            { name: "default_display_text", type: "hidden", description: "Hidden de texto comercial base." },
+            { name: "display_text", type: "hidden", description: "Hidden de texto de display." },
+            { name: "description_markdown", type: "hidden", description: "Hidden de markdown de descripción." },
+            { name: "read_more_markdown", type: "hidden", description: "Hidden de markdown extendido." },
+            { name: "additional_information", type: "hidden", description: "Hidden de información adicional." },
+            { name: "is_promotion", type: "hidden", description: "Hidden booleano de promoción." },
+            { name: "is_range", type: "hidden", description: "Hidden booleano de rango." },
+            { name: "benefits", type: "hidden", description: "Hidden array de beneficios." },
+            { name: "redemption_mechanism", type: "hidden", description: "Hidden de mecanismo de redención." },
+            { name: "processing_mode", type: "hidden", description: "Hidden de modo de procesamiento." },
+            { name: "lookup_bills_required", type: "hidden", description: "Hidden booleano de lookup bills." },
+            { name: "setting_definitions", type: "hidden", description: "Hidden array de settings dinámicos." },
+            { name: "validation_regex", type: "hidden", description: "Hidden de regex de validación." },
+            { name: "customer_care_number", type: "hidden", description: "Hidden de teléfono de soporte." },
+            { name: "logo_url", type: "hidden", description: "Hidden de logo del proveedor." },
+            { name: "payment_types", type: "hidden", description: "Hidden array de métodos de pago." },
+            { name: "uat_number", type: "hidden", description: "Hidden de número UAT." },
+        ]);
+
+        const createBundlePersistedFieldCatalog = () => ([
+            { name: "id", type: "string", description: "ID único del bundle (uniqid)." },
+            { name: "country_iso", type: "string", description: "País del bundle." },
+            { name: "label", type: "string", description: "Nombre comercial persistido." },
+            { name: "sku_code", type: "string", description: "SKU persistido." },
+            { name: "send_value", type: "float", description: "Coste DIN persistido." },
+            { name: "send_currency_iso", type: "string", description: "Moneda de coste persistida." },
+            { name: "public_price", type: "float", description: "Precio público persistido." },
+            { name: "public_price_currency", type: "string", description: "Moneda pública persistida." },
+            { name: "package_family", type: "string", description: "Familia comercial persistida." },
+            { name: "product_type_raw", type: "string", description: "ProductType original persistido." },
+            { name: "validity_raw", type: "string", description: "Vigencia original persistida." },
+            { name: "validity_days", type: "int", description: "Vigencia derivada en días (cuando aplica)." },
+            { name: "provider_name", type: "string", description: "Operador persistido." },
+            { name: "description", type: "string", description: "Descripción/beneficio persistido." },
+            { name: "is_active", type: "boolean", description: "Estado activo/inactivo persistido." },
+            { name: "provider_code", type: "string", description: "Campo rico persistido." },
+            { name: "region_code", type: "string", description: "Campo rico persistido." },
+            { name: "region_codes", type: "array", description: "Campo rico persistido." },
+            { name: "receive_value", type: "float", description: "Campo rico persistido." },
+            { name: "receive_value_excluding_tax", type: "float", description: "Campo rico persistido." },
+            { name: "minimum_send_value", type: "float", description: "Campo rico persistido." },
+            { name: "maximum_send_value", type: "float", description: "Campo rico persistido." },
+            { name: "minimum_receive_value", type: "float", description: "Campo rico persistido." },
+            { name: "maximum_receive_value", type: "float", description: "Campo rico persistido." },
+            { name: "customer_fee", type: "float", description: "Campo rico persistido." },
+            { name: "distributor_fee", type: "float", description: "Campo rico persistido." },
+            { name: "tax_rate", type: "float", description: "Campo rico persistido." },
+            { name: "receive_currency_iso", type: "string", description: "Campo rico persistido." },
+            { name: "tax_name", type: "string", description: "Campo rico persistido." },
+            { name: "tax_calculation", type: "string", description: "Campo rico persistido." },
+            { name: "default_display_text", type: "string", description: "Campo rico persistido." },
+            { name: "display_text", type: "string", description: "Campo rico persistido." },
+            { name: "description_markdown", type: "string", description: "Campo rico persistido." },
+            { name: "read_more_markdown", type: "string", description: "Campo rico persistido." },
+            { name: "additional_information", type: "string", description: "Campo rico persistido." },
+            { name: "redemption_mechanism", type: "string", description: "Campo rico persistido." },
+            { name: "processing_mode", type: "string", description: "Campo rico persistido." },
+            { name: "validation_regex", type: "string", description: "Campo rico persistido." },
+            { name: "customer_care_number", type: "string", description: "Campo rico persistido." },
+            { name: "logo_url", type: "string", description: "Campo rico persistido." },
+            { name: "uat_number", type: "string", description: "Campo rico persistido." },
+            { name: "is_promotion", type: "boolean", description: "Campo rico persistido." },
+            { name: "is_range", type: "boolean", description: "Campo rico persistido." },
+            { name: "lookup_bills_required", type: "boolean", description: "Campo rico persistido." },
+            { name: "benefits", type: "array", description: "Campo rico persistido." },
+            { name: "payment_types", type: "array", description: "Campo rico persistido." },
+            { name: "setting_definitions", type: "array", description: "Campo rico persistido." },
+        ]);
+
+        const createFrontendRuntimeCatalog = () => ([
+            { name: "ProviderCode", type: "string", description: "Se usa para consultar provider-status antes de confirmar." },
+            { name: "SendValue", type: "float", description: "Valor base o editable para cálculo de recarga." },
+            { name: "ReceiveValue", type: "float", description: "Valor que se muestra como recibido en UI." },
+            { name: "ReceiveValueExcludingTax", type: "float", description: "Soporte visual para valor sin impuestos." },
+            { name: "IsRange", type: "boolean", description: "Activa flujo de EstimatePrices en frontend." },
+            { name: "LookupBillsRequired", type: "boolean", description: "Activa flujo de LookupBills en frontend." },
+            { name: "SettingDefinitions", type: "array", description: "Render dinámico de campos requeridos por proveedor." },
+            { name: "ValidationRegex", type: "string", description: "Valida cuenta/telefono antes de envío." },
+            { name: "RedemptionMechanism", type: "string", description: "Ajusta copy y confirmación final por tipo de producto." },
+            { name: "ProcessingMode", type: "string", description: "Referencia para lógica operativa y copy de estado." },
+            { name: "dc_settings", type: "array", description: "Payload de settings enviados a transfer o add-to-cart." },
+            { name: "dc_bill_ref", type: "string", description: "Factura seleccionada cuando aplica LookupBills." },
+        ]);
+
+        const createWooCartItemCatalog = () => ([
+            { name: "dc_recarga", type: "boolean", description: "Flag de item de recarga en carrito." },
+            { name: "dc_account_number", type: "string", description: "Cuenta/telefono destino." },
+            { name: "dc_country_iso", type: "string", description: "País destino." },
+            { name: "dc_sku_code", type: "string", description: "SKU seleccionado." },
+            { name: "dc_send_value", type: "float", description: "Monto enviado/cobrado." },
+            { name: "dc_send_currency_iso", type: "string", description: "Moneda del monto enviado." },
+            { name: "dc_provider_name", type: "string", description: "Operador del paquete." },
+            { name: "dc_bundle_label", type: "string", description: "Etiqueta comercial del bundle." },
+            { name: "dc_product_type", type: "string", description: "Tipo de producto." },
+            { name: "dc_redemption_mechanism", type: "string", description: "Mecanismo de redención." },
+            { name: "dc_lookup_bills_required", type: "boolean", description: "Si requiere lookup de facturas." },
+            { name: "dc_customer_care_number", type: "string", description: "Soporte del proveedor." },
+            { name: "dc_is_range", type: "boolean", description: "Si el producto es de rango." },
+            { name: "dc_flow_kind", type: "string", description: "Flujo inferido para procesamiento/copy." },
+            { name: "dc_settings", type: "array", description: "Settings dinámicos capturados." },
+            { name: "dc_bill_ref", type: "string", description: "Factura seleccionada." },
+            { name: "unique_key", type: "string", description: "Clave única del item en carrito." },
+        ]);
+
+        const createWooOrderMetaCatalog = () => ([
+            { name: "_dc_recarga", type: "meta", description: "Marca de item de recarga en orden." },
+            { name: "_dc_account_number", type: "meta", description: "Cuenta/telefono destino." },
+            { name: "_dc_country_iso", type: "meta", description: "País destino." },
+            { name: "_dc_sku_code", type: "meta", description: "SKU del item." },
+            { name: "_dc_send_value", type: "meta", description: "Monto enviado." },
+            { name: "_dc_send_currency_iso", type: "meta", description: "Moneda enviada." },
+            { name: "_dc_provider_name", type: "meta", description: "Proveedor/operador." },
+            { name: "_dc_bundle_label", type: "meta", description: "Etiqueta bundle." },
+            { name: "_dc_product_type", type: "meta", description: "Tipo de producto." },
+            { name: "_dc_redemption_mechanism", type: "meta", description: "Mecanismo de redención." },
+            { name: "_dc_lookup_bills_required", type: "meta", description: "Flag lookup bills." },
+            { name: "_dc_customer_care_number", type: "meta", description: "Número de soporte." },
+            { name: "_dc_is_range", type: "meta", description: "Flag de rango." },
+            { name: "_dc_flow_kind", type: "meta", description: "Tipo de flujo inferido." },
+            { name: "_dc_bill_ref", type: "meta", description: "Factura seleccionada." },
+            { name: "_dc_settings", type: "meta", description: "JSON de settings dinámicos." },
+        ]);
+
+        const FIELD_AUDIT_STATUS = {
+            ProviderCode: "persistido",
+            ProviderName: "derivado",
+            SkuCode: "persistido",
+            ProductType: "persistido",
+            CountryIso: "persistido",
+            RegionCode: "persistido",
+            "RegionCodes[]": "persistido",
+            SendValue: "persistido",
+            SendCurrencyIso: "persistido",
+            ReceiveValue: "persistido",
+            ReceiveCurrencyIso: "persistido",
+            ReceiveValueExcludingTax: "persistido",
+            MinimumSendValue: "persistido",
+            MaximumSendValue: "persistido",
+            MinimumReceiveValue: "persistido",
+            MaximumReceiveValue: "persistido",
+            CustomerFee: "persistido",
+            DistributorFee: "persistido",
+            TaxRate: "persistido",
+            TaxName: "persistido",
+            TaxCalculation: "persistido",
+            DefaultDisplayText: "persistido",
+            DisplayText: "derivado",
+            Description: "persistido",
+            DescriptionMarkdown: "persistido",
+            ReadMoreMarkdown: "persistido",
+            AdditionalInformation: "persistido",
+            IsPromotion: "persistido",
+            IsRange: "persistido",
+            "Benefits[]": "persistido",
+            ValidityPeriodIso: "persistido",
+            RedemptionMechanism: "persistido",
+            ProcessingMode: "persistido",
+            LookupBillsRequired: "persistido",
+            "SettingDefinitions[]": "persistido",
+            ValidationRegex: "persistido",
+            CustomerCareNumber: "persistido",
+            LogoUrl: "persistido",
+            "PaymentTypes[]": "persistido",
+            UatNumber: "persistido",
+        };
+
+        const createFieldFlowAuditCatalog = () => createApiFieldCatalog().map((field) => {
+            const status = FIELD_AUDIT_STATUS[field.name] || "pendiente";
+            const statusLabel = status === "persistido" ? "Persistido" : (status === "derivado" ? "Derivado" : "Pendiente");
+            return {
+                name: field.name,
+                type: "status",
+                description: `${statusLabel}: ${field.description}`,
+            };
+        });
+
         // --- DATOS INICIALES EXTRAÍDOS DEL DIAGRAMA ---
         const initialSystemData = {
         admin: {
-            title: "1. Admin: Catálogo y Alta",
+            title: "1. Admin: Flujo de Catalogación",
             icon: <IconLayout className="w-6 h-6" />,
             nodes: [
             {
+                id: "A1",
+                name: "Buscar en API (paso inicial)",
+                description: "Primer paso real en plugin: consulta DingConnect y arma listado para selección.",
+                properties: createApiSearchResponseCatalog(),
+                behaviors: [
+                "Filtra por país y clasifica paquetes antes de crear o hidratar bundles.",
+                "Esta vista muestra 8 columnas visibles en la tabla del plugin.",
+                "Doble click o selección carga el producto en Alta manual para revisión."
+                ]
+            },
+            {
+                id: "A1B",
+                name: "Buscar en API (payload interno)",
+                description: "Campos extra que no se ven en columnas, pero viajan para hidratar alta manual y persistir metadatos.",
+                properties: createApiSearchInternalPayloadCatalog(),
+                behaviors: [
+                "Estos campos alimentan hidden fields y enriquecen bundles guardados.",
+                "No todos son visibles en la tabla de Buscar en API."
+                ]
+            },
+            {
+                id: "A2",
+                name: "Hidratación API -> Alta manual",
+                description: "Mapeo de campos desde resultado API hacia formulario manual (inputs visibles + hidden).",
+                properties: createManualHydrationCatalog(),
+                behaviors: [
+                "Permite conservar metadatos ricos aunque el operador ajuste campos comerciales.",
+                "Este punto define qué se arrastra realmente a persistencia de bundles."
+                ]
+            },
+            {
+                id: "A3",
+                name: "Alta manual (hidden fields reales)",
+                description: "Campos hidden actuales del formulario manual que transportan metadatos de API.",
+                properties: createManualHiddenFieldCatalog(),
+                behaviors: [
+                "Estos campos no se ven en UI, pero sí impactan la persistencia final.",
+                "El llenado ocurre por fillManualForm con datos seleccionados de Buscar en API."
+                ]
+            },
+            {
                 id: "A5",
                 name: "Formulario Alta Manual",
-                description: "Datos recogidos al crear un bundle manual en WP.",
-                properties: [
-                { name: "country_iso", type: "string", description: "ISO del país" },
-                { name: "label", type: "string", description: "operator - (receive | label | sku_code)" },
-                { name: "sku_code", type: "string", description: "Identificador único del producto" },
-                { name: "send_value", type: "float", description: "Valor a enviar" },
-                { name: "send_currency_iso", type: "string", description: "Moneda de envío" },
-                { name: "public_price", type: "float", description: "Precio de venta al público" },
-                { name: "provider_name", type: "string", description: "Nombre del operador" },
-                ],
+                description: "Paso de ajuste final antes de guardar bundle (coste, precio público, copy y metadatos).",
+                properties: createManualVisibleFormCatalog(),
                 behaviors: [
-                "No persiste ProviderCode ni metadatos live ricos actualmente."
+                "Desde aquí se ajustan campos comerciales sin perder contrato técnico API.",
+                "Al guardar, la estructura pasa a dc_recargas_bundles para ser consumida por REST /products."
                 ]
             }
             ]
@@ -64,24 +397,15 @@
                 id: "B1",
                 name: "Option: dc_recargas_bundles",
                 description: "Estructura de guardado en la base de datos de WordPress.",
-                properties: [
-                { name: "id", type: "string", description: "uniqid(bundle_)" },
-                { name: "country_iso", type: "string", description: "" },
-                { name: "label", type: "string", description: "" },
-                { name: "sku_code", type: "string", description: "" },
-                { name: "send_value", type: "float", description: "" },
-                { name: "send_currency_iso", type: "string", description: "" },
-                { name: "public_price", type: "float", description: "Guardado pero no expuesto correctamente" },
-                { name: "is_active", type: "boolean", description: "Estado del bundle" },
-                ],
+                properties: createBundlePersistedFieldCatalog(),
                 behaviors: [
-                "PÉRDIDA DE DATOS: Se pierde riqueza del producto live (ProviderCode, Benefits, IsRange, etc)."
+                "Objetivo actual: persistir contrato rico para no degradar la salida saved en frontend."
                 ]
             }
             ]
         },
         api: {
-            title: "6. REST /products",
+            title: "4. REST /products",
             icon: <IconServer className="w-6 h-6" />,
             nodes: [
             {
@@ -90,49 +414,74 @@
                 description: "Salida del endpoint cuando lee de BBDD.",
                 properties: [
                 { name: "BundleId", type: "string", description: "" },
-                { name: "ProviderCode", type: "string", description: "Normalmente vacío por falta de persistencia" },
-                { name: "ReceiveValue", type: "float", description: "public_price | send_value" },
-                { name: "IsRange", type: "boolean", description: "Fijo en false (Error de diseño actual)" },
-                { name: "LookupBillsRequired", type: "boolean", description: "Fijo en false" },
+                ...createApiFieldCatalog(),
                 ],
                 behaviors: [
-                "No tiene datos en vivo, carece de metadatos importantes para el frontend."
+                "Debe reflejar el mismo contrato funcional del nodo live cuando el bundle fue creado/actualizado desde datos API.",
+                "Si un campo no existe en bundle, usa fallback controlado para no romper frontend."
                 ]
             },
             {
                 id: "F7",
                 name: "Producto Live Normalizado",
                 description: "Salida del endpoint cuando consulta a la API de DingConnect.",
-                properties: [
-                { name: "ProviderCode", type: "string", description: "" },
-                { name: "Benefits", type: "array", description: "Beneficios reales" },
-                { name: "IsRange", type: "boolean", description: "Valor real de la API" },
-                { name: "SettingDefinitions", type: "array", description: "Campos dinámicos requeridos" },
-                { name: "ValidationRegex", type: "string", description: "Validación de cuenta" },
-                ],
+                properties: createApiFieldCatalog(),
                 behaviors: [
-                "Contiene toda la metadata rica necesaria."
+                "Contiene toda la metadata rica necesaria para flujos de catálogo, wizard, landings y checkout.",
+                "Este nodo debe tomarse como contrato objetivo para no perder campos al persistir bundles."
+                ]
+            },
+            {
+                id: "F8",
+                name: "API -> Persistencia -> Landing (Auditoría)",
+                description: "Matriz rápida por campo para verificar si se conserva en el flujo completo hasta frontend/landing.",
+                properties: createFieldFlowAuditCatalog(),
+                behaviors: [
+                "Revisar este nodo antes de pedir cambios a IA para detectar huecos de contrato por campo.",
+                "Estados esperados: Persistido (guardado), Derivado (calculado), Pendiente (falta implementar)."
+                ]
+            }
+            ]
+        },
+        frontend: {
+            title: "5. Frontend Público (Shortcode)",
+            icon: <IconLayout className="w-6 h-6" />,
+            nodes: [
+            {
+                id: "H1",
+                name: "Consumo de /products y lógica dinámica",
+                description: "El frontend usa contrato REST para seleccionar paquetes, validar y preparar envío.",
+                properties: createFrontendRuntimeCatalog(),
+                behaviors: [
+                "Si IsRange=true ejecuta EstimatePrices antes de confirmar.",
+                "Si LookupBillsRequired=true ejecuta LookupBills y envía bill_ref/settings en payload final.",
+                "En modo WooCommerce reenvía datos al add-to-cart y difiere SendTransfer al pago confirmado."
                 ]
             }
             ]
         },
         woocommerce: {
-            title: "9. WooCommerce",
+            title: "6. WooCommerce",
             icon: <IconShoppingCart className="w-6 h-6" />,
             nodes: [
             {
                 id: "I1",
                 name: "Cart Item Data",
                 description: "Datos que viajan al carrito de WooCommerce.",
-                properties: [
-                { name: "dc_sku_code", type: "string", description: "" },
-                { name: "dc_send_value", type: "float", description: "" },
-                { name: "dc_redemption_mechanism", type: "string", description: "" },
-                { name: "dc_is_range", type: "boolean", description: "" },
-                { name: "dc_settings", type: "array", description: "Settings definidos por el usuario" },
-                ],
+                properties: createWooCartItemCatalog(),
                 behaviors: [
-                "Espera al order->is_paid() para ejecutar la recarga."
+                "Persiste metadatos en item/order y espera order->is_paid() para ejecutar recarga.",
+                "Reenvía settings/bill_ref a SendTransfer y aplica reconciliación cuando corresponde."
+                ]
+            },
+            {
+                id: "I2",
+                name: "Order Item Meta (_dc_*)",
+                description: "Metadatos exactos que WooCommerce persiste en la orden por cada item de recarga.",
+                properties: createWooOrderMetaCatalog(),
+                behaviors: [
+                "Se usan para despacho post-pago, reconciliación y trazabilidad de soporte.",
+                "Mantienen continuidad de bill_ref/settings y clasificación de flujo."
                 ]
             }
             ]
