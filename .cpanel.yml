@@ -1,0 +1,12 @@
+---
+deployment:
+  tasks:
+    # Deploy solo archivos esenciales del plugin (excluye docs/, .git/, config, etc)
+    - export DEPLOYPATH=/home/otfidqlcuq/prueba.today/wp-content/plugins/dingconnect-recargas
+    - rm -rf $DEPLOYPATH
+    - mkdir -p $DEPLOYPATH
+    - cp -R ./dingconnect-recargas.php $DEPLOYPATH/
+    - cp -R ./assets $DEPLOYPATH/
+    - cp -R ./includes $DEPLOYPATH/
+    - cp -R ./MANUAL-USUARIO.md $DEPLOYPATH/
+    - cp -R ./README-INSTALACION.md $DEPLOYPATH/
