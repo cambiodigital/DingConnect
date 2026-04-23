@@ -1,7 +1,10 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/otfidqlcuq/public_html/wp-content/plugins
-    - rm -rf $DEPLOYPATH/dingconnect-recargas
+    # Solo despliega el contenido de dingconnect-wp-plugin (Git Version Control clona TODO)
+    - export DEPLOYPATH=/home/otfidqlcuq/prueba.today/wp-content/plugins/dingconnect-recargas
+    - rm -rf $DEPLOYPATH
     - mkdir -p $DEPLOYPATH
-    - cp -R ./dingconnect-wp-plugin/* $DEPLOYPATH
+    - cp -R ./dingconnect-wp-plugin/dingconnect-recargas/. $DEPLOYPATH
+    # Limpia el repo clonado después de desplegar
+    - cd / && rm -rf /home/otfidqlcuq/repositories/*
