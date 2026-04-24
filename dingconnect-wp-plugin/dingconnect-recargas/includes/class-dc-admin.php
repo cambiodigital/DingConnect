@@ -2324,6 +2324,21 @@ class DC_Recargas_Admin {
                     box-shadow: none;
                 }
 
+                .dc-saved-bundles-logo-url {
+                    min-width: 220px;
+                    max-width: 320px;
+                    word-break: break-all;
+                }
+
+                .dc-saved-bundles-logo-url a {
+                    display: inline-block;
+                    max-width: 100%;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    vertical-align: middle;
+                }
+
                 .dc-saved-bundles-table-wrap .check-column {
                     width: 54px;
                     min-width: 54px;
@@ -2954,7 +2969,6 @@ class DC_Recargas_Admin {
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiLoadManualBtn = document.getElementById('dc_api_load_manual_btn');
                 var manualModalEl = document.getElementById('dc-manual-modal');
-                var manualModalCloseEls = document.querySelectorAll('[data-dc-manual-close]');
                 var apiSelected  = null;
                 var apiSelectedRowEl = null;
                 var apiItems = [];
@@ -3576,11 +3590,11 @@ class DC_Recargas_Admin {
                     }
                 });
 
-                if (manualModalCloseEls.length) {
-                    manualModalCloseEls.forEach(function (el) {
-                        el.addEventListener('click', closeManualModal);
-                    });
-                }
+                document.addEventListener('click', function (event) {
+                    if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-dc-manual-close]')) {
+                        closeManualModal();
+                    }
+                });
 
                 document.addEventListener('keydown', function (event) {
                     if (event.key === 'Escape' && manualModalEl && !manualModalEl.hidden) {
@@ -3751,6 +3765,7 @@ class DC_Recargas_Admin {
                         <th class="check-column">
                             <input type="checkbox" id="dc_bundles_select_all" aria-label="Seleccionar todos los productos">
                         </th>
+                        <th>Logo URL</th>
                         <th>País</th>
                         <th>Tipo</th>
                         <th>Nombre</th>
@@ -3767,7 +3782,7 @@ class DC_Recargas_Admin {
                 <tbody>
                 <?php if (empty($bundles)) : ?>
                     <tr>
-                        <td colspan="12">Aún no has agregado productos.</td>
+                        <td colspan="13">Aún no has agregado productos.</td>
                     </tr>
                 <?php else : ?>
                     <?php foreach ($bundles as $bundle) : ?>
@@ -3781,6 +3796,7 @@ class DC_Recargas_Admin {
                             $bundle_operator_name = sanitize_text_field((string) ($bundle['provider_name'] ?? ''));
                             $bundle_label = sanitize_text_field((string) ($bundle['label'] ?? ''));
                             $bundle_sku_code = sanitize_text_field((string) ($bundle['sku_code'] ?? ''));
+                            $bundle_logo_url = esc_url((string) ($bundle['logo_url'] ?? ''));
                             $bundle_product_type_raw = sanitize_text_field((string) ($bundle['product_type_raw'] ?? ''));
                             $bundle_search_index = strtolower(trim(implode(' ', array_filter([
                                 $bundle_label,
@@ -3794,6 +3810,13 @@ class DC_Recargas_Admin {
                         <tr class="dc-row-editable" tabindex="0" role="button" data-edit-bundle="<?php echo esc_attr(wp_json_encode($bundle)); ?>" data-family="<?php echo esc_attr($bundle_package_family); ?>" data-country-iso="<?php echo esc_attr($bundle_country_iso); ?>" data-operator-name="<?php echo esc_attr($bundle_operator_name); ?>" data-search-index="<?php echo esc_attr($bundle_search_index); ?>" aria-label="Editar producto <?php echo esc_attr($bundle['label'] ?? ''); ?>">
                             <td class="check-column">
                                 <input type="checkbox" class="dc-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle['id'] ?? ''); ?>" aria-label="Seleccionar producto <?php echo esc_attr($bundle['label'] ?? ''); ?>">
+                            </td>
+                            <td class="dc-saved-bundles-logo-url">
+                                <?php if ($bundle_logo_url !== '') : ?>
+                                    <a href="<?php echo esc_url($bundle_logo_url); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo esc_attr($bundle_logo_url); ?>"><?php echo esc_html($bundle_logo_url); ?></a>
+                                <?php else : ?>
+                                    <span class="description">Sin logo</span>
+                                <?php endif; ?>
                             </td>
                             <td><?php echo esc_html($bundle_country_iso); ?></td>
                             <td><?php echo esc_html($bundle_family_label); ?></td>
@@ -4409,7 +4432,6 @@ class DC_Recargas_Admin {
                 var editModalEl = document.getElementById('dc-edit-modal');
                 var editFormEl = document.getElementById('dc_edit_bundle_form');
                 var editableBundleRows = document.querySelectorAll('tr[data-edit-bundle]');
-                var editCloseEls = document.querySelectorAll('[data-dc-edit-close]');
                 var selectAllBundlesEl = document.getElementById('dc_bundles_select_all');
                 var bulkDeleteFormEl = document.getElementById('dc_bulk_delete_bundles_form');
                 var bundleCheckboxEls = document.querySelectorAll('.dc-bundle-checkbox');
@@ -4437,7 +4459,6 @@ class DC_Recargas_Admin {
                 var editIsActiveEl = document.getElementById('dc_edit_is_active');
                 var landingEditModalEl = document.getElementById('dc-edit-landing-modal');
                 var editableLandingRows = document.querySelectorAll('tr[data-edit-landing]');
-                var landingEditCloseEls = document.querySelectorAll('[data-dc-landing-edit-close]');
                 var landingEditIdEl = document.getElementById('dc_edit_landing_id');
                 var landingEditNameEl = document.getElementById('dc_edit_landing_name');
                 var landingEditKeyEl = document.getElementById('dc_edit_landing_key');
@@ -5244,11 +5265,11 @@ class DC_Recargas_Admin {
                     });
                 }
 
-                if (editCloseEls.length) {
-                    editCloseEls.forEach(function (el) {
-                        el.addEventListener('click', closeEditModal);
-                    });
-                }
+                document.addEventListener('click', function (event) {
+                    if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-dc-edit-close]')) {
+                        closeEditModal();
+                    }
+                });
 
                 if (editableLandingRows.length) {
                     editableLandingRows.forEach(function (rowEl) {
@@ -5333,11 +5354,11 @@ class DC_Recargas_Admin {
                     });
                 }
 
-                if (landingEditCloseEls.length) {
-                    landingEditCloseEls.forEach(function (el) {
-                        el.addEventListener('click', closeLandingEditModal);
-                    });
-                }
+                document.addEventListener('click', function (event) {
+                    if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-dc-landing-edit-close]')) {
+                        closeLandingEditModal();
+                    }
+                });
 
                 document.addEventListener('keydown', function (event) {
                     if (event.key === 'Escape' && editModalEl && !editModalEl.hidden) {
@@ -5591,7 +5612,6 @@ class DC_Recargas_Admin {
             (function () {
                 var customizeModal = document.getElementById('dc-customize-shortcode-modal');
                 var customizeButtons = document.querySelectorAll('.dc-customize-shortcode-btn');
-                var customizeCloseEls = document.querySelectorAll('[data-dc-customize-close]');
                 var maxWidthInput = document.getElementById('dc_customize_max_width');
                 var bgColorInput = document.getElementById('dc_customize_bg_color');
                 var primaryColorInput = document.getElementById('dc_customize_primary_color');
@@ -5723,8 +5743,10 @@ class DC_Recargas_Admin {
                     });
                 });
 
-                customizeCloseEls.forEach(function (el) {
-                    el.addEventListener('click', closeCustomizeModal);
+                document.addEventListener('click', function (event) {
+                    if (event.target && typeof event.target.closest === 'function' && event.target.closest('[data-dc-customize-close]')) {
+                        closeCustomizeModal();
+                    }
                 });
 
                 customizeInputs.forEach(function (input) {

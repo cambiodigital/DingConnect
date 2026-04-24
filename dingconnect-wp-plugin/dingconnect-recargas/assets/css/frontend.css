@@ -12,7 +12,7 @@
     border-radius: 16px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06);
     padding: 24px 24px 20px;
-    overflow: hidden;
+    overflow: visible;
 }
 
 /* ===== Stepper ===== */
@@ -114,7 +114,7 @@
 /* ===== Wizard viewport ===== */
 .dc-wizard {
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 /* ===== Panes ===== */
@@ -1350,6 +1350,15 @@
 }
 
 @media (max-width: 640px) {
+    .dc-package-select {
+        font-size: 13px;
+        padding-right: 42px;
+    }
+
+    .dc-package-select option {
+        font-size: 13px;
+    }
+
     .dc-package-card-head,
     .dc-confirm-hero {
         grid-template-columns: 1fr;
