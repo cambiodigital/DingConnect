@@ -181,6 +181,7 @@ Una iniciativa se considera lista cuando cumple:
 111. Simplificación de `Catálogo y alta`: se eliminaron las subpestañas internas del panel y quedó visible solo el flujo `Buscar en API`; `Alta manual` pasa a abrirse como modal desde `Seleccionar producto`, precargando el bundle elegido para revisión y guardado sin cambiar de vista.
 112. Mejora de legibilidad en `Buscar en API`: la columna `Vigencia` ahora presenta el valor del API en lenguaje natural (por ejemplo, `P7D` -> `7 días`, `P2W` -> `2 semanas`, `P1M` -> `1 mes`) manteniendo el valor original para persistencia interna del bundle.
 113. Mejora UX en `Shortcodes creados`: al hacer click sobre el texto del shortcode en la tabla de `Wizard y landings`, ahora se copia automáticamente al portapapeles y muestra confirmación visual breve (`Copiado`) sin abrir el modal de edición.
+114. Refinamiento visual en `Shortcodes creados`: la tabla adoptó estilo minimalista-profesional (cabecera sobria, bordes suaves, mejor espaciado y badges de jerarquía para clave/cantidad) para mejorar contraste, lectura y consistencia con la UI moderna del admin.
 114. Mejora UX en `Productos guardados`: se añadió columna `Logo URL` en la tabla (primera columna de datos), mostrando el enlace del logo del producto cuando existe y fallback `Sin logo` cuando no hay URL persistida.
 
 ## Backlog actualizado por impacto

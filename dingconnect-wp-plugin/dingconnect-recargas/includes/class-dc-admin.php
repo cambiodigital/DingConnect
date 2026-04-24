@@ -1724,6 +1724,65 @@ class DC_Recargas_Admin {
                     outline-offset: -2px;
                 }
 
+                .dc-shortcodes-table-wrap {
+                    border: 1px solid #d6dee9;
+                    border-radius: 14px;
+                    overflow: hidden;
+                    background: #ffffff;
+                    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+                }
+
+                .dc-shortcodes-table {
+                    margin: 0;
+                    border: 0 !important;
+                    box-shadow: none !important;
+                }
+
+                .dc-shortcodes-table thead th {
+                    background: #f6f9fc;
+                    border-bottom: 1px solid #dfe7f1;
+                    color: #334155;
+                    font-size: 11px;
+                    letter-spacing: 0.05em;
+                    text-transform: uppercase;
+                    font-weight: 700;
+                    padding: 12px 14px;
+                }
+
+                .dc-shortcodes-table tbody td {
+                    border-top: 1px solid #edf2f8;
+                    color: #1f2937;
+                    padding: 12px 14px;
+                    vertical-align: middle;
+                }
+
+                .dc-shortcodes-table tbody tr:first-child td {
+                    border-top: 0;
+                }
+
+                .dc-shortcodes-key {
+                    color: #0f172a;
+                    font-size: 12px;
+                    background: #f8fafd;
+                    border: 1px solid #e4ebf5;
+                    padding: 2px 6px;
+                    border-radius: 6px;
+                }
+
+                .dc-shortcodes-badge {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 28px;
+                    height: 24px;
+                    padding: 0 8px;
+                    border-radius: 999px;
+                    background: #eef4fb;
+                    color: #0f4aa3;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+
                 .dc-shortcode-copy-trigger {
                     display: inline-flex;
                     align-items: center;
@@ -2679,7 +2738,8 @@ class DC_Recargas_Admin {
             </form>
 
             <h3>Shortcodes creados</h3>
-            <table class="widefat striped">
+            <div class="dc-shortcodes-table-wrap">
+            <table class="widefat striped dc-shortcodes-table">
                 <thead>
                     <tr>
                         <th>Objetivo</th>
@@ -2703,8 +2763,8 @@ class DC_Recargas_Admin {
                             ?>
                             <tr class="dc-row-editable" tabindex="0" role="button" data-edit-landing="<?php echo esc_attr(wp_json_encode($landing_cfg)); ?>" aria-label="Editar shortcode <?php echo esc_attr($landing_name); ?>">
                                 <td><?php echo esc_html($landing_name); ?></td>
-                                <td><code><?php echo esc_html($landing_key); ?></code></td>
-                                <td><?php echo esc_html((string) count($landing_bundles)); ?></td>
+                                <td><code class="dc-shortcodes-key"><?php echo esc_html($landing_key); ?></code></td>
+                                <td><span class="dc-shortcodes-badge"><?php echo esc_html((string) count($landing_bundles)); ?></span></td>
                                 <td>
                                     <button type="button" class="dc-shortcode-copy-trigger" data-copy-text="<?php echo esc_attr($shortcode_text); ?>" title="Copiar shortcode" aria-label="Copiar shortcode de <?php echo esc_attr($landing_name); ?>">
                                         <code><?php echo esc_html($shortcode_text); ?></code>
@@ -2729,6 +2789,7 @@ class DC_Recargas_Admin {
                     <?php endif; ?>
                 </tbody>
             </table>
+            </div>
 
             <div id="dc-edit-landing-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-edit-landing-modal-title" hidden>
                 <div class="dc-edit-modal__backdrop" data-dc-landing-edit-close></div>
