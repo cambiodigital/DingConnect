@@ -99,7 +99,7 @@ class DC_Recargas_Admin {
         $valid_bundle_ids = [];
         foreach ($bundles as $bundle) {
             $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
-            if ($bundle_id !== '') {
+            if ($bundle_id !== '' && !empty($bundle['is_active'])) {
                 $valid_bundle_ids[$bundle_id] = strtoupper((string) ($bundle['country_iso'] ?? ''));
             }
         }
@@ -305,7 +305,7 @@ class DC_Recargas_Admin {
         $valid_bundle_ids = [];
         foreach ($bundles as $bundle) {
             $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
-            if ($bundle_id !== '') {
+            if ($bundle_id !== '' && !empty($bundle['is_active'])) {
                 $valid_bundle_ids[$bundle_id] = strtoupper((string) ($bundle['country_iso'] ?? ''));
             }
         }
@@ -2120,6 +2120,21 @@ class DC_Recargas_Admin {
                     background: #f8fafc;
                 }
 
+                .dc-landing-bundles-checklist__item.is-inactive {
+                    background: #fff7ed;
+                    border-color: #fdba74;
+                    color: #9a3412;
+                }
+
+                .dc-landing-bundles-checklist__item.is-inactive .dc-landing-bundles-drag-handle {
+                    cursor: not-allowed;
+                    opacity: 0.55;
+                }
+
+                .dc-landing-bundles-checklist__item.is-inactive .dc-landing-bundles-checklist__main {
+                    opacity: 0.9;
+                }
+
                 .dc-landing-bundles-checklist__item.is-dragging {
                     opacity: 0.45;
                     border: 1px dashed #94a3b8;
@@ -2181,6 +2196,34 @@ class DC_Recargas_Admin {
                     font-size: 12px;
                     font-weight: 600;
                     white-space: nowrap;
+                }
+
+                .dc-landing-bundles-checklist__status {
+                    display: inline-flex;
+                    align-items: center;
+                    padding: 2px 8px;
+                    border-radius: 999px;
+                    background: #ffedd5;
+                    color: #9a3412;
+                    border: 1px solid #fdba74;
+                    font-size: 11px;
+                    font-weight: 700;
+                    line-height: 1.3;
+                    white-space: nowrap;
+                }
+
+                .dc-shortcodes-inactive-note {
+                    display: inline-flex;
+                    align-items: center;
+                    margin-left: 6px;
+                    padding: 2px 6px;
+                    border-radius: 999px;
+                    background: #ffedd5;
+                    color: #9a3412;
+                    border: 1px solid #fdba74;
+                    font-size: 10px;
+                    font-weight: 700;
+                    letter-spacing: 0.02em;
                 }
 
                 .dc-landing-bundles-checklist__item input[type="checkbox"] {
@@ -2716,17 +2759,21 @@ class DC_Recargas_Admin {
                             <?php if ($bundle_id === '') { continue; } ?>
                             <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
                             <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
-                            <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>">
-                                <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
+                            <?php $bundle_is_active = !empty($bundle['is_active']); ?>
+                            <label class="dc-landing-bundles-checklist__item<?php echo $bundle_is_active ? '' : ' is-inactive'; ?>" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>">
+                                <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden" <?php disabled(!$bundle_is_active); ?>>⋮⋮</button>
                                 <span class="dc-landing-bundles-checklist__main">
-                                    <input type="checkbox" class="dc-create-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
+                                    <input type="checkbox" class="dc-create-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>" <?php disabled(!$bundle_is_active); ?>>
                                     <span>[<?php echo esc_html(strtoupper((string) ($bundle['country_iso'] ?? ''))); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
                                 </span>
                                 <span class="dc-landing-bundles-checklist__controls">
                                     <span class="dc-landing-bundles-checklist__featured">
-                                        <input type="radio" class="dc-create-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>">
+                                        <input type="radio" class="dc-create-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>" <?php disabled(!$bundle_is_active); ?>>
                                         Destacado
                                     </span>
+                                    <?php if (!$bundle_is_active) : ?>
+                                        <span class="dc-landing-bundles-checklist__status" title="Este producto está desactivado en Productos guardados">Desactivado</span>
+                                    <?php endif; ?>
                                 </span>
                             </label>
                         <?php endforeach; ?>
@@ -2738,6 +2785,17 @@ class DC_Recargas_Admin {
             </form>
 
             <h3>Shortcodes creados</h3>
+            <?php
+                $landing_bundle_status_map = [];
+                foreach ($bundles as $bundle) {
+                    $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
+                    if ($bundle_id === '') {
+                        continue;
+                    }
+
+                    $landing_bundle_status_map[$bundle_id] = !empty($bundle['is_active']);
+                }
+            ?>
             <div class="dc-shortcodes-table-wrap">
             <table class="widefat striped dc-shortcodes-table">
                 <thead>
@@ -2759,12 +2817,28 @@ class DC_Recargas_Admin {
                                 $landing_key = sanitize_key((string) ($landing_cfg['key'] ?? ''));
                                 $landing_name = sanitize_text_field((string) ($landing_cfg['name'] ?? 'Landing'));
                                 $landing_bundles = is_array($landing_cfg['bundle_ids'] ?? null) ? $landing_cfg['bundle_ids'] : [];
+                                $landing_inactive_count = 0;
+                                foreach ($landing_bundles as $landing_bundle_id) {
+                                    $landing_bundle_id = sanitize_text_field((string) $landing_bundle_id);
+                                    if ($landing_bundle_id === '') {
+                                        continue;
+                                    }
+
+                                    if (isset($landing_bundle_status_map[$landing_bundle_id]) && !$landing_bundle_status_map[$landing_bundle_id]) {
+                                        $landing_inactive_count++;
+                                    }
+                                }
                                 $shortcode_text = '[dingconnect_recargas landing_key="' . $landing_key . '"]';
                             ?>
                             <tr class="dc-row-editable" tabindex="0" role="button" data-edit-landing="<?php echo esc_attr(wp_json_encode($landing_cfg)); ?>" aria-label="Editar shortcode <?php echo esc_attr($landing_name); ?>">
                                 <td><?php echo esc_html($landing_name); ?></td>
                                 <td><code class="dc-shortcodes-key"><?php echo esc_html($landing_key); ?></code></td>
-                                <td><span class="dc-shortcodes-badge"><?php echo esc_html((string) count($landing_bundles)); ?></span></td>
+                                <td>
+                                    <span class="dc-shortcodes-badge"><?php echo esc_html((string) count($landing_bundles)); ?></span>
+                                    <?php if ($landing_inactive_count > 0) : ?>
+                                        <span class="dc-shortcodes-inactive-note" title="Incluye bundles desactivados">Desactivados: <?php echo esc_html((string) $landing_inactive_count); ?></span>
+                                    <?php endif; ?>
+                                </td>
                                 <td>
                                     <button type="button" class="dc-shortcode-copy-trigger" data-copy-text="<?php echo esc_attr($shortcode_text); ?>" title="Copiar shortcode" aria-label="Copiar shortcode de <?php echo esc_attr($landing_name); ?>">
                                         <code><?php echo esc_html($shortcode_text); ?></code>
@@ -2846,17 +2920,21 @@ class DC_Recargas_Admin {
                                     <?php if ($bundle_id === '') { continue; } ?>
                                     <?php $bundle_country = strtoupper((string) ($bundle['country_iso'] ?? '')); ?>
                                     <?php $bundle_family = sanitize_key((string) ($bundle['package_family'] ?? 'other')); ?>
-                                    <label class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>">
-                                        <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button>
+                                    <?php $bundle_is_active = !empty($bundle['is_active']); ?>
+                                    <label class="dc-landing-bundles-checklist__item<?php echo $bundle_is_active ? '' : ' is-inactive'; ?>" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>">
+                                        <button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden" <?php disabled(!$bundle_is_active); ?>>⋮⋮</button>
                                         <span class="dc-landing-bundles-checklist__main">
-                                            <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>">
+                                            <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>" <?php disabled(!$bundle_is_active); ?>>
                                             <span>[<?php echo esc_html($bundle_country); ?>] <?php echo esc_html((string) ($bundle['label'] ?? '')); ?> | <?php echo esc_html((string) ($bundle['sku_code'] ?? '')); ?></span>
                                         </span>
                                         <span class="dc-landing-bundles-checklist__controls">
                                             <span class="dc-landing-bundles-checklist__featured">
-                                                <input type="radio" class="dc-edit-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>">
+                                                <input type="radio" class="dc-edit-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>" <?php disabled(!$bundle_is_active); ?>>
                                                 Destacado
                                             </span>
+                                            <?php if (!$bundle_is_active) : ?>
+                                                <span class="dc-landing-bundles-checklist__status" title="Este producto está desactivado en Productos guardados">Desactivado</span>
+                                            <?php endif; ?>
                                         </span>
                                     </label>
                                 <?php endforeach; ?>
@@ -5115,7 +5193,7 @@ class DC_Recargas_Admin {
                         if (target.matches('input[type="radio"][name="featured_bundle_id"]') && target.checked) {
                             var featuredRowEl = target.closest('.dc-landing-bundles-checklist__item');
                             var featuredCheckboxEl = getCheckboxFromRow(featuredRowEl);
-                            if (featuredCheckboxEl) {
+                            if (featuredCheckboxEl && !featuredCheckboxEl.disabled) {
                                 featuredCheckboxEl.checked = true;
                             }
                             syncSelectedState();

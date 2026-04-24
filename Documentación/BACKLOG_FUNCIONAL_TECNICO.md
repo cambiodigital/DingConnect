@@ -183,6 +183,7 @@ Una iniciativa se considera lista cuando cumple:
 113. Mejora UX en `Shortcodes creados`: al hacer click sobre el texto del shortcode en la tabla de `Wizard y landings`, ahora se copia automáticamente al portapapeles y muestra confirmación visual breve (`Copiado`) sin abrir el modal de edición.
 114. Refinamiento visual en `Shortcodes creados`: la tabla adoptó estilo minimalista-profesional (cabecera sobria, bordes suaves, mejor espaciado y badges de jerarquía para clave/cantidad) para mejorar contraste, lectura y consistencia con la UI moderna del admin.
 114. Mejora UX en `Productos guardados`: se añadió columna `Logo URL` en la tabla (primera columna de datos), mostrando el enlace del logo del producto cuando existe y fallback `Sin logo` cuando no hay URL persistida.
+115. Endurecimiento funcional en `Landings`: los bundles desactivados en `Productos guardados` ahora se muestran en el checklist de `Bundles de la landing` (alta y modal de edición) con etiqueta `Desactivado`, quedan bloqueados para selección/destacado y backend rechaza su guardado en alta/actualización de shortcodes dinámicos.
 
 ## Backlog actualizado por impacto
 
