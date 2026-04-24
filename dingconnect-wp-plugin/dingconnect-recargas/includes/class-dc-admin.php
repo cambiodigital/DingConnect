@@ -4150,6 +4150,55 @@ class DC_Recargas_Admin {
                             text-decoration: underline;
                         }
 
+                        .dc-logs-response {
+                            display: none;
+                            margin-top: 8px;
+                            padding: 10px;
+                            border: 1px solid #cbd5e1;
+                            border-radius: 10px;
+                            background: #f8fafc;
+                        }
+
+                        .dc-logs-response-title {
+                            display: block;
+                            color: #0f172a;
+                            font-size: 13px;
+                            margin-bottom: 4px;
+                        }
+
+                        .dc-logs-response-message {
+                            margin: 0 0 8px;
+                            color: #334155;
+                            font-size: 12px;
+                        }
+
+                        .dc-logs-response-list {
+                            margin: 0 0 8px;
+                            padding: 0;
+                            list-style: none;
+                            display: grid;
+                            gap: 4px;
+                        }
+
+                        .dc-logs-response-list li {
+                            font-size: 12px;
+                            color: #334155;
+                        }
+
+                        .dc-logs-response-list strong {
+                            color: #0f172a;
+                        }
+
+                        .dc-logs-raw-btn {
+                            background: transparent;
+                            border: none;
+                            color: #0f4aa3;
+                            cursor: pointer;
+                            font-size: 12px;
+                            padding: 0;
+                            text-decoration: underline;
+                        }
+
                         .dc-logs-raw {
                             display: none;
                             margin-top: 6px;
@@ -4239,6 +4288,174 @@ class DC_Recargas_Admin {
                             return 'dc-log-badge--unknown';
                         }
 
+                        function firstNonEmpty(values) {
+                            if (!Array.isArray(values)) return '';
+                            for (var i = 0; i < values.length; i++) {
+                                var value = values[i];
+                                if (value === null || value === undefined) continue;
+                                var text = String(value).trim();
+                                if (text !== '') return text;
+                            }
+                            return '';
+                        }
+
+                        function parseRawResponse(raw) {
+                            if (!raw) return null;
+                            if (typeof raw === 'object') return raw;
+                            try {
+                                return JSON.parse(raw);
+                            } catch (e) {
+                                return null;
+                            }
+                        }
+
+                        function buildLogResponseSummary(log) {
+                            var parsed = parseRawResponse(log.raw_response);
+                            var lowerStatus = String(log.status || '').toLowerCase();
+                            var details = [];
+
+                            if (!parsed || typeof parsed !== 'object') {
+                                return {
+                                    title: 'Resumen no disponible',
+                                    message: 'No se pudo interpretar la respuesta para mostrar un resumen legible.',
+                                    details: details,
+                                    raw: log.raw_response || ''
+                                };
+                            }
+
+                            var list = Array.isArray(parsed.Items) ? parsed.Items : (Array.isArray(parsed.Result) ? parsed.Result : []);
+                            var item = (list.length > 0 && typeof list[0] === 'object' && list[0] !== null) ? list[0] : {};
+                            var transferRecord = (parsed.TransferRecord && typeof parsed.TransferRecord === 'object') ? parsed.TransferRecord : {};
+                            var transferId = (transferRecord.TransferId && typeof transferRecord.TransferId === 'object') ? transferRecord.TransferId : {};
+                            var wpErrorData = (parsed.error_data && parsed.error_data.dc_http_error && typeof parsed.error_data.dc_http_error === 'object')
+                                ? parsed.error_data.dc_http_error
+                                : {};
+                            var wpErrorBody = (wpErrorData.body && typeof wpErrorData.body === 'object') ? wpErrorData.body : {};
+                            var wpErrorTransferRecord = (wpErrorBody.TransferRecord && typeof wpErrorBody.TransferRecord === 'object')
+                                ? wpErrorBody.TransferRecord
+                                : {};
+                            var wpErrors = (parsed.errors && parsed.errors.dc_http_error && Array.isArray(parsed.errors.dc_http_error))
+                                ? parsed.errors.dc_http_error
+                                : [];
+                            var firstError = (Array.isArray(parsed.ErrorCodes) && parsed.ErrorCodes.length > 0 && typeof parsed.ErrorCodes[0] === 'object')
+                                ? parsed.ErrorCodes[0]
+                                : {};
+                            var firstBodyError = (Array.isArray(wpErrorBody.ErrorCodes) && wpErrorBody.ErrorCodes.length > 0 && typeof wpErrorBody.ErrorCodes[0] === 'object')
+                                ? wpErrorBody.ErrorCodes[0]
+                                : {};
+
+                            var processingState = firstNonEmpty([
+                                item.ProcessingState,
+                                transferRecord.ProcessingState,
+                                wpErrorTransferRecord.ProcessingState,
+                                wpErrorData.processing_state,
+                                parsed.ProcessingState
+                            ]);
+                            var resultCode = firstNonEmpty([
+                                item.ResultCode,
+                                wpErrorBody.ResultCode,
+                                parsed.ResultCode
+                            ]);
+                            var errorCode = firstNonEmpty([
+                                item.ErrorCode,
+                                firstBodyError.Code,
+                                firstError.Code,
+                                wpErrorData.ding_error_code
+                            ]);
+                            var receiptText = firstNonEmpty([
+                                item.ReceiptText,
+                                parsed.ReceiptText
+                            ]);
+                            var providerMessage = firstNonEmpty([
+                                wpErrors[0],
+                                item.ErrorMessage,
+                                item.Description,
+                                firstBodyError.Description,
+                                firstBodyError.Context,
+                                firstError.Description,
+                                firstError.Context,
+                                parsed.message,
+                                parsed.error
+                            ]);
+                            var responseTransferRef = firstNonEmpty([
+                                transferId.TransferRef,
+                                wpErrorData.transfer_ref,
+                                parsed.TransferRef,
+                                log.transfer_ref
+                            ]);
+                            var responseDistributorRef = firstNonEmpty([
+                                transferId.DistributorRef,
+                                wpErrorData.distributor_ref,
+                                log.distributor_ref
+                            ]);
+
+                            if (processingState) {
+                                details.push({ label: 'Estado de proceso', value: processingState });
+                            }
+                            if (resultCode) {
+                                details.push({ label: 'Código de resultado', value: resultCode });
+                            }
+                            if (errorCode) {
+                                details.push({ label: 'Código de error', value: errorCode });
+                            }
+                            if (responseTransferRef) {
+                                details.push({ label: 'Ref. transferencia', value: responseTransferRef });
+                            }
+                            if (responseDistributorRef) {
+                                details.push({ label: 'Ref. distribuidor', value: responseDistributorRef });
+                            }
+                            if (receiptText) {
+                                details.push({ label: 'Mensaje del proveedor', value: receiptText });
+                            }
+
+                            var title = 'Respuesta recibida';
+                            var message = providerMessage;
+
+                            if (lowerStatus === 'transfersuccessful') {
+                                title = 'Recarga procesada';
+                                if (!message) {
+                                    message = 'La recarga fue aceptada por el proveedor.';
+                                }
+                            } else if (lowerStatus === 'error') {
+                                title = 'Recarga con error';
+                                if (!message) {
+                                    message = 'La operación devolvió un error y requiere revisión.';
+                                }
+                            } else if (lowerStatus.indexOf('validate') !== -1) {
+                                title = 'Validación completada';
+                                if (!message) {
+                                    message = 'La solicitud fue validada en modo de prueba y no ejecutó recarga real.';
+                                }
+                            } else if (!message) {
+                                message = 'Se recibió respuesta del proveedor para esta operación.';
+                            }
+
+                            return {
+                                title: title,
+                                message: message,
+                                details: details,
+                                raw: log.raw_response || ''
+                            };
+                        }
+
+                        function renderResponseDetails(summary, responseId, rawId) {
+                            var detailsHtml = '';
+                            if (summary.details && summary.details.length) {
+                                detailsHtml = '<ul class="dc-logs-response-list">' + summary.details.map(function (detail) {
+                                    return '<li><strong>' + esc(detail.label) + ':</strong> ' + esc(detail.value) + '</li>';
+                                }).join('') + '</ul>';
+                            }
+
+                            return ''
+                                + '<div id="' + responseId + '" class="dc-logs-response">'
+                                    + '<strong class="dc-logs-response-title">' + esc(summary.title) + '</strong>'
+                                    + '<p class="dc-logs-response-message">' + esc(summary.message) + '</p>'
+                                    + detailsHtml
+                                    + '<button type="button" class="dc-logs-raw-btn" data-target="' + rawId + '">Ver detalle técnico</button>'
+                                    + '<pre id="' + rawId + '" class="dc-logs-raw">' + esc(summary.raw) + '</pre>'
+                                + '</div>';
+                        }
+
                         function renderTable(logs) {
                             if (!logs || !logs.length) {
                                 resultEl.innerHTML = '<p style="color:#64748b;padding:20px 0;">No se encontraron registros con los filtros aplicados.</p>';
@@ -4258,7 +4475,9 @@ class DC_Recargas_Admin {
 
                             logs.forEach(function (log, i) {
                                 var badge = '<span class="dc-log-badge ' + badgeClass(log.status) + '">' + esc(log.status || 'unknown') + '</span>';
+                                var responseId = 'dc-log-response-' + i;
                                 var rawId = 'dc-log-raw-' + i;
+                                var summary = buildLogResponseSummary(log);
                                 html += '<tr>'
                                     + '<td>' + esc(log.date) + '</td>'
                                     + '<td>' + esc(log.account_number) + '</td>'
@@ -4268,8 +4487,8 @@ class DC_Recargas_Admin {
                                     + '<td style="font-size:11px;word-break:break-all;">' + esc(log.distributor_ref) + '</td>'
                                     + '<td style="font-size:11px;word-break:break-all;">' + esc(log.transfer_ref) + '</td>'
                                     + '<td>'
-                                        + '<button type="button" class="dc-logs-expand-btn" data-target="' + rawId + '">Ver respuesta</button>'
-                                        + '<pre id="' + rawId + '" class="dc-logs-raw">' + esc(log.raw_response) + '</pre>'
+                                        + '<button type="button" class="dc-logs-expand-btn" data-target="' + responseId + '">Ver respuesta</button>'
+                                        + renderResponseDetails(summary, responseId, rawId)
                                     + '</td>'
                                     + '</tr>';
                             });
@@ -4279,11 +4498,21 @@ class DC_Recargas_Admin {
 
                             resultEl.querySelectorAll('.dc-logs-expand-btn').forEach(function (btn) {
                                 btn.addEventListener('click', function () {
+                                    var panel = document.getElementById(btn.getAttribute('data-target'));
+                                    if (!panel) return;
+                                    var open = panel.style.display === 'block';
+                                    panel.style.display = open ? 'none' : 'block';
+                                    btn.textContent = open ? 'Ver respuesta' : 'Ocultar';
+                                });
+                            });
+
+                            resultEl.querySelectorAll('.dc-logs-raw-btn').forEach(function (btn) {
+                                btn.addEventListener('click', function () {
                                     var pre = document.getElementById(btn.getAttribute('data-target'));
                                     if (!pre) return;
                                     var open = pre.style.display === 'block';
                                     pre.style.display = open ? 'none' : 'block';
-                                    btn.textContent = open ? 'Ver respuesta' : 'Ocultar';
+                                    btn.textContent = open ? 'Ver detalle técnico' : 'Ocultar detalle técnico';
                                 });
                             });
                         }

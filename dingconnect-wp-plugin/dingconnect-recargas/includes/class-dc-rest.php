@@ -446,6 +446,15 @@ class DC_Recargas_REST {
             return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
         }
 
+        $options = $this->api->get_options();
+        $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
+        if ($payment_mode === 'woocommerce') {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => 'Transferencia directa deshabilitada en modo WooCommerce. Usa /add-to-cart y completa el pago en checkout.',
+            ], 403);
+        }
+
         $params = $request->get_json_params();
 
         $payload = [

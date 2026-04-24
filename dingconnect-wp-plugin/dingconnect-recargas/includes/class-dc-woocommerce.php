@@ -417,12 +417,21 @@ class DC_Recargas_WooCommerce {
             return;
         }
 
+        $recarga_items = $this->get_order_recarga_items($order);
+        if (empty($recarga_items)) {
+            return;
+        }
+
+        if (!$this->is_order_gateway_allowed_for_recargas($order)) {
+            $this->mark_order_recargas_gateway_blocked($order, $recarga_items, 'payment_event');
+            return;
+        }
+
         $has_recargas = false;
         $all_success  = true;
         $has_pending_retry = false;
 
-        foreach ($order->get_items() as $item_id => $item) {
-            if ($item->get_meta('_dc_recarga') !== 'yes') continue;
+        foreach ($recarga_items as $item) {
 
             $has_recargas = true;
 
@@ -499,6 +508,11 @@ class DC_Recargas_WooCommerce {
             return;
         }
 
+        if (!$this->is_order_gateway_allowed_for_recargas($order)) {
+            $this->mark_order_recargas_gateway_blocked($order, [$item], 'retry_event');
+            return;
+        }
+
         $sync_result = $this->sync_item_with_ding_status($order, $item);
         if (!empty($sync_result['success'])) {
             $order->save();
@@ -538,11 +552,18 @@ class DC_Recargas_WooCommerce {
             return;
         }
 
+        $recarga_items = $this->get_order_recarga_items($order);
+        if (empty($recarga_items)) {
+            return;
+        }
+
+        if (!$this->is_order_gateway_allowed_for_recargas($order)) {
+            $this->mark_order_recargas_gateway_blocked($order, $recarga_items, 'manual_reconcile');
+            return;
+        }
+
         $processed = 0;
-        foreach ($order->get_items() as $item_id => $item) {
-            if ($item->get_meta('_dc_recarga') !== 'yes') {
-                continue;
-            }
+        foreach ($recarga_items as $item) {
 
             if ($this->is_item_already_successful($item)) {
                 continue;
@@ -1246,6 +1267,94 @@ class DC_Recargas_WooCommerce {
         }
 
         return false;
+    }
+
+    private function get_order_recarga_items($order) {
+        if (!($order instanceof WC_Order)) {
+            return [];
+        }
+
+        $items = [];
+
+        foreach ($order->get_items() as $item) {
+            if (!($item instanceof WC_Order_Item_Product)) {
+                continue;
+            }
+
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            $items[] = $item;
+        }
+
+        return $items;
+    }
+
+    private function is_order_gateway_allowed_for_recargas($order) {
+        if (!($order instanceof WC_Order)) {
+            return false;
+        }
+
+        $options = $this->api->get_options();
+        $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
+        if ($payment_mode !== 'woocommerce') {
+            return true;
+        }
+
+        $allowed = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+        if (empty($allowed)) {
+            return true;
+        }
+
+        $order_gateway = sanitize_key((string) call_user_func([$order, 'get_payment_method']));
+        if ($order_gateway === '') {
+            return false;
+        }
+
+        return in_array($order_gateway, $allowed, true);
+    }
+
+    private function mark_order_recargas_gateway_blocked($order, $items, $reason = '') {
+        if (!($order instanceof WC_Order)) {
+            return;
+        }
+
+        $options = $this->api->get_options();
+        $allowed = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+        $order_gateway = sanitize_key((string) call_user_func([$order, 'get_payment_method']));
+        $allowed_label = empty($allowed) ? '(todas)' : implode(', ', $allowed);
+        $event_reason = $reason !== '' ? $reason : 'gateway_guard';
+
+        foreach ($items as $item) {
+            if (!($item instanceof WC_Order_Item_Product)) {
+                continue;
+            }
+
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            if ($this->is_item_already_successful($item)) {
+                continue;
+            }
+
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'blocked_gateway');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', 'Pasarela no permitida para recargas DingConnect');
+            call_user_func([$item, 'delete_meta_data'], '_dc_next_retry_at');
+            call_user_func([$item, 'save']);
+
+            wp_clear_scheduled_hook('dc_recargas_retry_transfer', [(int) $order->get_id(), (int) call_user_func([$item, 'get_id'])]);
+        }
+
+        $order->update_meta_data('_dc_recargas_has_errors', 'yes');
+        $order->add_order_note(sprintf(
+            'Bloqueo de despacho DingConnect (%s): la pasarela de pago "%s" no esta permitida para recargas. Permitidas: %s.',
+            $event_reason,
+            $order_gateway !== '' ? $order_gateway : 'sin_metodo',
+            $allowed_label
+        ));
+        $order->save();
     }
 
     private function collect_order_voucher_rows($order) {

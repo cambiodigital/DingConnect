@@ -190,6 +190,8 @@ Una iniciativa se considera lista cuando cumple:
 114. Corrección visual en frontend público: el selector `Paquetes disponibles` del shortcode ahora fuerza tipografía heredada, elimina la apariencia nativa del navegador y usa un indicador visual propio para mantener consistencia con el diseño general del flujo.
 115. Mejora visual en el shortcode público `dingconnect_recargas`: la ficha `Paquete activo` ahora muestra el icono/logo del paquete a la derecha del bloque `Operador`, reutilizando `LogoUrl` tanto en catálogo live como en bundles guardados para mantener la imagen estable entre selección, render y persistencia.
 116. Corrección de visibilidad en acciones de landings (admin): el botón `Duplicar shortcode` en la tabla `Shortcodes creados` reemplazó el glyph `dashicons-admin-page` por `dashicons-controls-repeat` para asegurar legibilidad del ícono en modo `icon-only`.
+117. Endurecimiento del flujo payment-first en REST: el endpoint público `POST /wp-json/dingconnect/v1/transfer` ahora devuelve `403` cuando `payment_mode=woocommerce`, forzando el camino `add-to-cart -> checkout` para evitar bypass de pago.
+118. Guard rail de cumplimiento por pasarela en despacho DingConnect: antes de enviar `SendTransfer` (evento de pago, reintento programado o reconciliación manual), WooCommerce valida que la orden use una pasarela permitida para recargas; si no coincide, marca `blocked_gateway`, cancela reintentos y deja nota de orden para soporte.
 
 ## Backlog actualizado por impacto
 

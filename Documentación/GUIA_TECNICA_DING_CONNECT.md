@@ -135,6 +135,8 @@ Nota operativa WooCommerce (abril 2026):
 - Para shortcodes en modo `payment_mode=woocommerce`, la recarga se agrega al carrito y el envío a DingConnect se ejecuta solo cuando la orden ya está pagada (`is_paid`).
 - El plugin permite definir en admin (`Credenciales > Pasarelas permitidas`) qué métodos de pago WooCommerce quedan habilitados para carritos con recargas DingConnect.
 - Si no se selecciona ninguna pasarela en esa lista, checkout conserva todas las pasarelas activas de WooCommerce.
+- Hardening de bypass REST: cuando `payment_mode=woocommerce`, el endpoint `POST /wp-json/dingconnect/v1/transfer` responde `403` y obliga a usar `POST /wp-json/dingconnect/v1/add-to-cart` + checkout.
+- Hardening de cumplimiento en despacho: antes de ejecutar `SendTransfer`, el backend valida que `order->payment_method` esté dentro de `woo_allowed_gateways`; si no coincide, marca el item como `blocked_gateway`, limpia reintentos pendientes y registra nota de orden para operación/soporte.
 
 ### Nota operativa Wizard v2 (abril 2026)
 
