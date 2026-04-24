@@ -1,18 +1,7 @@
 ---
 deployment:
   tasks:
-    # Deploy solo archivos esenciales del plugin.
-    # Soporta dos estructuras del repo:
-    # 1) Plugin en raiz
-    # 2) Plugin en dingconnect-wp-plugin/dingconnect-recargas
-    - export DEPLOYPATH=/home/otfidqlcuq/prueba.today/wp-content/plugins/dingconnect-recargas
-    - export REPOPATH=$(pwd)
-    - if [ "$REPOPATH" = "$DEPLOYPATH" ]; then echo "ERROR: Repository Path y DEPLOYPATH no pueden ser iguales (riesgo de borrar el repo). Usa /home/otfidqlcuq/repositories/dingconnect como Repository Path en cPanel."; exit 1; fi
-    - if [ -f ./dingconnect-recargas.php ]; then export SRCPATH=.; elif [ -f ./dingconnect-wp-plugin/dingconnect-recargas/dingconnect-recargas.php ]; then export SRCPATH=./dingconnect-wp-plugin/dingconnect-recargas; else echo "ERROR: no se encontro un checkout valido del plugin en el repo clonado"; exit 1; fi
-    - rm -rf "$DEPLOYPATH"
-    - mkdir -p "$DEPLOYPATH"
-    - cp -R "$SRCPATH/dingconnect-recargas.php" "$DEPLOYPATH/"
-    - cp -R "$SRCPATH/assets" "$DEPLOYPATH/"
-    - cp -R "$SRCPATH/includes" "$DEPLOYPATH/"
-    - if [ -f "$SRCPATH/MANUAL-USUARIO.md" ]; then cp -R "$SRCPATH/MANUAL-USUARIO.md" "$DEPLOYPATH/"; fi
-    - if [ -f "$SRCPATH/README-INSTALACION.md" ]; then cp -R "$SRCPATH/README-INSTALACION.md" "$DEPLOYPATH/"; fi
+    - export DEPLOYPATH=/home/USUARIO/public_html/wp-content/plugins/dingconnect-recargas
+    - rm -rf $DEPLOYPATH
+    - mkdir -p $DEPLOYPATH
+    - cp -R dingconnect-wp-plugin/dingconnect-recargas/* $DEPLOYPATH
