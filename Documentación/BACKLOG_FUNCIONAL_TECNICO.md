@@ -189,6 +189,7 @@ Una iniciativa se considera lista cuando cumple:
 113. Corrección crítica en `Catálogo y alta`: se eliminó el literal `<script>` de comentarios dentro del bloque JavaScript inline del admin, porque el parser HTML truncaba el script en esa secuencia y rompía la ejecución de `Buscar en API` y del modal de `Alta manual`.
 114. Corrección visual en frontend público: el selector `Paquetes disponibles` del shortcode ahora fuerza tipografía heredada, elimina la apariencia nativa del navegador y usa un indicador visual propio para mantener consistencia con el diseño general del flujo.
 115. Mejora visual en el shortcode público `dingconnect_recargas`: la ficha `Paquete activo` ahora muestra el icono/logo del paquete a la derecha del bloque `Operador`, reutilizando `LogoUrl` tanto en catálogo live como en bundles guardados para mantener la imagen estable entre selección, render y persistencia.
+116. Corrección de visibilidad en acciones de landings (admin): el botón `Duplicar shortcode` en la tabla `Shortcodes creados` reemplazó el glyph `dashicons-admin-page` por `dashicons-controls-repeat` para asegurar legibilidad del ícono en modo `icon-only`.
 
 ## Backlog actualizado por impacto
 

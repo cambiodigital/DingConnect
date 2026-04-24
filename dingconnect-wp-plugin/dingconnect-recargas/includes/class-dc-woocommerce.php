@@ -34,6 +34,7 @@ class DC_Recargas_WooCommerce {
         add_action('woocommerce_before_calculate_totals', [$this, 'set_custom_price'], 20, 1);
         add_filter('woocommerce_get_item_data', [$this, 'display_cart_item_data'], 10, 2);
         add_filter('woocommerce_cart_item_name', [$this, 'custom_cart_item_name'], 10, 3);
+        add_filter('woocommerce_cart_item_thumbnail', [$this, 'custom_cart_item_thumbnail'], 10, 3);
 
         // Order meta
         add_action('woocommerce_checkout_create_order_line_item', [$this, 'save_order_item_meta'], 10, 4);
@@ -49,7 +50,21 @@ class DC_Recargas_WooCommerce {
         // Phone login
         add_filter('authenticate', [$this, 'authenticate_by_phone'], 30, 3);
 
-        // Order processing - fire DingConnect transfer on payment
+        // Order processing - fire DingConnect transfer on payment.
+        //
+        // Three hooks cover ALL gateway behaviors:
+        // 1. woocommerce_payment_complete — canonical event when gateway calls
+        //    $order->payment_complete(). Fires AFTER status change, so is_paid() is true.
+        //    This is the primary trigger for well-behaved gateways (Stripe, PayPal, etc.).
+        // 2. woocommerce_order_status_processing — fallback for gateways that set the
+        //    status directly to "processing" without calling payment_complete().
+        // 3. woocommerce_order_status_completed — fallback for gateways that mark the
+        //    order as "completed" instead of "processing" on successful payment.
+        //
+        // Duplicate execution is prevented by is_item_already_successful() (checks
+        // _dc_transfer_ref / _dc_transfer_status) and the 60s transient lock inside
+        // attempt_transfer_for_item(). It is safe for all three hooks to fire.
+        add_action('woocommerce_payment_complete', [$this, 'process_recarga_on_payment']);
         add_action('woocommerce_order_status_processing', [$this, 'process_recarga_on_payment']);
         add_action('woocommerce_order_status_completed', [$this, 'process_recarga_on_payment']);
         add_action('dc_recargas_retry_transfer', [$this, 'process_retry_transfer'], 10, 2);
@@ -146,6 +161,7 @@ class DC_Recargas_WooCommerce {
             'dc_send_currency_iso'=> $data['send_currency_iso'],
             'dc_provider_name'    => $data['provider_name'],
             'dc_bundle_label'     => $data['bundle_label'],
+            'dc_logo_url'         => esc_url_raw((string) ($data['logo_url'] ?? '')),
             'dc_product_type'     => $product_type,
             'dc_redemption_mechanism' => $redemption_mechanism,
             'dc_lookup_bills_required' => $lookup_bills_required,
@@ -222,6 +238,27 @@ class DC_Recargas_WooCommerce {
         return $name;
     }
 
+    public function custom_cart_item_thumbnail($thumbnail, $cart_item, $cart_item_key) {
+        if (empty($cart_item['dc_recarga'])) {
+            return $thumbnail;
+        }
+
+        $logo_url = esc_url((string) ($cart_item['dc_logo_url'] ?? ''));
+        if ($logo_url === '') {
+            return $thumbnail;
+        }
+
+        $label = trim((string) ($cart_item['dc_bundle_label'] ?? 'Recarga'));
+        $provider = trim((string) ($cart_item['dc_provider_name'] ?? ''));
+        $alt = trim($provider !== '' ? $provider . ' - ' . $label : $label);
+
+        return sprintf(
+            '<img src="%1$s" alt="%2$s" class="attachment-woocommerce_thumbnail size-woocommerce_thumbnail" loading="lazy" decoding="async" referrerpolicy="no-referrer" />',
+            $logo_url,
+            esc_attr($alt)
+        );
+    }
+
     /* ---------------------------------------------------------------
      * 6. Order Item Meta
      * ------------------------------------------------------------- */
@@ -238,6 +275,7 @@ class DC_Recargas_WooCommerce {
         $item->add_meta_data('_dc_send_currency_iso', $values['dc_send_currency_iso'] ?? '', true);
         $item->add_meta_data('_dc_provider_name',     $values['dc_provider_name'] ?? '', true);
         $item->add_meta_data('_dc_bundle_label',      $values['dc_bundle_label'] ?? '', true);
+        $item->add_meta_data('_dc_logo_url',          $values['dc_logo_url'] ?? '', true);
         $item->add_meta_data('_dc_product_type',      $values['dc_product_type'] ?? '', true);
         $item->add_meta_data('_dc_redemption_mechanism', $values['dc_redemption_mechanism'] ?? '', true);
         $item->add_meta_data('_dc_lookup_bills_required', !empty($values['dc_lookup_bills_required']) ? 'yes' : '', true);

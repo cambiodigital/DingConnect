@@ -66,7 +66,8 @@
         ? appCountries
         : (Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : []);
     var defaultCountryIso = String(app.getAttribute('data-default-country-iso') || '').toUpperCase();
-    var featuredBundleId = String(app.getAttribute('data-featured-bundle-id') || '').trim();
+    var featuredBundleIdsRaw = parseJsonAttr('data-featured-bundle-ids');
+    var featuredBundleIds = Array.isArray(featuredBundleIdsRaw) ? featuredBundleIdsRaw.map(String) : [];
     var allowedBundleIds = String(app.getAttribute('data-allowed-bundle-ids') || '')
         .split(',').map(function (id) { return id.trim(); }).filter(Boolean);
     var allowedBundleMap = {};
@@ -83,7 +84,7 @@
         bundles: [],
         visibleBundles: [],
         selected: null,
-        featuredBundleId: featuredBundleId,
+        featuredBundleIds: featuredBundleIds,
         fullPhone: '',
         lastSearchKey: '',
         lastSearchAt: 0,
@@ -238,9 +239,8 @@
     }
 
     function isFeaturedBundle(bundle) {
-        var featuredId = String(state.featuredBundleId || '').trim();
-        if (!featuredId) return false;
-        return getBundleId(bundle) === featuredId;
+        if (!state.featuredBundleIds.length) return false;
+        return state.featuredBundleIds.indexOf(getBundleId(bundle)) !== -1;
     }
 
     function formatMoney(amount, currency) {
@@ -1057,6 +1057,10 @@
             var option = document.createElement('option');
             option.value = String(index);
             option.textContent = getBundleOptionLabel(bundle);
+            if (isFeaturedBundle(bundle)) {
+                option.style.backgroundColor = '#fef9c3';
+                option.style.fontWeight = '600';
+            }
             packageSelect.appendChild(option);
         });
 
@@ -1343,14 +1347,12 @@
         var cachedProviderStatus = bundle.ProviderCode && Object.prototype.hasOwnProperty.call(state.providerStatusCache, String(bundle.ProviderCode))
             ? state.providerStatusCache[String(bundle.ProviderCode)]
             : null;
-        var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
-        var featuredBadge = isFeaturedBundle(bundle)
-            ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
-            : '';
+        var featuredClass = '';
+        var featuredBadge = '';
         var logoMarkup = buildBundleLogoMarkup(bundle);
 
         packageCard.innerHTML = ''
-            + '<div class="dc-package-card-head' + featuredClass + '">'
+            + '<div class="dc-package-card-head">'
             +   '<div class="dc-package-copy">'
             +     '<div class="dc-package-copy-label">Beneficios recibidos</div>'
             +     featuredBadge
@@ -1387,10 +1389,8 @@
         var currentSendValue = getCurrentSendValue(bundle);
         var currentReceive = getCurrentReceiveValue(bundle);
         var price = formatMoney(currentSendValue || 0, bundle.SendCurrencyIso || 'USD');
-        var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
-        var featuredBadge = isFeaturedBundle(bundle)
-            ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
-            : '';
+        var featuredClass = '';
+        var featuredBadge = '';
         var settingsPayload = getSettingsPayload(bundle);
         var flowKind = getFlowKind(bundle, null, {});
         var confirmCopy = getFlowCopy(flowKind, 'pending');
@@ -1403,7 +1403,7 @@
         }
 
         confirmCard.innerHTML = ''
-            + '<div class="dc-confirm-hero' + featuredClass + '">'
+            + '<div class="dc-confirm-hero">'
             +   '<div class="dc-confirm-hero-copy">'
             +     '<div class="dc-confirm-kicker">Beneficios recibidos</div>'
             +     featuredBadge
@@ -1577,6 +1577,7 @@
             send_currency_iso: selected.SendCurrencyIso || 'EUR',
             provider_name: getProviderLabel(selected),
             bundle_label: selected.DefaultDisplayText || selected.SkuCode,
+            logo_url: getBundleLogoUrl(selected),
             product_type: String(selected.ProductType || ''),
             redemption_mechanism: String(selected.RedemptionMechanism || ''),
             lookup_bills_required: !!selected.LookupBillsRequired,
@@ -1653,7 +1654,7 @@
         var receiptText = String(record.ReceiptText || item.ReceiptText || '');
         var receiptParams = record.ReceiptParams || item.ReceiptParams || {};
         var extraInformation = String((state.selected && state.selected.AdditionalInformation) || '');
-        var isSuccess = /approved|completed|success|ok/i.test(String(status));
+        var isSuccess = /approved|complete|completed|success|ok/i.test(String(status));
         var isPending = /submitted|pending|processing|queued|inprogress/i.test(String(processingState || status));
         var stateKey = isSuccess ? 'success' : (isPending ? 'pending' : 'error');
         var flowKind = getFlowKind(state.selected, item, receiptParams);

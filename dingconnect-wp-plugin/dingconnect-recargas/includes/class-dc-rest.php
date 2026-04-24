@@ -4,6 +4,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+$canonical_rest_file = dirname(__DIR__, 3) . '/includes/class-dc-rest.php';
+if (is_readable($canonical_rest_file)) {
+    require_once $canonical_rest_file;
+}
+
 if (class_exists('DC_Recargas_REST')) {
     return;
 }

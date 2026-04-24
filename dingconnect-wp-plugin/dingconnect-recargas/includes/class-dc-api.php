@@ -411,10 +411,25 @@ class DC_Recargas_API {
             $status = 'error';
         } elseif (is_array($response)) {
             $items = $response['Items'] ?? $response['Result'] ?? [];
+            $transfer_record = (isset($response['TransferRecord']) && is_array($response['TransferRecord']))
+                ? $response['TransferRecord']
+                : [];
+
             if (!empty($items[0]['Status'])) {
-                $status = sanitize_text_field($items[0]['Status']);
+                $status = sanitize_text_field((string) $items[0]['Status']);
+            } elseif (!empty($items[0]['ProcessingState'])) {
+                $status = sanitize_text_field((string) $items[0]['ProcessingState']);
+            } elseif (!empty($transfer_record['ProcessingState'])) {
+                $status = sanitize_text_field((string) $transfer_record['ProcessingState']);
             }
-            $transfer_ref = sanitize_text_field($response['TransferRef'] ?? '');
+
+            if (isset($transfer_record['TransferId']) && is_array($transfer_record['TransferId'])) {
+                $transfer_ref = sanitize_text_field((string) ($transfer_record['TransferId']['TransferRef'] ?? ''));
+            }
+
+            if ('' === $transfer_ref) {
+                $transfer_ref = sanitize_text_field((string) ($response['TransferRef'] ?? ''));
+            }
         }
 
         // Mask phone for privacy: +573001234567 -> +5730***4567
