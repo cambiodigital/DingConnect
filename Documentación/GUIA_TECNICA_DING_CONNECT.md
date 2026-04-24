@@ -135,8 +135,6 @@ Nota operativa WooCommerce (abril 2026):
 - Para shortcodes en modo `payment_mode=woocommerce`, la recarga se agrega al carrito y el envío a DingConnect se ejecuta solo cuando la orden ya está pagada (`is_paid`).
 - El plugin permite definir en admin (`Credenciales > Pasarelas permitidas`) qué métodos de pago WooCommerce quedan habilitados para carritos con recargas DingConnect.
 - Si no se selecciona ninguna pasarela en esa lista, checkout conserva todas las pasarelas activas de WooCommerce.
-- Hardening de bypass REST: cuando `payment_mode=woocommerce`, el endpoint `POST /wp-json/dingconnect/v1/transfer` responde `403` y obliga a usar `POST /wp-json/dingconnect/v1/add-to-cart` + checkout.
-- Hardening de cumplimiento en despacho: antes de ejecutar `SendTransfer`, el backend valida que `order->payment_method` esté dentro de `woo_allowed_gateways`; si no coincide, marca el item como `blocked_gateway`, limpia reintentos pendientes y registra nota de orden para operación/soporte.
 
 ### Nota operativa Wizard v2 (abril 2026)
 
@@ -182,7 +180,6 @@ Nota operativa WooCommerce (abril 2026):
 - Coherencia de datos en productos con factura: al cambiar importe o `SettingDefinitions`, el frontend invalida `BillRef` y obliga a reconsulta para evitar enviar una factura obsoleta.
 - Alcance exacto del flujo dinámico: estas capacidades avanzadas quedan plenamente activas cuando `/products` entrega catálogo live normalizado desde DingConnect. Si el shortcode trabaja sobre bundles guardados del admin, hoy el backend expone un contrato degradado (`ProviderCode` normalmente vacío, `IsRange = false`, `LookupBillsRequired = false`, `SettingDefinitions = []`), por lo que `provider-status`, `EstimatePrices`, `LookupBills` y campos dinámicos suelen no activarse.
 - Cambio mínimo recomendado para alinear runtime y documentación: al guardar un bundle desde catálogo live, persistir también `ProviderCode`, `Benefits`, `DescriptionMarkdown`, `ReadMoreMarkdown`, `LookupBillsRequired`, `SettingDefinitions`, `ValidationRegex`, `CustomerCareNumber`, `LogoUrl`, `PaymentTypes`, `RegionCodes`, `RedemptionMechanism`, `ProcessingMode` e indicador real de rango; después, hacer que `/products` reutilice esos campos cuando `source = saved`.
-- Presentación visual del paquete activo: la tarjeta pública usa `LogoUrl` del bundle seleccionado para mostrar el icono del paquete a la derecha del bloque de operador; como ese campo ya sale del contrato REST live y `source=saved`, la imagen se conserva al cambiar de paquete y al reutilizar bundles persistidos.
 
 ### Nota operativa Catálogo y alta (abril 2026)
 
@@ -192,7 +189,6 @@ Nota operativa WooCommerce (abril 2026):
 - La pestaña `Credenciales` ya no expone carga de CSV para enriquecimiento del catálogo, dejando un único contrato operativo basado en API live.
 - La tabla `Paquetes encontrados` fija la columna `Fuente` como `API` y eliminó avisos/contadores asociados a match contra CSV, para evitar ambigüedad operativa.
 - La sección `Catálogo y alta` ya no usa subpestañas internas: la pantalla permanece enfocada en `Buscar en API` y el formulario de `Alta manual` se abre como modal al pulsar `Seleccionar producto`, con precarga del paquete seleccionado.
-- Regla de seguridad para scripts inline en admin: evitar literales HTML como `<script>` o `</script>` dentro de comentarios/cadenas JavaScript embebidas en PHP, porque pueden truncar el bloque en el parser HTML y dejar inoperativos eventos de UI (por ejemplo, búsqueda API y cierre de modal).
 - El modelo de bundle soporta precio dual por registro: `send_value` (Coste DIN) y `public_price` (Precio al Público editable), con moneda pública por defecto en EUR.
 - Brecha contractual actual: aunque `public_price_currency` se persiste en admin, `/products` para bundles guardados sigue publicando `ReceiveCurrencyIso` con `send_currency_iso`; para que el contrato sea exacto con el precio comercial guardado, ese mapeo debe separarse o corregirse explícitamente.
 - La clasificación comercial por bundle usa `package_family` (`topup | data | combo | voucher | dth | other`) y conserva `product_type_raw` para trazabilidad contra API.
@@ -201,11 +197,10 @@ Nota operativa WooCommerce (abril 2026):
 - La sección `Paquetes encontrados` de `Buscar en API` ahora se renderiza como tabla de ancho completo fuera de la `form-table`, con columnas de operación (tipo, operador, beneficio, SKU, coste, moneda, vigencia y fuente API), selección por fila y doble click para cargar en `Alta manual`.
 - Regla de legibilidad para `Vigencia` en `Buscar en API`: cuando DingConnect entrega formatos técnicos (como `P7D`, `P2W`, `P1M` o equivalentes con texto), la UI muestra una versión natural en español (`7 días`, `2 semanas`, `1 mes`) sin alterar el valor crudo usado para guardado (`validity_raw`).
 - Regla de implementación de filtros en checklist: si cada fila usa `display:flex` por estilo, debe existir una regla explícita para `label[hidden]` (`display:none !important`) para que los filtros de País/Tipo oculten realmente los bundles no coincidentes.
-- Regla visual para el selector de paquetes público: `.dc-package-select` debe heredar la tipografía del contenedor, controlar `appearance` de forma explícita y usar un chevrón propio para evitar render nativo inconsistente entre navegadores/sistemas.
 - Regla de tabla en `Bundles guardados`: la tabla debe ir dentro de un contenedor con `overflow-x: auto` para evitar desbordes en pantallas estrechas; además, la columna `check-column` debe mantener alineación centrada y espaciado homogéneo entre `Seleccionar todos` y checkboxes por fila.
 - Operación sobre catálogos guardados: la pestaña `Productos guardados` (renombrada desde `Bundles guardados`) incorpora filtro en tiempo real con buscador + selectores por tipo de producto, país y operador; el filtrado aplica sobre filas ya renderizadas sin recargar la página.
 - Regla UX para tablas con acciones en admin: cuando una tabla permita edición de registros, la edición primaria debe abrir por click en la fila completa (con soporte de teclado Enter/Espacio), y los controles secundarios de la columna `Acciones` deben renderizarse como botones minimalistas `icon-only` con `aria-label`/`title` para mantener accesibilidad y consistencia visual.
-- Regla de legibilidad para acciones `icon-only`: en la tabla `Shortcodes creados`, la acción `Duplicar shortcode` usa `dashicons-controls-repeat` como glyph de referencia para evitar pérdida visual del icono en tamaños compactos.
+- Regla UX para `Shortcodes creados`: el valor del shortcode en tabla debe comportarse como control de copia rápida (click para copiar al portapapeles con feedback visual), sin disparar apertura del modal de edición de la fila.
 - El asistente visual `mejoras-solicitud-interactiva.html` mantiene un diccionario ampliado de campos de producto API (live contract) con descripciones operativas para diseñar cambios de arquitectura end-to-end (API -> persistencia -> landing -> WooCommerce) antes de pedir implementación a la IA.
 - `Catálogo y alta` conserva metadatos ricos cuando un paquete se carga desde resultados API hacia alta manual (provider/region/pricing extendido/impuestos/rangos/flags/settings/payment types/UAT), de forma que el bundle guardado pueda reutilizar ese contrato en `source=saved`.
 - Contrato de moneda comercial en `source=saved`: `ReceiveCurrencyIso` debe priorizar `public_price_currency` (con fallback a `send_currency_iso`) para reflejar correctamente la moneda pública definida por negocio en frontend.

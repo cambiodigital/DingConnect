@@ -1639,43 +1639,37 @@ class DC_Recargas_Admin {
                     overflow: auto;
                     background: #ffffff;
                     border-radius: 16px;
-                    padding: 16px 20px;
+                    padding: 22px 24px;
                 }
 
                 .dc-edit-modal__header {
                     display: flex;
                     align-items: start;
                     justify-content: space-between;
-                    gap: 12px;
-                    margin-bottom: 8px;
+                    gap: 16px;
+                    margin-bottom: 12px;
                 }
 
                 .dc-edit-modal__header h3 {
                     margin: 0;
-                    font-size: 18px;
+                    font-size: 22px;
                 }
 
                 .dc-edit-modal__header p {
-                    margin: 4px 0 0;
+                    margin: 6px 0 0;
                     color: var(--dc-muted);
-                    font-size: 13px;
                 }
 
                 .dc-edit-modal__close {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    flex-shrink: 0;
                     border: 1px solid var(--dc-border);
                     background: #ffffff;
                     border-radius: 999px;
-                    width: 32px;
-                    height: 32px;
-                    font-size: 18px;
+                    width: 36px;
+                    height: 36px;
+                    font-size: 22px;
                     line-height: 1;
                     cursor: pointer;
                     color: #334155;
-                    padding: 0;
                 }
 
                 .dc-bundle-actions {
@@ -1728,6 +1722,44 @@ class DC_Recargas_Admin {
                 .dc-row-editable:focus-visible {
                     outline: 2px solid #0f4aa3;
                     outline-offset: -2px;
+                }
+
+                .dc-shortcode-copy-trigger {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    padding: 4px 8px;
+                    border: 1px solid #d3dce8;
+                    border-radius: 8px;
+                    background: #ffffff;
+                    color: #1f2937;
+                    cursor: copy;
+                }
+
+                .dc-shortcode-copy-trigger:hover {
+                    border-color: #b8c7db;
+                    background: #f8fbff;
+                }
+
+                .dc-shortcode-copy-trigger:focus-visible {
+                    outline: 2px solid #0f4aa3;
+                    outline-offset: 1px;
+                }
+
+                .dc-shortcode-copy-trigger code {
+                    color: #0f172a;
+                }
+
+                .dc-shortcode-copy-feedback {
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #0f4aa3;
+                    opacity: 0;
+                    transition: opacity 0.16s ease;
+                }
+
+                .dc-shortcode-copy-trigger.is-copied .dc-shortcode-copy-feedback {
+                    opacity: 1;
                 }
 
                 /* ─ Modal de Personalización de Shortcodes ─ */
@@ -1957,18 +1989,6 @@ class DC_Recargas_Admin {
 
                 .dc-edit-modal .form-table td .dc-combo-input.regular-text {
                     width: min(100%, 480px);
-                }
-
-                /* Compactar form-table dentro del modal */
-                .dc-edit-modal .form-table th,
-                .dc-edit-modal .form-table td {
-                    padding-top: 5px;
-                    padding-bottom: 5px;
-                }
-
-                .dc-edit-modal .form-table th {
-                    width: 140px;
-                    font-size: 13px;
                 }
 
                 .dc-admin-wrap select,
@@ -2304,44 +2324,12 @@ class DC_Recargas_Admin {
                     box-shadow: none;
                 }
 
-                /* Filas compactas igual que la tabla API */
-                .dc-saved-bundles-table-wrap .widefat th,
-                .dc-saved-bundles-table-wrap .widefat td {
-                    padding: 7px 8px;
-                    font-size: 12px;
-                    vertical-align: middle;
-                }
-
-                /* Columna logo igual que API */
-                .dc-saved-bundles-table-wrap .dc-saved-col-logo {
-                    width: 44px;
-                    min-width: 44px;
-                    text-align: center;
-                    padding-left: 10px;
-                    padding-right: 6px;
-                }
-
-                .dc-saved-bundles-table-wrap .dc-saved-col-logo img {
-                    display: block;
-                    margin: 0 auto;
-                    width: 28px;
-                    height: 28px;
-                    object-fit: contain;
-                    border-radius: 4px;
-                }
-
-                /* Acciones: siempre horizontal, centradas */
-                .dc-saved-bundles-table-wrap .dc-table-actions {
-                    flex-wrap: nowrap;
-                    justify-content: center;
-                }
-
                 .dc-saved-bundles-table-wrap .check-column {
-                    width: 44px;
-                    min-width: 44px;
+                    width: 54px;
+                    min-width: 54px;
                     text-align: center;
-                    padding-left: 10px;
-                    padding-right: 10px;
+                    padding-left: 12px;
+                    padding-right: 12px;
                     vertical-align: middle;
                 }
 
@@ -2702,14 +2690,19 @@ class DC_Recargas_Admin {
                                 <td><?php echo esc_html($landing_name); ?></td>
                                 <td><code><?php echo esc_html($landing_key); ?></code></td>
                                 <td><?php echo esc_html((string) count($landing_bundles)); ?></td>
-                                <td><code><?php echo esc_html($shortcode_text); ?></code></td>
+                                <td>
+                                    <button type="button" class="dc-shortcode-copy-trigger" data-copy-text="<?php echo esc_attr($shortcode_text); ?>" title="Copiar shortcode" aria-label="Copiar shortcode de <?php echo esc_attr($landing_name); ?>">
+                                        <code><?php echo esc_html($shortcode_text); ?></code>
+                                        <span class="dc-shortcode-copy-feedback" aria-live="polite">Copiado</span>
+                                    </button>
+                                </td>
                                 <td>
                                     <div class="dc-table-actions">
                                     <button type="button" class="button dc-table-icon-btn dc-customize-shortcode-btn" data-shortcode-key="<?php echo esc_attr($landing_key); ?>" data-shortcode-text="<?php echo esc_attr($shortcode_text); ?>" title="Personalizar shortcode" aria-label="Personalizar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-admin-customizer" aria-hidden="true"></span></button>
                                     <a class="button dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
                                         'action' => 'dc_clone_landing_shortcode',
                                         'landing_id' => $landing_id,
-                                    ], admin_url('admin-post.php')), 'dc_clone_landing_shortcode')); ?>" title="Duplicar shortcode" aria-label="Duplicar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-controls-repeat" aria-hidden="true"></span></a>
+                                    ], admin_url('admin-post.php')), 'dc_clone_landing_shortcode')); ?>" title="Duplicar shortcode" aria-label="Duplicar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-admin-page" aria-hidden="true"></span></a>
                                     <a class="button button-secondary dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
                                         'action' => 'dc_delete_landing_shortcode',
                                         'landing_id' => $landing_id,
@@ -3285,7 +3278,7 @@ class DC_Recargas_Admin {
                 function openManualModal() {
                     var countryEl = document.getElementById('dc_country_iso');
 
-                    // Lazy lookup: el HTML del modal está después de este bloque JS inline, así que
+                    // Lazy lookup: el HTML del modal está después del <script>, así que
                     // manualModalEl puede ser null al inicializar. Resolverlo aquí.
                     if (!manualModalEl) {
                         manualModalEl = document.getElementById('dc-manual-modal');
@@ -3479,43 +3472,41 @@ class DC_Recargas_Admin {
                     }
                 }
 
-                if (apiFetchBtn) {
-                    apiFetchBtn.addEventListener('click', function () {
-                        var iso = apiCountryEl.value;
-                        if (!iso) {
-                            setApiCountryWarning('Selecciona un país antes de buscar.');
-                            apiCountryEl.focus();
-                            return;
-                        }
+                apiFetchBtn.addEventListener('click', function () {
+                    var iso = apiCountryEl.value;
+                    if (!iso) {
+                        setApiCountryWarning('Selecciona un país antes de buscar.');
+                        apiCountryEl.focus();
+                        return;
+                    }
 
-                        setApiCountryWarning('');
-                        apiFetchBtn.disabled = true;
-                        resetApiState('Consultando la API de DingConnect...');
+                    setApiCountryWarning('');
+                    apiFetchBtn.disabled = true;
+                    resetApiState('Consultando la API de DingConnect...');
 
-                        var url = ajaxurl + '?action=dc_fetch_api_products&nonce=' + encodeURIComponent(apiNonce) + '&country_iso=' + encodeURIComponent(iso);
+                    var url = ajaxurl + '?action=dc_fetch_api_products&nonce=' + encodeURIComponent(apiNonce) + '&country_iso=' + encodeURIComponent(iso);
 
-                        fetch(url, { credentials: 'same-origin' })
-                            .then(function (res) { return res.json(); })
-                            .then(function (data) {
-                                apiFetchBtn.disabled = false;
-                                if (data.success) {
-                                    apiItems = (data.data && data.data.items) ? data.data.items : [];
-                                    apiGroupCounts = (data.data && data.data.group_counts) ? data.data.group_counts : {};
-                                    apiGroupLabels = (data.data && data.data.group_labels) ? data.data.group_labels : apiGroupLabels;
-                                    refreshApiResults();
-                                    saveStoredApiState();
-                                } else {
-                                    resetApiState();
-                                    apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo conectar a la API.');
-                                }
-                            })
-                            .catch(function () {
-                                apiFetchBtn.disabled = false;
+                    fetch(url, { credentials: 'same-origin' })
+                        .then(function (res) { return res.json(); })
+                        .then(function (data) {
+                            apiFetchBtn.disabled = false;
+                            if (data.success) {
+                                apiItems = (data.data && data.data.items) ? data.data.items : [];
+                                apiGroupCounts = (data.data && data.data.group_counts) ? data.data.group_counts : {};
+                                apiGroupLabels = (data.data && data.data.group_labels) ? data.data.group_labels : apiGroupLabels;
+                                refreshApiResults();
+                                saveStoredApiState();
+                            } else {
                                 resetApiState();
-                                apiHelpEl.textContent = 'Error de red al consultar la API.';
-                            });
-                    });
-                }
+                                apiHelpEl.textContent = 'Error: ' + (data.data && data.data.message ? data.data.message : 'No se pudo conectar a la API.');
+                            }
+                        })
+                        .catch(function () {
+                            apiFetchBtn.disabled = false;
+                            resetApiState();
+                            apiHelpEl.textContent = 'Error de red al consultar la API.';
+                        });
+                });
 
                 if (apiFilterEl) {
                     apiFilterEl.addEventListener('change', function () {
@@ -3585,15 +3576,11 @@ class DC_Recargas_Admin {
                     }
                 });
 
-                // Event delegation: el HTML del modal está después de este bloque JS inline, así que
-                // los elementos [data-dc-manual-close] no existen al inicializar.
-                document.addEventListener('click', function (event) {
-                    if (event.target && event.target.closest && event.target.closest('[data-dc-manual-close]')) {
-                        if (manualModalEl && !manualModalEl.hidden) {
-                            closeManualModal();
-                        }
-                    }
-                });
+                if (manualModalCloseEls.length) {
+                    manualModalCloseEls.forEach(function (el) {
+                        el.addEventListener('click', closeManualModal);
+                    });
+                }
 
                 document.addEventListener('keydown', function (event) {
                     if (event.key === 'Escape' && manualModalEl && !manualModalEl.hidden) {
@@ -3764,7 +3751,6 @@ class DC_Recargas_Admin {
                         <th class="check-column">
                             <input type="checkbox" id="dc_bundles_select_all" aria-label="Seleccionar todos los productos">
                         </th>
-                        <th class="dc-saved-col-logo">Logo</th>
                         <th>País</th>
                         <th>Tipo</th>
                         <th>Nombre</th>
@@ -3781,7 +3767,7 @@ class DC_Recargas_Admin {
                 <tbody>
                 <?php if (empty($bundles)) : ?>
                     <tr>
-                        <td colspan="13">Aún no has agregado productos.</td>
+                        <td colspan="12">Aún no has agregado productos.</td>
                     </tr>
                 <?php else : ?>
                     <?php foreach ($bundles as $bundle) : ?>
@@ -3808,11 +3794,6 @@ class DC_Recargas_Admin {
                         <tr class="dc-row-editable" tabindex="0" role="button" data-edit-bundle="<?php echo esc_attr(wp_json_encode($bundle)); ?>" data-family="<?php echo esc_attr($bundle_package_family); ?>" data-country-iso="<?php echo esc_attr($bundle_country_iso); ?>" data-operator-name="<?php echo esc_attr($bundle_operator_name); ?>" data-search-index="<?php echo esc_attr($bundle_search_index); ?>" aria-label="Editar producto <?php echo esc_attr($bundle['label'] ?? ''); ?>">
                             <td class="check-column">
                                 <input type="checkbox" class="dc-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle['id'] ?? ''); ?>" aria-label="Seleccionar producto <?php echo esc_attr($bundle['label'] ?? ''); ?>">
-                            </td>
-                            <td class="dc-saved-col-logo">
-                                <?php if (!empty($bundle['logo_url'])) : ?>
-                                    <img src="<?php echo esc_url($bundle['logo_url']); ?>" alt="<?php echo esc_attr($bundle_operator_name); ?>" width="28" height="28">
-                                <?php endif; ?>
                             </td>
                             <td><?php echo esc_html($bundle_country_iso); ?></td>
                             <td><?php echo esc_html($bundle_family_label); ?></td>
@@ -4150,55 +4131,6 @@ class DC_Recargas_Admin {
                             text-decoration: underline;
                         }
 
-                        .dc-logs-response {
-                            display: none;
-                            margin-top: 8px;
-                            padding: 10px;
-                            border: 1px solid #cbd5e1;
-                            border-radius: 10px;
-                            background: #f8fafc;
-                        }
-
-                        .dc-logs-response-title {
-                            display: block;
-                            color: #0f172a;
-                            font-size: 13px;
-                            margin-bottom: 4px;
-                        }
-
-                        .dc-logs-response-message {
-                            margin: 0 0 8px;
-                            color: #334155;
-                            font-size: 12px;
-                        }
-
-                        .dc-logs-response-list {
-                            margin: 0 0 8px;
-                            padding: 0;
-                            list-style: none;
-                            display: grid;
-                            gap: 4px;
-                        }
-
-                        .dc-logs-response-list li {
-                            font-size: 12px;
-                            color: #334155;
-                        }
-
-                        .dc-logs-response-list strong {
-                            color: #0f172a;
-                        }
-
-                        .dc-logs-raw-btn {
-                            background: transparent;
-                            border: none;
-                            color: #0f4aa3;
-                            cursor: pointer;
-                            font-size: 12px;
-                            padding: 0;
-                            text-decoration: underline;
-                        }
-
                         .dc-logs-raw {
                             display: none;
                             margin-top: 6px;
@@ -4288,174 +4220,6 @@ class DC_Recargas_Admin {
                             return 'dc-log-badge--unknown';
                         }
 
-                        function firstNonEmpty(values) {
-                            if (!Array.isArray(values)) return '';
-                            for (var i = 0; i < values.length; i++) {
-                                var value = values[i];
-                                if (value === null || value === undefined) continue;
-                                var text = String(value).trim();
-                                if (text !== '') return text;
-                            }
-                            return '';
-                        }
-
-                        function parseRawResponse(raw) {
-                            if (!raw) return null;
-                            if (typeof raw === 'object') return raw;
-                            try {
-                                return JSON.parse(raw);
-                            } catch (e) {
-                                return null;
-                            }
-                        }
-
-                        function buildLogResponseSummary(log) {
-                            var parsed = parseRawResponse(log.raw_response);
-                            var lowerStatus = String(log.status || '').toLowerCase();
-                            var details = [];
-
-                            if (!parsed || typeof parsed !== 'object') {
-                                return {
-                                    title: 'Resumen no disponible',
-                                    message: 'No se pudo interpretar la respuesta para mostrar un resumen legible.',
-                                    details: details,
-                                    raw: log.raw_response || ''
-                                };
-                            }
-
-                            var list = Array.isArray(parsed.Items) ? parsed.Items : (Array.isArray(parsed.Result) ? parsed.Result : []);
-                            var item = (list.length > 0 && typeof list[0] === 'object' && list[0] !== null) ? list[0] : {};
-                            var transferRecord = (parsed.TransferRecord && typeof parsed.TransferRecord === 'object') ? parsed.TransferRecord : {};
-                            var transferId = (transferRecord.TransferId && typeof transferRecord.TransferId === 'object') ? transferRecord.TransferId : {};
-                            var wpErrorData = (parsed.error_data && parsed.error_data.dc_http_error && typeof parsed.error_data.dc_http_error === 'object')
-                                ? parsed.error_data.dc_http_error
-                                : {};
-                            var wpErrorBody = (wpErrorData.body && typeof wpErrorData.body === 'object') ? wpErrorData.body : {};
-                            var wpErrorTransferRecord = (wpErrorBody.TransferRecord && typeof wpErrorBody.TransferRecord === 'object')
-                                ? wpErrorBody.TransferRecord
-                                : {};
-                            var wpErrors = (parsed.errors && parsed.errors.dc_http_error && Array.isArray(parsed.errors.dc_http_error))
-                                ? parsed.errors.dc_http_error
-                                : [];
-                            var firstError = (Array.isArray(parsed.ErrorCodes) && parsed.ErrorCodes.length > 0 && typeof parsed.ErrorCodes[0] === 'object')
-                                ? parsed.ErrorCodes[0]
-                                : {};
-                            var firstBodyError = (Array.isArray(wpErrorBody.ErrorCodes) && wpErrorBody.ErrorCodes.length > 0 && typeof wpErrorBody.ErrorCodes[0] === 'object')
-                                ? wpErrorBody.ErrorCodes[0]
-                                : {};
-
-                            var processingState = firstNonEmpty([
-                                item.ProcessingState,
-                                transferRecord.ProcessingState,
-                                wpErrorTransferRecord.ProcessingState,
-                                wpErrorData.processing_state,
-                                parsed.ProcessingState
-                            ]);
-                            var resultCode = firstNonEmpty([
-                                item.ResultCode,
-                                wpErrorBody.ResultCode,
-                                parsed.ResultCode
-                            ]);
-                            var errorCode = firstNonEmpty([
-                                item.ErrorCode,
-                                firstBodyError.Code,
-                                firstError.Code,
-                                wpErrorData.ding_error_code
-                            ]);
-                            var receiptText = firstNonEmpty([
-                                item.ReceiptText,
-                                parsed.ReceiptText
-                            ]);
-                            var providerMessage = firstNonEmpty([
-                                wpErrors[0],
-                                item.ErrorMessage,
-                                item.Description,
-                                firstBodyError.Description,
-                                firstBodyError.Context,
-                                firstError.Description,
-                                firstError.Context,
-                                parsed.message,
-                                parsed.error
-                            ]);
-                            var responseTransferRef = firstNonEmpty([
-                                transferId.TransferRef,
-                                wpErrorData.transfer_ref,
-                                parsed.TransferRef,
-                                log.transfer_ref
-                            ]);
-                            var responseDistributorRef = firstNonEmpty([
-                                transferId.DistributorRef,
-                                wpErrorData.distributor_ref,
-                                log.distributor_ref
-                            ]);
-
-                            if (processingState) {
-                                details.push({ label: 'Estado de proceso', value: processingState });
-                            }
-                            if (resultCode) {
-                                details.push({ label: 'Código de resultado', value: resultCode });
-                            }
-                            if (errorCode) {
-                                details.push({ label: 'Código de error', value: errorCode });
-                            }
-                            if (responseTransferRef) {
-                                details.push({ label: 'Ref. transferencia', value: responseTransferRef });
-                            }
-                            if (responseDistributorRef) {
-                                details.push({ label: 'Ref. distribuidor', value: responseDistributorRef });
-                            }
-                            if (receiptText) {
-                                details.push({ label: 'Mensaje del proveedor', value: receiptText });
-                            }
-
-                            var title = 'Respuesta recibida';
-                            var message = providerMessage;
-
-                            if (lowerStatus === 'transfersuccessful') {
-                                title = 'Recarga procesada';
-                                if (!message) {
-                                    message = 'La recarga fue aceptada por el proveedor.';
-                                }
-                            } else if (lowerStatus === 'error') {
-                                title = 'Recarga con error';
-                                if (!message) {
-                                    message = 'La operación devolvió un error y requiere revisión.';
-                                }
-                            } else if (lowerStatus.indexOf('validate') !== -1) {
-                                title = 'Validación completada';
-                                if (!message) {
-                                    message = 'La solicitud fue validada en modo de prueba y no ejecutó recarga real.';
-                                }
-                            } else if (!message) {
-                                message = 'Se recibió respuesta del proveedor para esta operación.';
-                            }
-
-                            return {
-                                title: title,
-                                message: message,
-                                details: details,
-                                raw: log.raw_response || ''
-                            };
-                        }
-
-                        function renderResponseDetails(summary, responseId, rawId) {
-                            var detailsHtml = '';
-                            if (summary.details && summary.details.length) {
-                                detailsHtml = '<ul class="dc-logs-response-list">' + summary.details.map(function (detail) {
-                                    return '<li><strong>' + esc(detail.label) + ':</strong> ' + esc(detail.value) + '</li>';
-                                }).join('') + '</ul>';
-                            }
-
-                            return ''
-                                + '<div id="' + responseId + '" class="dc-logs-response">'
-                                    + '<strong class="dc-logs-response-title">' + esc(summary.title) + '</strong>'
-                                    + '<p class="dc-logs-response-message">' + esc(summary.message) + '</p>'
-                                    + detailsHtml
-                                    + '<button type="button" class="dc-logs-raw-btn" data-target="' + rawId + '">Ver detalle técnico</button>'
-                                    + '<pre id="' + rawId + '" class="dc-logs-raw">' + esc(summary.raw) + '</pre>'
-                                + '</div>';
-                        }
-
                         function renderTable(logs) {
                             if (!logs || !logs.length) {
                                 resultEl.innerHTML = '<p style="color:#64748b;padding:20px 0;">No se encontraron registros con los filtros aplicados.</p>';
@@ -4475,9 +4239,7 @@ class DC_Recargas_Admin {
 
                             logs.forEach(function (log, i) {
                                 var badge = '<span class="dc-log-badge ' + badgeClass(log.status) + '">' + esc(log.status || 'unknown') + '</span>';
-                                var responseId = 'dc-log-response-' + i;
                                 var rawId = 'dc-log-raw-' + i;
-                                var summary = buildLogResponseSummary(log);
                                 html += '<tr>'
                                     + '<td>' + esc(log.date) + '</td>'
                                     + '<td>' + esc(log.account_number) + '</td>'
@@ -4487,8 +4249,8 @@ class DC_Recargas_Admin {
                                     + '<td style="font-size:11px;word-break:break-all;">' + esc(log.distributor_ref) + '</td>'
                                     + '<td style="font-size:11px;word-break:break-all;">' + esc(log.transfer_ref) + '</td>'
                                     + '<td>'
-                                        + '<button type="button" class="dc-logs-expand-btn" data-target="' + responseId + '">Ver respuesta</button>'
-                                        + renderResponseDetails(summary, responseId, rawId)
+                                        + '<button type="button" class="dc-logs-expand-btn" data-target="' + rawId + '">Ver respuesta</button>'
+                                        + '<pre id="' + rawId + '" class="dc-logs-raw">' + esc(log.raw_response) + '</pre>'
                                     + '</td>'
                                     + '</tr>';
                             });
@@ -4498,21 +4260,11 @@ class DC_Recargas_Admin {
 
                             resultEl.querySelectorAll('.dc-logs-expand-btn').forEach(function (btn) {
                                 btn.addEventListener('click', function () {
-                                    var panel = document.getElementById(btn.getAttribute('data-target'));
-                                    if (!panel) return;
-                                    var open = panel.style.display === 'block';
-                                    panel.style.display = open ? 'none' : 'block';
-                                    btn.textContent = open ? 'Ver respuesta' : 'Ocultar';
-                                });
-                            });
-
-                            resultEl.querySelectorAll('.dc-logs-raw-btn').forEach(function (btn) {
-                                btn.addEventListener('click', function () {
                                     var pre = document.getElementById(btn.getAttribute('data-target'));
                                     if (!pre) return;
                                     var open = pre.style.display === 'block';
                                     pre.style.display = open ? 'none' : 'block';
-                                    btn.textContent = open ? 'Ver detalle técnico' : 'Ocultar detalle técnico';
+                                    btn.textContent = open ? 'Ver respuesta' : 'Ocultar';
                                 });
                             });
                         }
@@ -5523,6 +5275,60 @@ class DC_Recargas_Admin {
                             } catch (e) {
                                 window.alert('No se pudo abrir el editor del shortcode seleccionado.');
                             }
+                        });
+                    });
+                }
+
+                var shortcodeCopyButtons = document.querySelectorAll('.dc-shortcode-copy-trigger');
+
+                function copyTextToClipboard(text) {
+                    if (!text) {
+                        return Promise.reject(new Error('Texto vacio'));
+                    }
+
+                    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                        return navigator.clipboard.writeText(text);
+                    }
+
+                    return new Promise(function (resolve, reject) {
+                        var tempTextarea = document.createElement('textarea');
+                        tempTextarea.value = text;
+                        tempTextarea.setAttribute('readonly', 'readonly');
+                        tempTextarea.style.position = 'fixed';
+                        tempTextarea.style.left = '-9999px';
+                        document.body.appendChild(tempTextarea);
+                        tempTextarea.select();
+
+                        try {
+                            var success = document.execCommand('copy');
+                            document.body.removeChild(tempTextarea);
+                            if (success) {
+                                resolve();
+                            } else {
+                                reject(new Error('No se pudo copiar'));
+                            }
+                        } catch (err) {
+                            document.body.removeChild(tempTextarea);
+                            reject(err);
+                        }
+                    });
+                }
+
+                if (shortcodeCopyButtons.length) {
+                    shortcodeCopyButtons.forEach(function (btn) {
+                        btn.addEventListener('click', function (event) {
+                            event.preventDefault();
+                            event.stopPropagation();
+
+                            var text = btn.getAttribute('data-copy-text') || '';
+                            copyTextToClipboard(text).then(function () {
+                                btn.classList.add('is-copied');
+                                setTimeout(function () {
+                                    btn.classList.remove('is-copied');
+                                }, 1200);
+                            }).catch(function () {
+                                window.alert('No se pudo copiar el shortcode al portapapeles.');
+                            });
                         });
                     });
                 }
