@@ -66,8 +66,7 @@
         ? appCountries
         : (Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : []);
     var defaultCountryIso = String(app.getAttribute('data-default-country-iso') || '').toUpperCase();
-    var featuredBundleIdsRaw = parseJsonAttr('data-featured-bundle-ids');
-    var featuredBundleIds = Array.isArray(featuredBundleIdsRaw) ? featuredBundleIdsRaw.map(String) : [];
+    var featuredBundleId = String(app.getAttribute('data-featured-bundle-id') || '').trim();
     var allowedBundleIds = String(app.getAttribute('data-allowed-bundle-ids') || '')
         .split(',').map(function (id) { return id.trim(); }).filter(Boolean);
     var allowedBundleMap = {};
@@ -84,7 +83,7 @@
         bundles: [],
         visibleBundles: [],
         selected: null,
-        featuredBundleIds: featuredBundleIds,
+        featuredBundleId: featuredBundleId,
         fullPhone: '',
         lastSearchKey: '',
         lastSearchAt: 0,
@@ -98,8 +97,6 @@
         selectedEstimate: null,
         selectedEstimateError: '',
         selectedSendValue: 0,
-        estimateRequestSeq: 0,
-        estimateRequestActive: 0,
         wizardStep: 'phone',  // phone | confirm | result
     };
 
@@ -217,30 +214,14 @@
         return String((bundle && (bundle.ProviderName || bundle.ProviderCode)) || 'Operador');
     }
 
-    function getBundleLogoUrl(bundle) {
-        return String((bundle && bundle.LogoUrl) || '').trim();
-    }
-
-    function buildBundleLogoMarkup(bundle) {
-        var logoUrl = getBundleLogoUrl(bundle);
-        if (!logoUrl) return '';
-
-        var providerLabel = getProviderLabel(bundle);
-        var title = String((bundle && (bundle.DefaultDisplayText || bundle.SkuCode)) || 'Paquete');
-
-        return ''
-            + '<div class="dc-package-logo-wrap">'
-            +   '<img class="dc-package-logo" src="' + escapeHtml(logoUrl) + '" alt="' + escapeHtml(providerLabel + ' · ' + title) + '" loading="eager" decoding="async" referrerpolicy="no-referrer">'
-            + '</div>';
-    }
-
     function getBundleId(bundle) {
         return String((bundle && bundle.BundleId) || '').trim();
     }
 
     function isFeaturedBundle(bundle) {
-        if (!state.featuredBundleIds.length) return false;
-        return state.featuredBundleIds.indexOf(getBundleId(bundle)) !== -1;
+        var featuredId = String(state.featuredBundleId || '').trim();
+        if (!featuredId) return false;
+        return getBundleId(bundle) === featuredId;
     }
 
     function formatMoney(amount, currency) {
@@ -654,9 +635,6 @@
             return;
         }
 
-        var requestId = ++state.estimateRequestSeq;
-        state.estimateRequestActive = requestId;
-
         var estimateEl = dynamicFieldsEl ? dynamicFieldsEl.querySelector('#dc-range-estimate') : null;
         if (estimateEl) {
             estimateEl.classList.add('is-loading');
@@ -679,10 +657,6 @@
                 : null;
             var estimateError = getResultErrorMessage(estimateItem, 'No se pudo calcular la estimación para este importe.');
 
-            if (requestId !== state.estimateRequestActive) {
-                return;
-            }
-
             if (estimateError) {
                 state.selectedEstimate = null;
                 state.selectedEstimateError = estimateError;
@@ -691,9 +665,6 @@
                 state.selectedEstimateError = '';
             }
         } catch (error) {
-            if (requestId !== state.estimateRequestActive) {
-                return;
-            }
             state.selectedEstimate = null;
             state.selectedEstimateError = 'No se pudo estimar el importe. Puedes intentarlo de nuevo.';
         }
@@ -793,9 +764,6 @@
 
     function renderDynamicFields(bundle) {
         if (!dynamicFieldsEl) return;
-
-        // Invalidate any pending estimate response from a previous bundle/context.
-        state.estimateRequestActive = ++state.estimateRequestSeq;
 
         state.selectedSettings = {};
         state.selectedBillRef = '';
@@ -1057,10 +1025,6 @@
             var option = document.createElement('option');
             option.value = String(index);
             option.textContent = getBundleOptionLabel(bundle);
-            if (isFeaturedBundle(bundle)) {
-                option.style.backgroundColor = '#fef9c3';
-                option.style.fontWeight = '600';
-            }
             packageSelect.appendChild(option);
         });
 
@@ -1347,12 +1311,13 @@
         var cachedProviderStatus = bundle.ProviderCode && Object.prototype.hasOwnProperty.call(state.providerStatusCache, String(bundle.ProviderCode))
             ? state.providerStatusCache[String(bundle.ProviderCode)]
             : null;
-        var featuredClass = '';
-        var featuredBadge = '';
-        var logoMarkup = buildBundleLogoMarkup(bundle);
+        var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
+        var featuredBadge = isFeaturedBundle(bundle)
+            ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
+            : '';
 
         packageCard.innerHTML = ''
-            + '<div class="dc-package-card-head">'
+            + '<div class="dc-package-card-head' + featuredClass + '">'
             +   '<div class="dc-package-copy">'
             +     '<div class="dc-package-copy-label">Beneficios recibidos</div>'
             +     featuredBadge
@@ -1367,11 +1332,8 @@
             +   '<div class="dc-package-iso-chip">' + escapeHtml(countryIso || 'N/A') + '</div>'
             + '</div>'
             + '<div class="dc-package-card-meta">'
-            +   '<div class="dc-package-card-meta-copy">'
-            +     '<span class="dc-package-meta-label">Operador</span>'
-            +     '<span class="dc-package-meta-value">' + escapeHtml(providerLabel) + '</span>'
-            +   '</div>'
-            +   logoMarkup
+            +   '<span class="dc-package-meta-label">Operador</span>'
+            +   '<span class="dc-package-meta-value">' + escapeHtml(providerLabel) + '</span>'
             + '</div>';
 
         renderProviderStatus(cachedProviderStatus);
@@ -1389,8 +1351,10 @@
         var currentSendValue = getCurrentSendValue(bundle);
         var currentReceive = getCurrentReceiveValue(bundle);
         var price = formatMoney(currentSendValue || 0, bundle.SendCurrencyIso || 'USD');
-        var featuredClass = '';
-        var featuredBadge = '';
+        var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
+        var featuredBadge = isFeaturedBundle(bundle)
+            ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
+            : '';
         var settingsPayload = getSettingsPayload(bundle);
         var flowKind = getFlowKind(bundle, null, {});
         var confirmCopy = getFlowCopy(flowKind, 'pending');
@@ -1403,7 +1367,7 @@
         }
 
         confirmCard.innerHTML = ''
-            + '<div class="dc-confirm-hero">'
+            + '<div class="dc-confirm-hero' + featuredClass + '">'
             +   '<div class="dc-confirm-hero-copy">'
             +     '<div class="dc-confirm-kicker">Beneficios recibidos</div>'
             +     featuredBadge
@@ -1577,7 +1541,6 @@
             send_currency_iso: selected.SendCurrencyIso || 'EUR',
             provider_name: getProviderLabel(selected),
             bundle_label: selected.DefaultDisplayText || selected.SkuCode,
-            logo_url: getBundleLogoUrl(selected),
             product_type: String(selected.ProductType || ''),
             redemption_mechanism: String(selected.RedemptionMechanism || ''),
             lookup_bills_required: !!selected.LookupBillsRequired,
@@ -1654,7 +1617,7 @@
         var receiptText = String(record.ReceiptText || item.ReceiptText || '');
         var receiptParams = record.ReceiptParams || item.ReceiptParams || {};
         var extraInformation = String((state.selected && state.selected.AdditionalInformation) || '');
-        var isSuccess = /approved|complete|completed|success|ok/i.test(String(status));
+        var isSuccess = /approved|completed|success|ok/i.test(String(status));
         var isPending = /submitted|pending|processing|queued|inprogress/i.test(String(processingState || status));
         var stateKey = isSuccess ? 'success' : (isPending ? 'pending' : 'error');
         var flowKind = getFlowKind(state.selected, item, receiptParams);

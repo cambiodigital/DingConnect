@@ -138,6 +138,7 @@ Namespace actual: `dingconnect/v1`
 54. Corrección de cierre en modal de `Alta manual`: los controles `Cancelar`, `X` y backdrop ahora cierran de forma consistente mediante delegación de eventos, evitando fallos de binding cuando el modal se renderiza después del script.
 55. Compactación UI de `Alta manual`: se redujo densidad vertical del formulario (header y `form-table`) para disminuir el scroll y acelerar carga/edición operativa.
 56. Homologación visual de `Productos guardados` con `Paquetes encontrados`: la tabla ahora incluye columna inicial `Logo`, filas/celdas más compactas y bloque de acciones horizontal centrado.
+57. Ajuste visual en `Wizard y landings`: la columna `Logo` de `Bundles de la landing` aplica tamaño fijo con `object-fit: contain` para conservar proporción y evitar deformación de imágenes no cuadradas.
 
 ## Hallazgos clave para futuras IA
 
@@ -182,6 +183,7 @@ Para nuevas funcionalidades, tomar como referencia en este orden:
 - Si WooCommerce está habilitado, validar también carrito, checkout, notas del pedido y logs internos antes de activar recarga real.
 - Guardar los archivos PHP del plugin en UTF-8 sin BOM para evitar salida invisible durante activación, actualización y carga temprana del plugin.
 - Empaquetar preferentemente el plugin con sus archivos en la raíz del ZIP canónico `dingconnect-recargas.zip` para evitar carpetas contenedoras adicionales en la instalación.
+- Mantener `dingconnect-recargas.php` como único archivo con cabecera de plugin y `dingconnect-recargas-hotfix.php` como shim de compatibilidad, sin cambiar slug ni carpeta `dingconnect-recargas`, para que WordPress conserve comparación de versiones y flujo de reemplazo por ZIP.
 
 ## Lista de lectura rápida para cualquier IA antes de trabajar
 

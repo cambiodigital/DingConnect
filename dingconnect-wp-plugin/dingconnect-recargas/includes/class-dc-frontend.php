@@ -89,21 +89,10 @@ class DC_Recargas_Frontend {
         if (!empty($config['bundle_ids']) && is_array($config['bundle_ids'])) {
             $bundle_ids = array_values(array_unique(array_merge($this->parse_bundle_ids(implode(',', $config['bundle_ids'])), $bundle_ids)));
         }
-        $featured_bundle_ids = [];
-        if (is_array($config['featured_bundle_ids'] ?? null)) {
-            foreach ($config['featured_bundle_ids'] as $fid) {
-                $fid = sanitize_text_field((string) $fid);
-                if ($fid !== '' && in_array($fid, $bundle_ids, true)) {
-                    $featured_bundle_ids[] = $fid;
-                }
-            }
-        } elseif (!empty($config['featured_bundle_id'])) {
-            $fid = sanitize_text_field((string) $config['featured_bundle_id']);
-            if (in_array($fid, $bundle_ids, true)) {
-                $featured_bundle_ids[] = $fid;
-            }
+        $featured_bundle_id = sanitize_text_field((string) ($config['featured_bundle_id'] ?? ''));
+        if (!in_array($featured_bundle_id, $bundle_ids, true)) {
+            $featured_bundle_id = '';
         }
-        $featured_bundle_ids = array_values(array_unique($featured_bundle_ids));
 
         $default_country_iso = strtoupper(sanitize_text_field((string) $atts['country']));
         if ($default_country_iso === '' && !empty($config['country_iso'])) {
@@ -128,7 +117,7 @@ class DC_Recargas_Frontend {
 
         ob_start();
         ?>
-        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-featured-bundle-ids="<?php echo esc_attr(wp_json_encode($featured_bundle_ids)); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
+        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-featured-bundle-id="<?php echo esc_attr($featured_bundle_id); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
             <div class="dc-card">
 
                 <!-- Viewport del wizard -->

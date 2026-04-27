@@ -4,11 +4,6 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-$canonical_rest_file = dirname(__DIR__, 3) . '/includes/class-dc-rest.php';
-if (is_readable($canonical_rest_file)) {
-    require_once $canonical_rest_file;
-}
-
 if (class_exists('DC_Recargas_REST')) {
     return;
 }
@@ -446,15 +441,6 @@ class DC_Recargas_REST {
             return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
         }
 
-        $options = $this->api->get_options();
-        $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
-        if ($payment_mode === 'woocommerce') {
-            return new WP_REST_Response([
-                'ok' => false,
-                'message' => 'Transferencia directa deshabilitada en modo WooCommerce. Usa /add-to-cart y completa el pago en checkout.',
-            ], 403);
-        }
-
         $params = $request->get_json_params();
 
         $payload = [
@@ -737,56 +723,48 @@ class DC_Recargas_REST {
         }
 
         return array_map(function ($bundle) {
-            $send_value = (float) ($bundle['send_value'] ?? 0);
-            $public_price = (float) ($bundle['public_price'] ?? $send_value);
-            $send_currency = sanitize_text_field((string) ($bundle['send_currency_iso'] ?? ''));
-            $public_currency = sanitize_text_field((string) ($bundle['public_price_currency'] ?? $send_currency));
-            if ($public_currency === '') {
-                $public_currency = $send_currency;
-            }
-
             return [
                 'BundleId' => $bundle['id'] ?? '',
                 'SkuCode' => $bundle['sku_code'] ?? '',
                 'ProviderCode' => sanitize_text_field((string) ($bundle['provider_code'] ?? '')),
-                'ProviderName' => sanitize_text_field((string) ($bundle['provider_name'] ?? ($bundle['provider_code'] ?? ''))),
+                'ProviderName' => $bundle['provider_name'] ?? '',
                 'ProductType' => sanitize_text_field((string) ($bundle['product_type_raw'] ?? '')),
-                'SendValue' => $send_value,
-                'SendCurrencyIso' => $send_currency,
-                'ReceiveValue' => isset($bundle['receive_value']) ? (float) $bundle['receive_value'] : $public_price,
-                'ReceiveCurrencyIso' => sanitize_text_field((string) ($bundle['receive_currency_iso'] ?? $public_currency)),
-                'ReceiveValueExcludingTax' => isset($bundle['receive_value_excluding_tax']) ? (float) $bundle['receive_value_excluding_tax'] : $public_price,
-                'MinimumSendValue' => isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : $send_value,
-                'MaximumSendValue' => isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $send_value,
-                'MinimumReceiveValue' => isset($bundle['minimum_receive_value']) ? (float) $bundle['minimum_receive_value'] : $public_price,
-                'MaximumReceiveValue' => isset($bundle['maximum_receive_value']) ? (float) $bundle['maximum_receive_value'] : $public_price,
-                'CustomerFee' => isset($bundle['customer_fee']) ? (float) $bundle['customer_fee'] : 0.0,
-                'DistributorFee' => isset($bundle['distributor_fee']) ? (float) $bundle['distributor_fee'] : 0.0,
-                'TaxRate' => isset($bundle['tax_rate']) ? (float) $bundle['tax_rate'] : 0.0,
-                'TaxName' => sanitize_text_field((string) ($bundle['tax_name'] ?? '')),
-                'TaxCalculation' => sanitize_text_field((string) ($bundle['tax_calculation'] ?? '')),
-                'DefaultDisplayText' => sanitize_text_field((string) ($bundle['default_display_text'] ?? ($bundle['label'] ?? ''))),
-                'DisplayText' => sanitize_text_field((string) ($bundle['display_text'] ?? ($bundle['label'] ?? ''))),
-                'Description' => sanitize_text_field((string) ($bundle['description'] ?? '')),
-                'DescriptionMarkdown' => sanitize_text_field((string) ($bundle['description_markdown'] ?? '')),
-                'ReadMoreMarkdown' => sanitize_text_field((string) ($bundle['read_more_markdown'] ?? '')),
-                'AdditionalInformation' => sanitize_text_field((string) ($bundle['additional_information'] ?? ($bundle['description'] ?? ''))),
+                'SendValue' => (float) ($bundle['send_value'] ?? 0),
+                'SendCurrencyIso' => $bundle['send_currency_iso'] ?? '',  // debe venir del bundle guardado; vacío provocará rechazo en el API
+                'ReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'ReceiveCurrencyIso' => $bundle['send_currency_iso'] ?? '',
+                'ReceiveValueExcludingTax' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'MinimumSendValue' => (float) ($bundle['send_value'] ?? 0),
+                'MaximumSendValue' => (float) ($bundle['send_value'] ?? 0),
+                'MinimumReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'MaximumReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'CustomerFee' => 0.0,
+                'DistributorFee' => 0.0,
+                'TaxRate' => 0.0,
+                'TaxName' => '',
+                'TaxCalculation' => '',
+                'DefaultDisplayText' => $bundle['label'] ?? '',
+                'DisplayText' => $bundle['label'] ?? '',
+                'Description' => $bundle['description'] ?? '',
+                'DescriptionMarkdown' => '',
+                'ReadMoreMarkdown' => '',
+                'AdditionalInformation' => $bundle['description'] ?? '',
                 'CountryIso' => strtoupper((string) ($bundle['country_iso'] ?? '')),
-                'RegionCode' => sanitize_text_field((string) ($bundle['region_code'] ?? '')),
-                'RegionCodes' => $this->normalize_bundle_string_list($bundle['region_codes'] ?? []),
-                'ValidationRegex' => sanitize_text_field((string) ($bundle['validation_regex'] ?? '')),
-                'CustomerCareNumber' => sanitize_text_field((string) ($bundle['customer_care_number'] ?? '')),
-                'LogoUrl' => esc_url_raw((string) ($bundle['logo_url'] ?? '')),
-                'IsPromotion' => $this->normalize_bundle_bool($bundle['is_promotion'] ?? false),
-                'IsRange' => $this->normalize_bundle_bool($bundle['is_range'] ?? false),
-                'Benefits' => $this->normalize_bundle_string_list($bundle['benefits'] ?? []),
+                'RegionCode' => '',
+                'RegionCodes' => [],
+                'ValidationRegex' => '',
+                'CustomerCareNumber' => '',
+                'LogoUrl' => '',
+                'IsPromotion' => false,
+                'IsRange' => false,
+                'Benefits' => [],
                 'ValidityPeriodIso' => sanitize_text_field((string) ($bundle['validity_raw'] ?? '')),
-                'RedemptionMechanism' => sanitize_text_field((string) ($bundle['redemption_mechanism'] ?? 'Immediate')),
-                'ProcessingMode' => sanitize_text_field((string) ($bundle['processing_mode'] ?? 'Instant')),
-                'LookupBillsRequired' => $this->normalize_bundle_bool($bundle['lookup_bills_required'] ?? false),
-                'SettingDefinitions' => $this->normalize_bundle_setting_definitions($bundle['setting_definitions'] ?? []),
-                'PaymentTypes' => $this->normalize_bundle_string_list($bundle['payment_types'] ?? []),
-                'UatNumber' => sanitize_text_field((string) ($bundle['uat_number'] ?? '')),
+                'RedemptionMechanism' => 'Immediate',
+                'ProcessingMode' => 'Instant',
+                'LookupBillsRequired' => false,
+                'SettingDefinitions' => [],
+                'PaymentTypes' => [],
+                'UatNumber' => '',
             ];
         }, $active);
     }
@@ -1096,49 +1074,6 @@ class DC_Recargas_REST {
         }
 
         return $normalized;
-    }
-
-    private function normalize_bundle_bool($value) {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        $normalized = strtolower(trim((string) $value));
-        return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
-    }
-
-    private function normalize_bundle_string_list($value) {
-        if (is_string($value)) {
-            $decoded = json_decode($value, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $value = $decoded;
-            }
-        }
-
-        if (is_string($value)) {
-            $value = preg_split('/[,\n\r]+/', $value) ?: [];
-        }
-
-        $items = [];
-        foreach ((array) $value as $entry) {
-            $clean = sanitize_text_field((string) $entry);
-            if ($clean !== '') {
-                $items[] = $clean;
-            }
-        }
-
-        return array_values(array_unique($items));
-    }
-
-    private function normalize_bundle_setting_definitions($definitions) {
-        if (is_string($definitions)) {
-            $decoded = json_decode($definitions, true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $definitions = $decoded;
-            }
-        }
-
-        return $this->normalize_setting_definitions($definitions);
     }
 
     private function product_matches_query_context($item, $query_context) {
