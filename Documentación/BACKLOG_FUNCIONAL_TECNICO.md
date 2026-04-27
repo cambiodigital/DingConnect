@@ -209,6 +209,8 @@ Una iniciativa se considera lista cuando cumple:
 131. Organización interna de `Landings`: la pestaña principal ahora incluye dos subsecciones internas (`Landings` y `Shortcodes dinámicos`) para separar la creación/configuración de objetivos del listado operativo de shortcodes creados.
 131. Ajuste de nomenclatura en paneles por sección: el aviso inferior de cada apartado del admin cambió de `Tareas de {sección}` a `Soporte para {sección}` para reforzar que el bloque funciona como entrada contextual de soporte según la pestaña activa.
 132. Flujo operativo de soporte en paneles por sección: los bloques inferiores de `Config`, `Catálogo`, `Productos`, `Landings` y `Registros` ahora muestran únicamente formulario de alta de soporte (sin listado inline), y la consulta centralizada queda en la pestaña `Soporte`; además, en `Landings` el formulario guarda subapartado (`Landings` o `Shortcodes dinámicos`) para diferenciar origen en el listado central.
+133. Edición compacta de shortcodes dinámicos en modal: `Editar shortcode dinámico` pasó a una única tabla operativa compacta para añadir/quitar bundles por fila (`Añadir`/`Quitar`), manteniendo reordenamiento drag and drop y destacado opcional, con filtros combinados por país, tipo de producto, texto y estado (`Todos`, `Solo en landing`, `Disponibles para añadir`).
+134. Navegación post-guardado en `Shortcodes dinámicos`: al guardar cambios desde el modal `Editar shortcode dinámico`, el admin ahora redirige a `Landings -> Shortcodes dinámicos` para mantener contexto operativo y evitar volver a la subpestaña general.
 
 ## Backlog actualizado por impacto
 

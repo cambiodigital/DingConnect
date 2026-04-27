@@ -412,6 +412,8 @@ class DC_Recargas_Admin {
 
         wp_safe_redirect(add_query_arg([
             'page' => 'dc-recargas',
+            'dc_tab' => 'tab_landings',
+            'dc_landings_subtab' => 'shortcodes',
             'dc_msg' => 'landing_shortcode_updated',
         ], admin_url('admin.php')));
         exit;
@@ -2347,6 +2349,10 @@ class DC_Recargas_Admin {
                     min-width: 150px;
                 }
 
+                .dc-landing-bundles-filters .dc-landing-bundles-search {
+                    min-width: 240px;
+                }
+
                 .dc-landings-subtabs {
                     margin: 0 0 16px;
                 }
@@ -2404,6 +2410,74 @@ class DC_Recargas_Admin {
 
                 .dc-landing-bundles-checklist__item.is-selected > td {
                     background: #f0f7ff;
+                }
+
+                .dc-landing-bundles-checklist__item td {
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+                    vertical-align: middle;
+                }
+
+                .dc-landing-bundle-product {
+                    min-width: 230px;
+                }
+
+                .dc-landing-bundle-product strong {
+                    display: block;
+                    line-height: 1.25;
+                    margin-bottom: 2px;
+                }
+
+                .dc-landing-bundle-product small {
+                    display: block;
+                    color: #64748b;
+                    line-height: 1.25;
+                }
+
+                .dc-landing-bundle-prices {
+                    white-space: nowrap;
+                    font-size: 12px;
+                    line-height: 1.35;
+                }
+
+                .dc-landing-bundle-status {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 64px;
+                    border-radius: 999px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    padding: 3px 8px;
+                    border: 1px solid transparent;
+                }
+
+                .dc-landing-bundle-status.is-active {
+                    color: #166534;
+                    background: #ecfdf3;
+                    border-color: #86efac;
+                }
+
+                .dc-landing-bundle-status.is-inactive {
+                    color: #9f1239;
+                    background: #fff1f2;
+                    border-color: #fda4af;
+                }
+
+                .dc-landing-bundle-toggle {
+                    min-width: 82px;
+                }
+
+                .dc-landing-bundle-toggle.is-selected {
+                    border-color: #bfdbfe !important;
+                    background: #eff6ff !important;
+                    color: #1d4ed8 !important;
+                }
+
+                .dc-landing-bundles-edit-summary {
+                    margin: 8px 0 10px;
+                    font-size: 12px;
+                    color: #475569;
                 }
 
                 .dc-landing-bundles-checklist__item.is-dragging {
@@ -3370,29 +3444,30 @@ class DC_Recargas_Admin {
                                     </select>
                                 </label>
                                 <label>Buscar
-                                    <input type="search" id="dc_edit_landing_filter_search" class="regular-text" placeholder="Buscar por nombre, SKU u operador">
+                                    <input type="search" id="dc_edit_landing_filter_search" class="regular-text dc-landing-bundles-search" placeholder="Buscar por nombre, SKU u operador">
                                 </label>
-                                <button type="button" class="button button-secondary" id="dc_edit_landing_select_visible">Marcar visibles</button>
-                                <button type="button" class="button button-secondary" id="dc_edit_landing_clear_visible">Quitar visibles</button>
+                                <label>Vista
+                                    <select id="dc_edit_landing_filter_state" class="small-text" data-filter="state">
+                                        <option value="all">Todos</option>
+                                        <option value="selected">Solo en landing</option>
+                                        <option value="available">Disponibles para añadir</option>
+                                    </select>
+                                </label>
                             </div>
+                            <p class="dc-landing-bundles-edit-summary">Usa el botón de cada fila para añadir o quitar productos de esta landing. El orden se mantiene con arrastrar y soltar.</p>
                             <div class="dc-landing-bundles-table-wrap">
                             <table class="widefat striped dc-landing-bundles-checklist">
                                 <thead>
                                     <tr>
                                         <th style="width:36px;"></th>
-                                        <th class="check-column"></th>
                                         <th class="dc-saved-col-logo">Logo</th>
                                         <th>País</th>
                                         <th>Tipo</th>
-                                        <th>Nombre</th>
-                                        <th>SKU</th>
-                                        <th>Coste DIN</th>
-                                        <th>Moneda</th>
-                                        <th>Precio público</th>
-                                        <th>Moneda pública</th>
-                                        <th>Operador</th>
+                                        <th>Producto</th>
+                                        <th>Precios</th>
                                         <th>Estado</th>
                                         <th>Destacado</th>
+                                        <th>Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody id="dc_edit_landing_bundle_ids" role="group" aria-label="Bundles disponibles para editar la landing">
@@ -3408,27 +3483,30 @@ class DC_Recargas_Admin {
                                     $bundle_operator  = sanitize_text_field((string) ($bundle['provider_name'] ?? ''));
                                     $bundle_fam_label = $lnd_family_labels_edit[$bundle_family] ?? ucfirst($bundle_family);
                                 ?>
-                                    <tr class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>">
+                                    <tr class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" data-search-index="<?php echo esc_attr(strtolower(trim($bundle_label . ' ' . $bundle_sku . ' ' . $bundle_operator . ' ' . $bundle_country . ' ' . $bundle_fam_label))); ?>">
                                         <td><button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button></td>
-                                        <td class="check-column"><input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>" aria-label="Seleccionar <?php echo esc_attr($bundle_label); ?>"></td>
                                         <td class="dc-saved-col-logo"><?php if (!empty($bundle['logo_url'])) : ?><img src="<?php echo esc_url($bundle['logo_url']); ?>" alt="<?php echo esc_attr($bundle_operator); ?>" width="28" height="28"><?php endif; ?></td>
                                         <td><?php echo esc_html($bundle_country); ?></td>
                                         <td><?php echo esc_html($bundle_fam_label); ?></td>
-                                        <td><?php echo esc_html($bundle_label); ?></td>
-                                        <td><?php echo esc_html($bundle_sku); ?></td>
-                                        <td><?php echo esc_html(number_format((float) ($bundle['send_value'] ?? 0), 2)); ?></td>
-                                        <td><?php echo esc_html($bundle['send_currency_iso'] ?? ''); ?></td>
-                                        <td><?php echo esc_html(isset($bundle['public_price']) && $bundle['public_price'] !== '' ? number_format((float) $bundle['public_price'], 2) : ''); ?></td>
-                                        <td><?php echo esc_html($bundle['public_price_currency'] ?? 'EUR'); ?></td>
-                                        <td><?php echo esc_html($bundle_operator); ?></td>
-                                        <td><?php echo !empty($bundle['is_active']) ? 'Activo' : 'Inactivo'; ?></td>
+                                        <td class="dc-landing-bundle-product">
+                                            <strong><?php echo esc_html($bundle_label); ?></strong>
+                                            <small>SKU: <?php echo esc_html($bundle_sku); ?></small>
+                                            <small>Operador: <?php echo esc_html($bundle_operator !== '' ? $bundle_operator : 'N/D'); ?></small>
+                                            <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>" aria-label="Seleccionar <?php echo esc_attr($bundle_label); ?>" hidden>
+                                        </td>
+                                        <td class="dc-landing-bundle-prices">
+                                            <div>DIN: <?php echo esc_html(number_format((float) ($bundle['send_value'] ?? 0), 2)); ?> <?php echo esc_html($bundle['send_currency_iso'] ?? ''); ?></div>
+                                            <div>Público: <?php echo esc_html(isset($bundle['public_price']) && $bundle['public_price'] !== '' ? number_format((float) $bundle['public_price'], 2) : ''); ?> <?php echo esc_html($bundle['public_price_currency'] ?? 'EUR'); ?></div>
+                                        </td>
+                                        <td><span class="dc-landing-bundle-status <?php echo !empty($bundle['is_active']) ? 'is-active' : 'is-inactive'; ?>"><?php echo !empty($bundle['is_active']) ? 'Activo' : 'Inactivo'; ?></span></td>
                                         <td class="dc-landing-bundles-checklist__featured"><input type="radio" class="dc-edit-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>"> Dest.</td>
+                                        <td><button type="button" class="button button-secondary dc-landing-bundle-toggle" data-label-add="Añadir" data-label-remove="Quitar">Añadir</button></td>
                                     </tr>
                                 <?php endforeach; ?>
                                 </tbody>
                             </table>
                             </div>
-                            <p class="description">Arrastra los bundles para cambiar el orden. Marca los que deben aparecer y opcionalmente uno como destacado.</p>
+                            <p class="description">Arrastra para reordenar. Marca un destacado opcional y guarda para aplicar cambios.</p>
                         </div>
 
                         <?php submit_button('Guardar cambios del shortcode', 'primary', 'submit', false); ?>
@@ -5562,8 +5640,7 @@ class DC_Recargas_Admin {
                 var landingEditCountryFilterEl = document.getElementById('dc_edit_landing_filter_country');
                 var landingEditFamilyFilterEl = document.getElementById('dc_edit_landing_filter_family');
                 var landingEditSearchFilterEl = document.getElementById('dc_edit_landing_filter_search');
-                var landingEditSelectVisibleBtnEl = document.getElementById('dc_edit_landing_select_visible');
-                var landingEditClearVisibleBtnEl = document.getElementById('dc_edit_landing_clear_visible');
+                var landingEditStateFilterEl = document.getElementById('dc_edit_landing_filter_state');
                 var landingSubtabButtons = document.querySelectorAll('[data-dc-landings-subtab-btn]');
                 var landingSubtabPanels = document.querySelectorAll('[data-dc-landings-subtab-panel]');
                 var supportLandingsSubsectionEls = document.querySelectorAll('[data-dc-support-landings-subsection]');
@@ -6075,7 +6152,7 @@ class DC_Recargas_Admin {
                     return !!event.target.closest('a,button,input,select,textarea,label');
                 }
 
-                function initLandingBundleChecklist(checklistEl, countryFilterEl, familyFilterEl, searchFilterEl) {
+                function initLandingBundleChecklist(checklistEl, countryFilterEl, familyFilterEl, searchFilterEl, stateFilterEl) {
                     if (!checklistEl) {
                         return;
                     }
@@ -6165,9 +6242,26 @@ class DC_Recargas_Admin {
                         });
                     }
 
+                    function syncToggleButtons() {
+                        getRows().forEach(function (rowEl) {
+                            var checkboxEl = getCheckboxFromRow(rowEl);
+                            var toggleBtnEl = rowEl.querySelector('.dc-landing-bundle-toggle');
+                            if (!checkboxEl || !toggleBtnEl) {
+                                return;
+                            }
+
+                            var isSelected = !!checkboxEl.checked;
+                            var addLabel = toggleBtnEl.getAttribute('data-label-add') || 'Añadir';
+                            var removeLabel = toggleBtnEl.getAttribute('data-label-remove') || 'Quitar';
+                            toggleBtnEl.textContent = isSelected ? removeLabel : addLabel;
+                            toggleBtnEl.classList.toggle('is-selected', isSelected);
+                        });
+                    }
+
                     function applyRowFilters() {
                         var selectedCountry = countryFilterEl ? String(countryFilterEl.value || 'all') : 'all';
                         var selectedFamily = familyFilterEl ? String(familyFilterEl.value || 'all') : 'all';
+                        var selectedState = stateFilterEl ? String(stateFilterEl.value || 'all') : 'all';
                         var searchTerm = String(searchFilterEl ? searchFilterEl.value : '').trim().toLowerCase();
 
                         getRows().forEach(function (rowEl) {
@@ -6175,11 +6269,12 @@ class DC_Recargas_Admin {
                             var isSelected = !!(checkboxEl && checkboxEl.checked);
                             var rowCountry = String(rowEl.getAttribute('data-country-iso') || '').toUpperCase();
                             var rowFamily = String(rowEl.getAttribute('data-package-family') || 'other').toLowerCase();
-                            var rowText = String(rowEl.textContent || '').toLowerCase();
+                            var rowText = String(rowEl.getAttribute('data-search-index') || rowEl.textContent || '').toLowerCase();
                             var countryMatch = selectedCountry === 'all' || rowCountry === selectedCountry;
                             var familyMatch = selectedFamily === 'all' || rowFamily === selectedFamily;
+                            var stateMatch = selectedState === 'all' || (selectedState === 'selected' && isSelected) || (selectedState === 'available' && !isSelected);
                             var searchMatch = !searchTerm || rowText.indexOf(searchTerm) !== -1;
-                            rowEl.hidden = !(isSelected || (countryMatch && familyMatch && searchMatch));
+                            rowEl.hidden = !(stateMatch && countryMatch && familyMatch && searchMatch);
                         });
                     }
 
@@ -6203,6 +6298,7 @@ class DC_Recargas_Admin {
                         });
 
                         syncSelectedState();
+                        syncToggleButtons();
                         applyRowFilters();
                     }
 
@@ -6260,6 +6356,7 @@ class DC_Recargas_Admin {
                     }
 
                     syncSelectedState();
+                    syncToggleButtons();
                     syncFilterOptions();
                     applyRowFilters();
 
@@ -6272,6 +6369,9 @@ class DC_Recargas_Admin {
                     if (searchFilterEl) {
                         searchFilterEl.addEventListener('input', applyRowFilters);
                     }
+                    if (stateFilterEl) {
+                        stateFilterEl.addEventListener('change', applyRowFilters);
+                    }
 
                     checklistEl.addEventListener('change', function (event) {
                         var target = event.target;
@@ -6279,6 +6379,7 @@ class DC_Recargas_Admin {
 
                         if (target.matches('input[type="checkbox"][name="bundle_ids[]"]')) {
                             syncSelectedState();
+                            syncToggleButtons();
                             applyRowFilters();
                             return;
                         }
@@ -6290,8 +6391,34 @@ class DC_Recargas_Admin {
                                 featuredCheckboxEl.checked = true;
                             }
                             syncSelectedState();
+                            syncToggleButtons();
                             applyRowFilters();
                         }
+                    });
+
+                    checklistEl.addEventListener('click', function (event) {
+                        var toggleBtnEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundle-toggle') : null;
+                        if (!toggleBtnEl) {
+                            return;
+                        }
+
+                        var rowEl = toggleBtnEl.closest('.dc-landing-bundles-checklist__item');
+                        var checkboxEl = getCheckboxFromRow(rowEl);
+                        if (!checkboxEl) {
+                            return;
+                        }
+
+                        checkboxEl.checked = !checkboxEl.checked;
+                        if (!checkboxEl.checked) {
+                            var radioEl = rowEl.querySelector('input[type="radio"][name="featured_bundle_id"]');
+                            if (radioEl && radioEl.checked) {
+                                radioEl.checked = false;
+                            }
+                        }
+
+                        syncSelectedState();
+                        syncToggleButtons();
+                        applyRowFilters();
                     });
 
                     checklistEl.addEventListener('mousedown', function (event) {
@@ -6318,6 +6445,7 @@ class DC_Recargas_Admin {
                             target.checked = false;
                             delete target.dataset.dcToggleOff;
                             syncSelectedState();
+                            syncToggleButtons();
                             applyRowFilters();
                         }
                     });
@@ -6394,10 +6522,11 @@ class DC_Recargas_Admin {
                     checklistEl.__dcApplyFilters = applyRowFilters;
                     checklistEl.__dcSyncFilterOptions = syncFilterOptions;
                     checklistEl.__dcSetVisibleSelection = setVisibleSelection;
+                    checklistEl.__dcSyncToggleButtons = syncToggleButtons;
                 }
 
-                initLandingBundleChecklist(landingCreateChecklistEl, landingCreateCountryFilterEl, landingCreateFamilyFilterEl, null);
-                initLandingBundleChecklist(landingEditChecklistEl, landingEditCountryFilterEl, landingEditFamilyFilterEl, landingEditSearchFilterEl);
+                initLandingBundleChecklist(landingCreateChecklistEl, landingCreateCountryFilterEl, landingCreateFamilyFilterEl, null, null);
+                initLandingBundleChecklist(landingEditChecklistEl, landingEditCountryFilterEl, landingEditFamilyFilterEl, landingEditSearchFilterEl, landingEditStateFilterEl);
 
                 function syncLandingBundleOrderInputs(formEl, checklistEl) {
                     if (!formEl || !checklistEl) {
@@ -6432,22 +6561,6 @@ class DC_Recargas_Admin {
                 if (landingEditFormEl && landingEditChecklistEl) {
                     landingEditFormEl.addEventListener('submit', function () {
                         syncLandingBundleOrderInputs(landingEditFormEl, landingEditChecklistEl);
-                    });
-                }
-
-                if (landingEditSelectVisibleBtnEl && landingEditChecklistEl) {
-                    landingEditSelectVisibleBtnEl.addEventListener('click', function () {
-                        if (typeof landingEditChecklistEl.__dcSetVisibleSelection === 'function') {
-                            landingEditChecklistEl.__dcSetVisibleSelection(true);
-                        }
-                    });
-                }
-
-                if (landingEditClearVisibleBtnEl && landingEditChecklistEl) {
-                    landingEditClearVisibleBtnEl.addEventListener('click', function () {
-                        if (typeof landingEditChecklistEl.__dcSetVisibleSelection === 'function') {
-                            landingEditChecklistEl.__dcSetVisibleSelection(false);
-                        }
                     });
                 }
 
@@ -6496,6 +6609,9 @@ class DC_Recargas_Admin {
                         }
                         if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcApplyFilters === 'function') {
                             landingEditChecklistEl.__dcApplyFilters();
+                        }
+                        if (landingEditChecklistEl && typeof landingEditChecklistEl.__dcSyncToggleButtons === 'function') {
+                            landingEditChecklistEl.__dcSyncToggleButtons();
                         }
                     }
 
