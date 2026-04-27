@@ -503,6 +503,8 @@ Desde abril de 2026, el plugin incorpora capacidades para acelerar operación y 
 1. Búsqueda en API con selector de resultados para crear bundles curados, precargar el formulario de alta manual y mostrar en el encabezado de `Datos del bundle` el nombre limpio del paquete API seleccionado.
 2. Filtros por país y tipo de paquete/producto dentro del método `Buscar en API` del panel de catálogo.
 3. Panel admin modernizado sin numeración en títulos y pestañas, con estilo visual más actual para navegación y operación diaria.
+4. Control global en `Credenciales` para recargas de monto variable en frontend: `Activada (solo productos de rango)` o `Desactivada (forzar montos fijos)`.
+5. Cuando el catálogo proviene de bundles guardados (`source=saved`), el backend reutiliza metadatos ricos del bundle (`is_range`, límites min/max, `SettingDefinitions`, `LookupBillsRequired`, `ValidationRegex`, branding y medios de pago) para no degradar el flujo dinámico respecto al catálogo live.
 
 ### Objetivo operativo
 

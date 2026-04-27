@@ -775,49 +775,115 @@ class DC_Recargas_REST {
             });
         }
 
-        return array_map(function ($bundle) {
+        $options = $this->api->get_options();
+        $manual_amount_mode = sanitize_key((string) ($options['manual_amount_mode'] ?? 'range_products'));
+        $allow_manual_amount = ($manual_amount_mode === 'range_products');
+
+        return array_map(function ($bundle) use ($allow_manual_amount) {
+            $send_value = (float) ($bundle['send_value'] ?? 0);
+            $send_currency = strtoupper(sanitize_text_field((string) ($bundle['send_currency_iso'] ?? '')));
+            $public_price = (float) ($bundle['public_price'] ?? $send_value);
+            $public_currency = strtoupper(sanitize_text_field((string) ($bundle['public_price_currency'] ?? $send_currency)));
+
+            $minimum_send_value = isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : $send_value;
+            $maximum_send_value = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $send_value;
+            $minimum_receive_value = isset($bundle['minimum_receive_value']) ? (float) $bundle['minimum_receive_value'] : $public_price;
+            $maximum_receive_value = isset($bundle['maximum_receive_value']) ? (float) $bundle['maximum_receive_value'] : $public_price;
+
+            $stored_is_range = !empty($bundle['is_range']);
+            $calculated_is_range = abs($maximum_send_value - $minimum_send_value) > 0.00001 || abs($maximum_receive_value - $minimum_receive_value) > 0.00001;
+            $is_range = $allow_manual_amount && ($stored_is_range || $calculated_is_range);
+
+            if (!$is_range) {
+                $minimum_send_value = $send_value;
+                $maximum_send_value = $send_value;
+                $minimum_receive_value = $public_price;
+                $maximum_receive_value = $public_price;
+            }
+
+            $benefits = [];
+            foreach ((array) ($bundle['benefits'] ?? []) as $benefit) {
+                $clean_benefit = sanitize_text_field((string) $benefit);
+                if ($clean_benefit !== '') {
+                    $benefits[] = $clean_benefit;
+                }
+            }
+
+            $setting_definitions = [];
+            foreach ((array) ($bundle['setting_definitions'] ?? []) as $definition) {
+                if (!is_array($definition)) {
+                    continue;
+                }
+
+                $name = sanitize_text_field((string) ($definition['Name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+
+                $allowed_values = [];
+                foreach ((array) ($definition['AllowedValues'] ?? []) as $allowed_value) {
+                    $clean_allowed = sanitize_text_field((string) $allowed_value);
+                    if ($clean_allowed !== '') {
+                        $allowed_values[] = $clean_allowed;
+                    }
+                }
+
+                $setting_definitions[] = [
+                    'Name' => $name,
+                    'Description' => sanitize_text_field((string) ($definition['Description'] ?? '')),
+                    'IsMandatory' => !empty($definition['IsMandatory']),
+                    'Type' => sanitize_text_field((string) ($definition['Type'] ?? 'text')),
+                    'ValidationRegex' => sanitize_text_field((string) ($definition['ValidationRegex'] ?? '')),
+                    'MinLength' => isset($definition['MinLength']) ? (int) $definition['MinLength'] : 0,
+                    'MaxLength' => isset($definition['MaxLength']) ? (int) $definition['MaxLength'] : 0,
+                    'MinValue' => isset($definition['MinValue']) ? (float) $definition['MinValue'] : 0,
+                    'MaxValue' => isset($definition['MaxValue']) ? (float) $definition['MaxValue'] : 0,
+                    'AllowedValues' => array_values(array_unique($allowed_values)),
+                ];
+            }
+
             return [
                 'BundleId' => $bundle['id'] ?? '',
                 'SkuCode' => $bundle['sku_code'] ?? '',
                 'ProviderCode' => sanitize_text_field((string) ($bundle['provider_code'] ?? '')),
                 'ProviderName' => $bundle['provider_name'] ?? '',
                 'ProductType' => sanitize_text_field((string) ($bundle['product_type_raw'] ?? '')),
-                'SendValue' => (float) ($bundle['send_value'] ?? 0),
-                'SendCurrencyIso' => $bundle['send_currency_iso'] ?? '',  // debe venir del bundle guardado; vacío provocará rechazo en el API
-                'ReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
-                'ReceiveCurrencyIso' => $bundle['send_currency_iso'] ?? '',
-                'ReceiveValueExcludingTax' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
-                'MinimumSendValue' => (float) ($bundle['send_value'] ?? 0),
-                'MaximumSendValue' => (float) ($bundle['send_value'] ?? 0),
-                'MinimumReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
-                'MaximumReceiveValue' => (float) ($bundle['public_price'] ?? ($bundle['send_value'] ?? 0)),
+                'SendValue' => $send_value,
+                'SendCurrencyIso' => $send_currency,
+                'ReceiveValue' => $public_price,
+                'ReceiveCurrencyIso' => $public_currency,
+                'ReceiveValueExcludingTax' => isset($bundle['receive_value_excluding_tax']) ? (float) $bundle['receive_value_excluding_tax'] : $public_price,
+                'MinimumSendValue' => $minimum_send_value,
+                'MaximumSendValue' => $maximum_send_value,
+                'MinimumReceiveValue' => $minimum_receive_value,
+                'MaximumReceiveValue' => $maximum_receive_value,
                 'CustomerFee' => 0.0,
                 'DistributorFee' => 0.0,
                 'TaxRate' => 0.0,
-                'TaxName' => '',
-                'TaxCalculation' => '',
-                'DefaultDisplayText' => $bundle['label'] ?? '',
-                'DisplayText' => $bundle['label'] ?? '',
+                'TaxName' => sanitize_text_field((string) ($bundle['tax_name'] ?? '')),
+                'TaxCalculation' => sanitize_text_field((string) ($bundle['tax_calculation'] ?? '')),
+                'DefaultDisplayText' => sanitize_text_field((string) ($bundle['default_display_text'] ?? ($bundle['label'] ?? ''))),
+                'DisplayText' => sanitize_text_field((string) ($bundle['display_text'] ?? ($bundle['label'] ?? ''))),
                 'Description' => $bundle['description'] ?? '',
-                'DescriptionMarkdown' => '',
-                'ReadMoreMarkdown' => '',
-                'AdditionalInformation' => $bundle['description'] ?? '',
-                'CountryIso' => strtoupper((string) ($bundle['country_iso'] ?? '')),
-                'RegionCode' => '',
-                'RegionCodes' => [],
-                'ValidationRegex' => '',
-                'CustomerCareNumber' => '',
-                'LogoUrl' => '',
-                'IsPromotion' => false,
-                'IsRange' => false,
-                'Benefits' => [],
+                'DescriptionMarkdown' => sanitize_text_field((string) ($bundle['description_markdown'] ?? '')),
+                'ReadMoreMarkdown' => sanitize_text_field((string) ($bundle['read_more_markdown'] ?? '')),
+                'AdditionalInformation' => sanitize_text_field((string) ($bundle['additional_information'] ?? ($bundle['description'] ?? ''))),
+                'CountryIso' => strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? ''))),
+                'RegionCode' => sanitize_text_field((string) ($bundle['region_code'] ?? '')),
+                'RegionCodes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($bundle['region_codes'] ?? [])))),
+                'ValidationRegex' => sanitize_text_field((string) ($bundle['validation_regex'] ?? '')),
+                'CustomerCareNumber' => sanitize_text_field((string) ($bundle['customer_care_number'] ?? '')),
+                'LogoUrl' => esc_url_raw((string) ($bundle['logo_url'] ?? '')),
+                'IsPromotion' => !empty($bundle['is_promotion']),
+                'IsRange' => $is_range,
+                'Benefits' => $benefits,
                 'ValidityPeriodIso' => sanitize_text_field((string) ($bundle['validity_raw'] ?? '')),
-                'RedemptionMechanism' => 'Immediate',
-                'ProcessingMode' => 'Instant',
-                'LookupBillsRequired' => false,
-                'SettingDefinitions' => [],
-                'PaymentTypes' => [],
-                'UatNumber' => '',
+                'RedemptionMechanism' => sanitize_text_field((string) ($bundle['redemption_mechanism'] ?? 'Immediate')),
+                'ProcessingMode' => sanitize_text_field((string) ($bundle['processing_mode'] ?? 'Instant')),
+                'LookupBillsRequired' => !empty($bundle['lookup_bills_required']),
+                'SettingDefinitions' => $setting_definitions,
+                'PaymentTypes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($bundle['payment_types'] ?? [])))),
+                'UatNumber' => sanitize_text_field((string) ($bundle['uat_number'] ?? '')),
             ];
         }, $active);
     }

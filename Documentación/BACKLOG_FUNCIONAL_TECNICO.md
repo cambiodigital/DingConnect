@@ -293,3 +293,9 @@ Corrección aplicada de resiliencia ante copias duplicadas (14-04-2026):
 Regla actualizada de empaquetado canónico (27-04-2026):
 
 - El script `dingconnect-wp-plugin/Auto-comprimir.bat` ahora genera `dingconnect-recargas.zip` incluyendo la carpeta raíz `dingconnect-recargas` dentro del ZIP (preferencia por `tar`, fallback a `Compress-Archive`), evitando paquetes ambiguos que rompen la resolución de `includes/` al instalar en WordPress.
+
+Avance implementado (27-04-2026) - Control de recarga manual desde admin:
+
+- Se agregó en `Credenciales` la opción `Recarga manual (monto variable)` con dos modos: `Activada (solo productos de rango)` y `Desactivada (forzar solo montos fijos)`.
+- El contrato REST `GET /wp-json/dingconnect/v1/products` para `source=saved` ahora respeta metadatos ricos del bundle (`is_range`, mínimos/máximos, `SettingDefinitions`, `LookupBillsRequired`, `ValidationRegex`, `LogoUrl`, `payment_types`, etc.) cuando la opción está activada.
+- Se corrigió la moneda de precio público en `source=saved`: `ReceiveCurrencyIso` ahora prioriza `public_price_currency` del bundle guardado.

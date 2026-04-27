@@ -141,6 +141,7 @@ register_activation_hook(DC_RECARGAS_FILE, function () {
         'api_key' => '',
         'payment_mode' => 'direct',
         'recharge_mode' => 'test_simulate',
+        'manual_amount_mode' => 'range_products',
         'validate_only' => 1,
         'allow_real_recharge' => 0,
         'woo_allowed_gateways' => [],

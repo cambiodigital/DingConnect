@@ -788,6 +788,11 @@ class DC_Recargas_Admin {
             $allow_real_recharge = 1;
         }
 
+        $manual_amount_mode = sanitize_key((string) ($input['manual_amount_mode'] ?? 'range_products'));
+        if (!in_array($manual_amount_mode, ['disabled', 'range_products'], true)) {
+            $manual_amount_mode = 'range_products';
+        }
+
         $new_api_key = sanitize_text_field((string) ($input['api_key'] ?? ''));
         if ($new_api_key === '') {
             $new_api_key = sanitize_text_field((string) ($current_options['api_key'] ?? ''));
@@ -799,6 +804,7 @@ class DC_Recargas_Admin {
             'payment_mode' => $mode,
             'woo_allowed_gateways' => $woo_allowed_gateways,
             'recharge_mode' => $recharge_mode,
+            'manual_amount_mode' => $manual_amount_mode,
             'validate_only' => $validate_only,
             'allow_real_recharge' => $allow_real_recharge,
             'submitted_retry_max_attempts' => $submitted_retry_max_attempts,
@@ -3176,6 +3182,23 @@ class DC_Recargas_Admin {
                                 <strong>Simular siempre:</strong> Todas las transacciones son simuladas, sin opción de cambio.<br>
                                 <strong>Permitir cambio:</strong> Por defecto simula, pero frontend puede enviar <code>ValidateOnly: false</code> para probar reales.<br>
                                 <strong>Producción:</strong> Transacciones reales sin simulación.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_manual_amount_mode">Recarga manual (monto variable)</label></th>
+                        <td>
+                            <select id="dc_manual_amount_mode" name="dc_recargas_options[manual_amount_mode]">
+                                <option value="range_products" <?php selected(($options['manual_amount_mode'] ?? 'range_products'), 'range_products'); ?>>
+                                    Activada (solo productos de rango)
+                                </option>
+                                <option value="disabled" <?php selected(($options['manual_amount_mode'] ?? ''), 'disabled'); ?>>
+                                    Desactivada (forzar solo montos fijos)
+                                </option>
+                            </select>
+                            <p class="description">
+                                Controla si el frontend permite que el cliente escriba monto en productos tipo rango.<br>
+                                Cuando está activada, se respetan límites mínimos y máximos definidos por DingConnect en el bundle guardado.
                             </p>
                         </td>
                     </tr>
