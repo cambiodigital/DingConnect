@@ -11,6 +11,7 @@ if (!function_exists('do_action')) { function do_action(...$args) { return null;
 if (!function_exists('add_shortcode')) { function add_shortcode(...$args) { return true; } }
 if (!function_exists('shortcode_atts')) { function shortcode_atts($pairs, $atts, $shortcode = '') { return array_merge((array) $pairs, (array) $atts); } }
 if (!function_exists('add_menu_page')) { function add_menu_page(...$args) { return ''; } }
+if (!function_exists('add_submenu_page')) { function add_submenu_page(...$args) { return ''; } }
 if (!function_exists('register_setting')) { function register_setting(...$args) { return true; } }
 if (!function_exists('register_activation_hook')) { function register_activation_hook(...$args) { return true; } }
 if (!function_exists('register_deactivation_hook')) { function register_deactivation_hook(...$args) { return true; } }

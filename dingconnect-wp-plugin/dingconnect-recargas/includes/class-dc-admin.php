@@ -44,6 +44,60 @@ class DC_Recargas_Admin {
             'dashicons-smartphone',
             57
         );
+
+        $submenu_items = $this->get_admin_submenu_items();
+        foreach ($submenu_items as $submenu_slug => $submenu) {
+            if ($submenu_slug === 'dc-recargas') {
+                add_submenu_page(
+                    'dc-recargas',
+                    'DingConnect - ' . $submenu['label'],
+                    $submenu['label'],
+                    'manage_options',
+                    'dc-recargas',
+                    [$this, 'render_page']
+                );
+                continue;
+            }
+
+            add_submenu_page(
+                'dc-recargas',
+                'DingConnect - ' . $submenu['label'],
+                $submenu['label'],
+                'manage_options',
+                $submenu_slug,
+                [$this, 'render_submenu_tab_redirect']
+            );
+        }
+    }
+
+    private function get_admin_submenu_items() {
+        return [
+            'dc-recargas' => ['label' => 'Config', 'tab' => 'tab_setup'],
+            'dc-recargas-catalogo' => ['label' => 'Catálogo', 'tab' => 'tab_catalog'],
+            'dc-recargas-productos' => ['label' => 'Productos', 'tab' => 'tab_saved'],
+            'dc-recargas-landings' => ['label' => 'Landings', 'tab' => 'tab_landings'],
+            'dc-recargas-registros' => ['label' => 'Registros', 'tab' => 'tab_logs'],
+            'dc-recargas-tareas' => ['label' => 'Soporte', 'tab' => 'tab_tasks'],
+        ];
+    }
+
+    public function render_submenu_tab_redirect() {
+        $submenu_items = $this->get_admin_submenu_items();
+        $current_page = sanitize_key((string) ($_GET['page'] ?? ''));
+        $target_tab = isset($submenu_items[$current_page]['tab'])
+            ? sanitize_key((string) $submenu_items[$current_page]['tab'])
+            : 'tab_setup';
+
+        $allowed_tabs = ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs', 'tab_tasks'];
+        if (!in_array($target_tab, $allowed_tabs, true)) {
+            $target_tab = 'tab_setup';
+        }
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_tab' => $target_tab,
+        ], admin_url('admin.php')));
+        exit;
     }
 
     public function register_settings() {
@@ -377,6 +431,14 @@ class DC_Recargas_Admin {
         if (!in_array($status, ['open', 'in_progress', 'solved'], true)) {
             $status = 'open';
         }
+        $subsection = sanitize_key((string) ($_POST['subsection'] ?? ''));
+        if ($section === 'tab_landings') {
+            if (!in_array($subsection, ['landings', 'shortcodes'], true)) {
+                $subsection = 'landings';
+            }
+        } else {
+            $subsection = '';
+        }
 
         $tickets = $this->get_section_tickets_store();
         $section_tickets = isset($tickets[$section]) && is_array($tickets[$section]) ? array_values($tickets[$section]) : [];
@@ -406,6 +468,7 @@ class DC_Recargas_Admin {
                 'title' => $title,
                 'type' => $type,
                 'status' => $status,
+                'subsection' => $subsection,
                 'details' => $details,
                 'response' => $response,
                 'solution' => $solution,
@@ -432,6 +495,9 @@ class DC_Recargas_Admin {
                 }
 
                 $section_tickets[$index]['status'] = $status;
+                if ($section === 'tab_landings' && in_array($subsection, ['landings', 'shortcodes'], true)) {
+                    $section_tickets[$index]['subsection'] = $subsection;
+                }
                 $section_tickets[$index]['response'] = $this->sanitize_textarea_value((string) ($_POST['response'] ?? ''));
                 $section_tickets[$index]['solution'] = $this->sanitize_textarea_value((string) ($_POST['solution'] ?? ''));
                 $section_tickets[$index]['updated_at'] = current_time('mysql');
@@ -519,7 +585,7 @@ class DC_Recargas_Admin {
 
     private function sanitize_admin_section_key($section) {
         $section = sanitize_key((string) $section);
-        $allowed = ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs'];
+        $allowed = ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs', 'tab_tasks'];
         if (!in_array($section, $allowed, true)) {
             return 'tab_setup';
         }
@@ -569,149 +635,60 @@ class DC_Recargas_Admin {
 
     private function render_section_feedback_panel($section_key, $section_title) {
         $section_key = $this->sanitize_admin_section_key($section_key);
-        $tickets_store = $this->get_section_tickets_store();
-        $section_tickets = isset($tickets_store[$section_key]) && is_array($tickets_store[$section_key])
-            ? array_values($tickets_store[$section_key])
-            : [];
         ?>
         <section class="dc-feedback-panel" data-dc-feedback-section="<?php echo esc_attr($section_key); ?>" hidden>
-            <details class="dc-feedback-panel__details">
-                <summary class="dc-feedback-panel__summary">Reportar mejora/fallo · <?php echo esc_html($section_title); ?></summary>
+            <div class="dc-feedback-panel__content">
+                <p class="dc-feedback-panel__notice-title">Soporte para <?php echo esc_html($section_title); ?></p>
 
-                <div class="dc-feedback-panel__content">
-                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dc-feedback-panel__new-ticket">
-                        <input type="hidden" name="action" value="dc_save_section_ticket">
-                        <input type="hidden" name="section" value="<?php echo esc_attr($section_key); ?>">
-                        <input type="hidden" name="ticket_id" value="">
-                        <?php wp_nonce_field('dc_save_section_ticket'); ?>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dc-feedback-panel__new-ticket">
+                    <input type="hidden" name="action" value="dc_save_section_ticket">
+                    <input type="hidden" name="section" value="<?php echo esc_attr($section_key); ?>">
+                    <input type="hidden" name="ticket_id" value="">
+                    <input type="hidden" name="status" value="open">
+                    <?php wp_nonce_field('dc_save_section_ticket'); ?>
 
-                        <div class="dc-feedback-panel__grid">
+                    <div class="dc-feedback-panel__grid">
+                        <label>
+                            Tipo
+                            <select name="type">
+                                <option value="improvement">Mejora</option>
+                                <option value="bug">Fallo</option>
+                            </select>
+                        </label>
+                        <?php if ($section_key === 'tab_landings') : ?>
                             <label>
-                                Tipo
-                                <select name="type">
-                                    <option value="improvement">Mejora</option>
-                                    <option value="bug">Fallo</option>
+                                Apartado de Landings
+                                <select name="subsection" data-dc-support-landings-subsection>
+                                    <option value="landings">Landings</option>
+                                    <option value="shortcodes">Shortcodes dinámicos</option>
                                 </select>
                             </label>
-                            <label>
-                                Estado
-                                <select name="status">
-                                    <option value="open">Abierto</option>
-                                    <option value="in_progress">En progreso</option>
-                                    <option value="solved">Resuelto</option>
-                                </select>
-                            </label>
-                        </div>
-
-                        <label>
-                            Título del ticket
-                            <input type="text" name="title" class="regular-text" required placeholder="Ej: Ajustar validación del flujo en esta sección">
-                        </label>
-
-                        <label>
-                            Detalle de la mejora o fallo
-                            <textarea name="details" rows="3" class="large-text" placeholder="Describe qué pasa, qué esperas y el impacto."></textarea>
-                        </label>
-
-                        <div class="dc-feedback-panel__actions">
-                            <button type="submit" class="button button-primary">Crear ticket</button>
-                        </div>
-                    </form>
-
-                    <div class="dc-feedback-panel__tickets">
-                        <?php if (empty($section_tickets)) : ?>
-                            <p class="description">No hay tickets aún en esta sección.</p>
                         <?php else : ?>
-                            <?php foreach ($section_tickets as $ticket) : ?>
-                                <?php
-                                $ticket_id = sanitize_text_field((string) ($ticket['id'] ?? ''));
-                                $ticket_type = sanitize_key((string) ($ticket['type'] ?? 'improvement'));
-                                if (!in_array($ticket_type, ['improvement', 'bug'], true)) {
-                                    $ticket_type = 'improvement';
-                                }
-                                $ticket_status = sanitize_key((string) ($ticket['status'] ?? 'open'));
-                                if (!in_array($ticket_status, ['open', 'in_progress', 'solved'], true)) {
-                                    $ticket_status = 'open';
-                                }
-                                $ticket_checklist = isset($ticket['checklist']) && is_array($ticket['checklist']) ? $ticket['checklist'] : [];
-                                ?>
-                                <article class="dc-feedback-ticket">
-                                    <header class="dc-feedback-ticket__header">
-                                        <h4><?php echo esc_html((string) ($ticket['title'] ?? 'Ticket sin título')); ?></h4>
-                                        <span class="dc-feedback-ticket__type is-<?php echo esc_attr($ticket_type); ?>"><?php echo esc_html($ticket_type === 'bug' ? 'Fallo' : 'Mejora'); ?></span>
-                                    </header>
-
-                                    <p class="dc-feedback-ticket__meta">
-                                        Creado: <?php echo esc_html((string) ($ticket['created_at'] ?? 'N/D')); ?>
-                                        <?php if (!empty($ticket['updated_at'])) : ?>
-                                            · Última actualización: <?php echo esc_html((string) $ticket['updated_at']); ?>
-                                        <?php endif; ?>
-                                    </p>
-
-                                    <?php if (!empty($ticket['details'])) : ?>
-                                        <p class="dc-feedback-ticket__details"><?php echo esc_html((string) $ticket['details']); ?></p>
-                                    <?php endif; ?>
-
-                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dc-feedback-ticket__form">
-                                        <input type="hidden" name="action" value="dc_save_section_ticket">
-                                        <input type="hidden" name="section" value="<?php echo esc_attr($section_key); ?>">
-                                        <input type="hidden" name="ticket_id" value="<?php echo esc_attr($ticket_id); ?>">
-                                        <?php wp_nonce_field('dc_save_section_ticket'); ?>
-
-                                        <label>
-                                            Estado
-                                            <select name="status">
-                                                <option value="open" <?php selected($ticket_status, 'open'); ?>>Abierto</option>
-                                                <option value="in_progress" <?php selected($ticket_status, 'in_progress'); ?>>En progreso</option>
-                                                <option value="solved" <?php selected($ticket_status, 'solved'); ?>>Resuelto</option>
-                                            </select>
-                                        </label>
-
-                                        <?php if (!empty($ticket_checklist)) : ?>
-                                            <div class="dc-feedback-ticket__checklist">
-                                                <p>Checklist</p>
-                                                <?php foreach ($ticket_checklist as $item) : ?>
-                                                    <?php
-                                                    $item_id = sanitize_text_field((string) ($item['id'] ?? ''));
-                                                    $item_text = sanitize_text_field((string) ($item['text'] ?? ''));
-                                                    $item_done = !empty($item['done']);
-                                                    if ($item_id === '' || $item_text === '') {
-                                                        continue;
-                                                    }
-                                                    ?>
-                                                    <label class="dc-feedback-ticket__check-item">
-                                                        <input type="checkbox" name="checklist_done[]" value="<?php echo esc_attr($item_id); ?>" <?php checked($item_done); ?>>
-                                                        <span><?php echo esc_html($item_text); ?></span>
-                                                    </label>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php endif; ?>
-
-                                        <label>
-                                            Respuesta
-                                            <textarea name="response" rows="2" class="large-text" placeholder="Seguimiento o respuesta al reporte."><?php echo esc_textarea((string) ($ticket['response'] ?? '')); ?></textarea>
-                                        </label>
-
-                                        <label>
-                                            Solución aplicada
-                                            <textarea name="solution" rows="2" class="large-text" placeholder="Documenta la solución final."><?php echo esc_textarea((string) ($ticket['solution'] ?? '')); ?></textarea>
-                                        </label>
-
-                                        <div class="dc-feedback-ticket__actions">
-                                            <button type="submit" class="button button-secondary">Guardar seguimiento</button>
-                                            <a class="button dc-feedback-ticket__delete" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
-                                                'action' => 'dc_delete_section_ticket',
-                                                'section' => $section_key,
-                                                'ticket_id' => $ticket_id,
-                                            ], admin_url('admin-post.php')), 'dc_delete_section_ticket')); ?>" onclick="return confirm('¿Eliminar este ticket de reporte?');">Eliminar</a>
-                                        </div>
-                                    </form>
-                                </article>
-                            <?php endforeach; ?>
+                            <input type="hidden" name="subsection" value="">
                         <?php endif; ?>
                     </div>
-                </div>
-            </details>
+
+                    <label>
+                        Título del soporte
+                        <input type="text" name="title" class="regular-text" required placeholder="Ej: Ajustar validación de esta sección">
+                    </label>
+
+                    <label>
+                        Detalle
+                        <textarea name="details" rows="2" class="large-text" placeholder="Describe el problema o mejora requerida."></textarea>
+                    </label>
+
+                    <div class="dc-feedback-panel__actions">
+                        <button type="submit" class="button button-primary">Crear soporte</button>
+                    </div>
+                </form>
+
+                <p class="dc-feedback-panel__notice-hint">La gestión y seguimiento están centralizados en la pestaña Soporte.</p>
+                <a class="button button-secondary" href="<?php echo esc_url(add_query_arg([
+                    'page' => 'dc-recargas',
+                    'dc_tab' => 'tab_tasks',
+                ], admin_url('admin.php'))); ?>">Abrir Soporte</a>
+            </div>
         </section>
         <?php
     }
@@ -1619,9 +1596,96 @@ class DC_Recargas_Admin {
         $inactive_bundles = max(0, $total_bundles - $active_bundles);
         $landing_count = count($landing_shortcodes);
         $payment_mode_label = (($options['payment_mode'] ?? 'direct') === 'woocommerce') ? 'WooCommerce' : 'Directo';
+        $report_section_keys = ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs'];
+        $report_section_labels = [
+            'tab_setup' => 'Config',
+            'tab_catalog' => 'Catálogo',
+            'tab_saved' => 'Productos',
+            'tab_landings' => 'Landings',
+            'tab_logs' => 'Registros',
+        ];
+        $tickets_store = $this->get_section_tickets_store();
+        $task_summary_rows = [];
+            $task_ticket_rows = [];
+        $task_totals = [
+            'open' => 0,
+            'in_progress' => 0,
+            'solved' => 0,
+            'checklist_pending' => 0,
+        ];
+        foreach ($report_section_keys as $section_key) {
+            $section_tickets = isset($tickets_store[$section_key]) && is_array($tickets_store[$section_key])
+                ? array_values($tickets_store[$section_key])
+                : [];
+            $summary = [
+                'total' => count($section_tickets),
+                'open' => 0,
+                'in_progress' => 0,
+                'solved' => 0,
+                'checklist_pending' => 0,
+            ];
+
+            foreach ($section_tickets as $ticket) {
+                $status = sanitize_key((string) ($ticket['status'] ?? 'open'));
+                if (!in_array($status, ['open', 'in_progress', 'solved'], true)) {
+                    $status = 'open';
+                }
+                $summary[$status] += 1;
+
+                $checklist = isset($ticket['checklist']) && is_array($ticket['checklist']) ? $ticket['checklist'] : [];
+                $ticket_checklist_pending = 0;
+                foreach ($checklist as $item) {
+                    if (empty($item['done'])) {
+                        $summary['checklist_pending'] += 1;
+                        $ticket_checklist_pending += 1;
+                    }
+                }
+
+                $ticket_subsection = sanitize_key((string) ($ticket['subsection'] ?? ''));
+                $ticket_subsection_label = '';
+                if ($section_key === 'tab_landings') {
+                    if ($ticket_subsection === 'shortcodes') {
+                        $ticket_subsection_label = 'Shortcodes dinámicos';
+                    } else {
+                        $ticket_subsection = 'landings';
+                        $ticket_subsection_label = 'Landings';
+                    }
+                }
+                $ticket_section_label = $report_section_labels[$section_key] ?? $section_key;
+                if ($ticket_subsection_label !== '') {
+                    $ticket_section_label .= ' / ' . $ticket_subsection_label;
+                }
+
+                $task_ticket_rows[] = [
+                    'section_key' => $section_key,
+                    'section_label' => $ticket_section_label,
+                    'subsection' => $ticket_subsection,
+                    'id' => sanitize_text_field((string) ($ticket['id'] ?? '')),
+                    'title' => sanitize_text_field((string) ($ticket['title'] ?? 'Sin título')),
+                    'type' => sanitize_key((string) ($ticket['type'] ?? 'improvement')),
+                    'status' => $status,
+                    'details' => $this->sanitize_textarea_value((string) ($ticket['details'] ?? '')),
+                    'response' => $this->sanitize_textarea_value((string) ($ticket['response'] ?? '')),
+                    'solution' => $this->sanitize_textarea_value((string) ($ticket['solution'] ?? '')),
+                    'checklist_pending' => $ticket_checklist_pending,
+                    'updated_at' => sanitize_text_field((string) ($ticket['updated_at'] ?? ($ticket['created_at'] ?? ''))),
+                ];
+            }
+
+            $task_summary_rows[] = [
+                'section_key' => $section_key,
+                'label' => $report_section_labels[$section_key] ?? $section_key,
+                'summary' => $summary,
+            ];
+
+            $task_totals['open'] += (int) $summary['open'];
+            $task_totals['in_progress'] += (int) $summary['in_progress'];
+            $task_totals['solved'] += (int) $summary['solved'];
+            $task_totals['checklist_pending'] += (int) $summary['checklist_pending'];
+        }
 
         $requested_tab = sanitize_key($_GET['dc_tab'] ?? '');
-        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs'], true)) {
+        if (in_array($requested_tab, ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs', 'tab_tasks'], true)) {
             $active_tab = $requested_tab;
         }
 
@@ -2214,6 +2278,41 @@ class DC_Recargas_Admin {
                     font-size: 13px;
                 }
 
+                .dc-price-inline {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                }
+
+                .dc-price-inline input[type="number"] {
+                    width: 130px;
+                    max-width: 100%;
+                }
+
+                .dc-price-inline .dc-combo-input.small-text {
+                    width: 92px;
+                }
+
+                .dc-profit-field {
+                    display: inline-flex;
+                    align-items: center;
+                    min-height: 34px;
+                    padding: 6px 10px;
+                    border: 1px solid #dbe4f0;
+                    border-radius: 8px;
+                    background: #f8fbff;
+                    color: #0f172a;
+                    font-weight: 600;
+                }
+
+                .dc-profit-field.is-warning {
+                    color: #92400e;
+                    background: #fffbeb;
+                    border-color: #fde68a;
+                    font-weight: 500;
+                }
+
                 .dc-admin-wrap select,
                 .dc-edit-modal select,
                 .dc-logs-toolbar select {
@@ -2246,6 +2345,22 @@ class DC_Recargas_Admin {
 
                 .dc-landing-bundles-filters select {
                     min-width: 150px;
+                }
+
+                .dc-landings-subtabs {
+                    margin: 0 0 16px;
+                }
+
+                .dc-landings-subtabs .nav-tab {
+                    cursor: pointer;
+                }
+
+                .dc-landings-subtab-panel {
+                    display: none;
+                }
+
+                .dc-landings-subtab-panel.is-active {
+                    display: block;
                 }
 
                 .dc-landing-bundles-full-width {
@@ -2681,6 +2796,40 @@ class DC_Recargas_Admin {
                     background: #fbfdff;
                 }
 
+                .dc-feedback-panel__notice {
+                    border: 1px solid #dfe8f6;
+                    border-radius: 10px;
+                    background: #fbfdff;
+                    padding: 12px;
+                    display: grid;
+                    gap: 6px;
+                }
+
+                .dc-feedback-panel__notice-title {
+                    margin: 0;
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: #0f172a;
+                }
+
+                .dc-feedback-panel__notice-copy {
+                    margin: 0;
+                    font-size: 12px;
+                    color: #334155;
+                }
+
+                .dc-feedback-panel__new-ticket {
+                    display: grid;
+                    gap: 8px;
+                    margin-top: 6px;
+                }
+
+                .dc-feedback-panel__notice-hint {
+                    margin: 0;
+                    font-size: 12px;
+                    color: #64748b;
+                }
+
                 .dc-feedback-panel__summary {
                     padding: 9px 12px;
                     font-size: 12px;
@@ -2852,11 +3001,12 @@ class DC_Recargas_Admin {
 
             <div class="dc-admin-tabs">
                 <h2 class="nav-tab-wrapper" style="margin-bottom:0;">
-                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_setup">Credenciales</button>
-                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_catalog">Catálogo y alta</button>
-                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_saved">Productos guardados</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_setup">Config</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_catalog">Catálogo</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_saved">Productos</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_landings">Landings</button>
                     <button type="button" class="nav-tab" data-dc-tab-btn="tab_logs">Registros</button>
+                    <button type="button" class="nav-tab" data-dc-tab-btn="tab_tasks">Soporte</button>
                 </h2>
 
                 <section id="dc-tab-setup" class="dc-tab-panel" data-dc-tab-panel="tab_setup">
@@ -3010,6 +3160,16 @@ class DC_Recargas_Admin {
             <h2>Landings y shortcodes dinámicos</h2>
             <p>Define objetivos de landing y asocia bundles concretos para generar shortcodes reutilizables.</p>
 
+            <div class="dc-landings-subtabs">
+                <h3 class="nav-tab-wrapper" style="margin-bottom:0;">
+                    <button type="button" class="nav-tab" data-dc-landings-subtab-btn="landings">Landings</button>
+                    <button type="button" class="nav-tab" data-dc-landings-subtab-btn="shortcodes">Shortcodes dinámicos</button>
+                </h3>
+            </div>
+
+            <div class="dc-landings-subtab-panel" data-dc-landings-subtab-panel="landings">
+            <h3>Landings</h3>
+
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="dc_create_landing_form">
                 <input type="hidden" name="action" value="dc_add_landing_shortcode">
                 <?php wp_nonce_field('dc_add_landing_shortcode'); ?>
@@ -3110,6 +3270,10 @@ class DC_Recargas_Admin {
 
                 <?php submit_button('Crear shortcode de landing'); ?>
             </form>
+
+            </div>
+
+            <div class="dc-landings-subtab-panel" data-dc-landings-subtab-panel="shortcodes">
 
             <h3>Shortcodes creados</h3>
             <table class="widefat striped">
@@ -3271,6 +3435,8 @@ class DC_Recargas_Admin {
                         <button type="button" class="button button-secondary" data-dc-landing-edit-close>Cancelar</button>
                     </form>
                 </div>
+            </div>
+
             </div>
 
                 </section>
@@ -4291,20 +4457,29 @@ class DC_Recargas_Admin {
                                 <td><input required type="text" id="dc_edit_sku_code" name="sku_code" class="regular-text" placeholder="SKU_REAL_DING" value="<?php echo esc_attr($editing_bundle['sku_code'] ?? ''); ?>"></td>
                             </tr>
                             <tr>
-                                <th scope="row"><label for="dc_edit_send_value">Coste DIN</label></th>
-                                <td><input type="number" step="0.01" id="dc_edit_send_value" name="send_value" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['send_value']) ? (float) $editing_bundle['send_value'] : 0); ?>"></td>
-                            </tr>
-                            <tr>
-                                <th scope="row"><label for="dc_edit_send_currency_iso">Moneda coste</label></th>
-                                <td><input type="text" id="dc_edit_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="<?php echo esc_attr($editing_bundle['send_currency_iso'] ?? 'USD'); ?>" list="dc_dl_send_currency"></td>
+                                <th scope="row"><label for="dc_edit_send_value">Coste DING</label></th>
+                                <td>
+                                    <div class="dc-price-inline">
+                                        <input type="number" step="0.01" id="dc_edit_send_value" name="send_value" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['send_value']) ? (float) $editing_bundle['send_value'] : 0); ?>">
+                                        <input type="text" id="dc_edit_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="<?php echo esc_attr($editing_bundle['send_currency_iso'] ?? 'USD'); ?>" list="dc_dl_send_currency" aria-label="Moneda de coste DING">
+                                    </div>
+                                </td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_public_price">Precio al Público</label></th>
-                                <td><input type="number" step="0.01" id="dc_edit_public_price" name="public_price" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['public_price']) ? (float) $editing_bundle['public_price'] : ''); ?>"></td>
+                                <td>
+                                    <div class="dc-price-inline">
+                                        <input type="number" step="0.01" id="dc_edit_public_price" name="public_price" class="small-text" value="<?php echo esc_attr(isset($editing_bundle['public_price']) ? (float) $editing_bundle['public_price'] : ''); ?>">
+                                        <input type="text" id="dc_edit_public_price_currency" name="public_price_currency" class="small-text dc-combo-input" value="<?php echo esc_attr($editing_bundle['public_price_currency'] ?? 'EUR'); ?>" list="dc_dl_public_currency" aria-label="Moneda de precio al público">
+                                    </div>
+                                </td>
                             </tr>
                             <tr>
-                                <th scope="row"><label for="dc_edit_public_price_currency">Moneda pública</label></th>
-                                <td><input type="text" id="dc_edit_public_price_currency" name="public_price_currency" class="small-text dc-combo-input" value="<?php echo esc_attr($editing_bundle['public_price_currency'] ?? 'EUR'); ?>" list="dc_dl_public_currency"></td>
+                                <th scope="row">Utilidad</th>
+                                <td>
+                                    <div id="dc_edit_profit_display" class="dc-profit-field" aria-live="polite"></div>
+                                    <p class="description">Informativo: precio al público menos coste DING.</p>
+                                </td>
                             </tr>
                             <tr>
                                 <th scope="row"><label for="dc_edit_provider_name">Operador</label></th>
@@ -5026,16 +5201,285 @@ class DC_Recargas_Admin {
                     </script>
 
                 </section>
+
+                <section id="dc-tab-tasks" class="dc-tab-panel" data-dc-tab-panel="tab_tasks">
+                    <h2>Centro de soporte</h2>
+                    <p>Resumen operativo del soporte por apartado del panel admin.</p>
+
+                    <div class="dc-task-overview">
+                        <div class="dc-task-overview__item">
+                            <strong><?php echo esc_html((string) $task_totals['open']); ?></strong>
+                            <span>Abiertas</span>
+                        </div>
+                        <div class="dc-task-overview__item is-progress">
+                            <strong><?php echo esc_html((string) $task_totals['in_progress']); ?></strong>
+                            <span>En progreso</span>
+                        </div>
+                        <div class="dc-task-overview__item is-solved">
+                            <strong><?php echo esc_html((string) $task_totals['solved']); ?></strong>
+                            <span>Resueltas</span>
+                        </div>
+                        <div class="dc-task-overview__item is-pending">
+                            <strong><?php echo esc_html((string) $task_totals['checklist_pending']); ?></strong>
+                            <span>Pendientes checklist</span>
+                        </div>
+                    </div>
+
+                    <div class="dc-task-table-wrap" role="region" aria-label="Verificación de soporte por apartado">
+                        <table class="widefat striped">
+                            <thead>
+                                <tr>
+                                    <th>Apartado</th>
+                                    <th>Total soportes</th>
+                                    <th>Abiertas</th>
+                                    <th>En progreso</th>
+                                    <th>Resueltas</th>
+                                    <th>Checklist pendiente</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($task_summary_rows as $row) : ?>
+                                    <tr>
+                                        <td><strong><?php echo esc_html((string) $row['label']); ?></strong></td>
+                                        <td><?php echo esc_html((string) ($row['summary']['total'] ?? 0)); ?></td>
+                                        <td><?php echo esc_html((string) ($row['summary']['open'] ?? 0)); ?></td>
+                                        <td><?php echo esc_html((string) ($row['summary']['in_progress'] ?? 0)); ?></td>
+                                        <td><?php echo esc_html((string) ($row['summary']['solved'] ?? 0)); ?></td>
+                                        <td><?php echo esc_html((string) ($row['summary']['checklist_pending'] ?? 0)); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="dc-task-ticket-list">
+                        <div class="dc-task-ticket-list__header">
+                            <h3>Listado de soporte</h3>
+                            <p>Detalle centralizado de soportes creados desde cada apartado del panel.</p>
+                        </div>
+
+                        <?php if (!empty($task_ticket_rows)) : ?>
+                            <div class="dc-task-table-wrap" role="region" aria-label="Listado detallado de soporte">
+                                <table class="widefat striped dc-task-ticket-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Apartado</th>
+                                            <th>Soporte</th>
+                                            <th>Estado</th>
+                                            <th>Tipo</th>
+                                            <th>Checklist pendiente</th>
+                                            <th>Última actualización</th>
+                                            <th>Seguimiento</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($task_ticket_rows as $ticket_row) : ?>
+                                            <?php
+                                            $status_label = [
+                                                'open' => 'Abierta',
+                                                'in_progress' => 'En progreso',
+                                                'solved' => 'Resuelta',
+                                            ][$ticket_row['status']] ?? 'Abierta';
+                                            $type_label = $ticket_row['type'] === 'bug' ? 'Bug' : 'Mejora';
+                                            $tracking_notes = [];
+                                            if ($ticket_row['details'] !== '') {
+                                                $tracking_notes[] = 'Detalle: ' . $ticket_row['details'];
+                                            }
+                                            if ($ticket_row['response'] !== '') {
+                                                $tracking_notes[] = 'Respuesta: ' . $ticket_row['response'];
+                                            }
+                                            if ($ticket_row['solution'] !== '') {
+                                                $tracking_notes[] = 'Solución: ' . $ticket_row['solution'];
+                                            }
+                                            ?>
+                                            <tr>
+                                                <td><strong><?php echo esc_html((string) $ticket_row['section_label']); ?></strong></td>
+                                                <td>
+                                                    <strong><?php echo esc_html((string) $ticket_row['title']); ?></strong>
+                                                </td>
+                                                <td>
+                                                    <span class="dc-task-status-badge is-<?php echo esc_attr((string) $ticket_row['status']); ?>">
+                                                        <?php echo esc_html($status_label); ?>
+                                                    </span>
+                                                </td>
+                                                <td><?php echo esc_html($type_label); ?></td>
+                                                <td><?php echo esc_html((string) $ticket_row['checklist_pending']); ?></td>
+                                                <td><?php echo esc_html((string) $ticket_row['updated_at']); ?></td>
+                                                <td>
+                                                    <?php if (!empty($tracking_notes)) : ?>
+                                                        <ul class="dc-task-notes-list">
+                                                            <?php foreach ($tracking_notes as $tracking_note) : ?>
+                                                                <li><?php echo esc_html($tracking_note); ?></li>
+                                                            <?php endforeach; ?>
+                                                        </ul>
+                                                    <?php else : ?>
+                                                        <span class="dc-task-empty-note">Sin seguimiento todavía.</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <a class="button button-secondary button-small" href="<?php echo esc_url(add_query_arg([
+                                                        'page' => 'dc-recargas',
+                                                        'dc_tab' => $ticket_row['section_key'],
+                                                    ], admin_url('admin.php'))); ?>">Abrir apartado</a>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php else : ?>
+                            <div class="dc-task-empty-state">
+                                <p>No hay soportes registrados todavía.</p>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <style>
+                        .dc-task-overview {
+                            display: grid;
+                            grid-template-columns: repeat(4, minmax(150px, 1fr));
+                            gap: 10px;
+                            margin-bottom: 14px;
+                        }
+
+                        .dc-task-overview__item {
+                            border: 1px solid #dbe4f0;
+                            border-radius: 10px;
+                            background: #f8fbff;
+                            padding: 12px;
+                            text-align: center;
+                        }
+
+                        .dc-task-overview__item strong {
+                            display: block;
+                            font-size: 24px;
+                            line-height: 1;
+                            color: #0f172a;
+                        }
+
+                        .dc-task-overview__item span {
+                            font-size: 12px;
+                            color: #475569;
+                            text-transform: uppercase;
+                            letter-spacing: .04em;
+                        }
+
+                        .dc-task-overview__item.is-progress {
+                            background: #eef6ff;
+                            border-color: #bfdbfe;
+                        }
+
+                        .dc-task-overview__item.is-solved {
+                            background: #f0fdf4;
+                            border-color: #86efac;
+                        }
+
+                        .dc-task-overview__item.is-pending {
+                            background: #fffbeb;
+                            border-color: #fde68a;
+                        }
+
+                        .dc-task-table-wrap {
+                            overflow-x: auto;
+                        }
+
+                        .dc-task-ticket-list {
+                            margin-top: 16px;
+                            display: grid;
+                            gap: 10px;
+                        }
+
+                        .dc-task-ticket-list__header {
+                            display: grid;
+                            gap: 4px;
+                        }
+
+                        .dc-task-ticket-list__header h3,
+                        .dc-task-ticket-list__header p {
+                            margin: 0;
+                        }
+
+                        .dc-task-ticket-list__header h3 {
+                            font-size: 16px;
+                            color: #0f172a;
+                        }
+
+                        .dc-task-ticket-list__header p {
+                            font-size: 12px;
+                            color: #64748b;
+                        }
+
+                        .dc-task-ticket-table td {
+                            vertical-align: top;
+                        }
+
+                        .dc-task-status-badge {
+                            display: inline-flex;
+                            align-items: center;
+                            border-radius: 999px;
+                            padding: 4px 9px;
+                            font-size: 11px;
+                            font-weight: 700;
+                            line-height: 1;
+                            white-space: nowrap;
+                        }
+
+                        .dc-task-status-badge.is-open {
+                            background: #eff6ff;
+                            color: #1d4ed8;
+                        }
+
+                        .dc-task-status-badge.is-in_progress {
+                            background: #fff7ed;
+                            color: #c2410c;
+                        }
+
+                        .dc-task-status-badge.is-solved {
+                            background: #f0fdf4;
+                            color: #15803d;
+                        }
+
+                        .dc-task-notes-list {
+                            margin: 0;
+                            padding-left: 18px;
+                            color: #334155;
+                        }
+
+                        .dc-task-notes-list li + li {
+                            margin-top: 4px;
+                        }
+
+                        .dc-task-empty-note {
+                            color: #64748b;
+                            font-size: 12px;
+                        }
+
+                        .dc-task-empty-state {
+                            border: 1px dashed #cbd5e1;
+                            border-radius: 12px;
+                            background: #f8fafc;
+                            padding: 16px;
+                            color: #475569;
+                        }
+
+                        @media (max-width: 782px) {
+                            .dc-task-overview {
+                                grid-template-columns: repeat(2, minmax(120px, 1fr));
+                            }
+                        }
+                    </style>
+                </section>
             </div>
 
         </div>
 
         <div class="dc-feedback-drawers" id="dc-feedback-drawers" aria-live="polite">
-            <?php $this->render_section_feedback_panel('tab_setup', 'Credenciales y modo de operación'); ?>
-            <?php $this->render_section_feedback_panel('tab_catalog', 'Catálogo y alta de bundles'); ?>
-            <?php $this->render_section_feedback_panel('tab_saved', 'Productos guardados'); ?>
-            <?php $this->render_section_feedback_panel('tab_landings', 'Landings y shortcodes dinámicos'); ?>
-            <?php $this->render_section_feedback_panel('tab_logs', 'Registros y diagnóstico'); ?>
+            <?php $this->render_section_feedback_panel('tab_setup', 'Config'); ?>
+            <?php $this->render_section_feedback_panel('tab_catalog', 'Catálogo'); ?>
+            <?php $this->render_section_feedback_panel('tab_saved', 'Productos'); ?>
+            <?php $this->render_section_feedback_panel('tab_landings', 'Landings'); ?>
+            <?php $this->render_section_feedback_panel('tab_logs', 'Registros'); ?>
         </div>
 
         <?php // Shared datalists for combobox fields — populated from existing bundles. ?>
@@ -5094,6 +5538,7 @@ class DC_Recargas_Admin {
                 var editSendCurrencyEl = document.getElementById('dc_edit_send_currency_iso');
                 var editPublicPriceEl = document.getElementById('dc_edit_public_price');
                 var editPublicPriceCurrencyEl = document.getElementById('dc_edit_public_price_currency');
+                var editProfitDisplayEl = document.getElementById('dc_edit_profit_display');
                 var editPackageFamilyEl = document.getElementById('dc_edit_package_family');
                 var editProductTypeRawEl = document.getElementById('dc_edit_product_type_raw');
                 var editValidityRawEl = document.getElementById('dc_edit_validity_raw');
@@ -5119,6 +5564,9 @@ class DC_Recargas_Admin {
                 var landingEditSearchFilterEl = document.getElementById('dc_edit_landing_filter_search');
                 var landingEditSelectVisibleBtnEl = document.getElementById('dc_edit_landing_select_visible');
                 var landingEditClearVisibleBtnEl = document.getElementById('dc_edit_landing_clear_visible');
+                var landingSubtabButtons = document.querySelectorAll('[data-dc-landings-subtab-btn]');
+                var landingSubtabPanels = document.querySelectorAll('[data-dc-landings-subtab-panel]');
+                var supportLandingsSubsectionEls = document.querySelectorAll('[data-dc-support-landings-subsection]');
                 var feedbackSectionEls = document.querySelectorAll('[data-dc-feedback-section]');
                 var landingCreateBundleCheckboxEls = document.querySelectorAll('.dc-create-landing-bundle-checkbox');
                 var landingCreateFeaturedRadioEls = document.querySelectorAll('.dc-create-landing-featured-radio');
@@ -5128,6 +5576,7 @@ class DC_Recargas_Admin {
                 var balanceResultEl = document.getElementById('dc_balance_result');
                 var lastBalanceAutoAt = 0;
                 var BALANCE_AUTO_REFRESH_MS = 30000;
+                var defaultLandingsSubtab = (initialEditingLanding && initialEditingLanding.id) ? 'shortcodes' : 'landings';
 
                 function getSelectedBundleCount() {
                     var count = 0;
@@ -5437,6 +5886,10 @@ class DC_Recargas_Admin {
                         panel.hidden = section !== tabId;
                     });
 
+                    if (tabId === 'tab_landings') {
+                        setActiveLandingsSubtab(getLandingsSubtabFromUrl() || defaultLandingsSubtab, false);
+                    }
+
                     if (updateUrl) {
                         var url = new URL(window.location.href);
                         url.searchParams.set('dc_tab', tabId);
@@ -5444,6 +5897,55 @@ class DC_Recargas_Admin {
                     }
 
                     document.dispatchEvent(new CustomEvent('dc:tab-activated', { detail: tabId }));
+                }
+
+                function normalizeLandingsSubtab(subtabId) {
+                    var value = String(subtabId || '').toLowerCase();
+                    if (value === 'shortcodes') {
+                        return 'shortcodes';
+                    }
+                    return 'landings';
+                }
+
+                function getLandingsSubtabFromUrl() {
+                    try {
+                        var value = new URL(window.location.href).searchParams.get('dc_landings_subtab');
+                        if (!value) {
+                            return '';
+                        }
+                        return normalizeLandingsSubtab(value);
+                    } catch (e) {
+                        return '';
+                    }
+                }
+
+                function setActiveLandingsSubtab(subtabId, updateUrl) {
+                    if (!landingSubtabButtons.length || !landingSubtabPanels.length) {
+                        return;
+                    }
+
+                    var normalized = normalizeLandingsSubtab(subtabId);
+
+                    landingSubtabButtons.forEach(function (btn) {
+                        var isActive = btn.getAttribute('data-dc-landings-subtab-btn') === normalized;
+                        btn.classList.toggle('nav-tab-active', isActive);
+                    });
+
+                    landingSubtabPanels.forEach(function (panel) {
+                        var isActive = panel.getAttribute('data-dc-landings-subtab-panel') === normalized;
+                        panel.classList.toggle('is-active', isActive);
+                    });
+
+                    supportLandingsSubsectionEls.forEach(function (fieldEl) {
+                        fieldEl.value = normalized;
+                    });
+
+                    if (updateUrl) {
+                        var url = new URL(window.location.href);
+                        url.searchParams.set('dc_tab', 'tab_landings');
+                        url.searchParams.set('dc_landings_subtab', normalized);
+                        window.history.replaceState({}, '', url.toString());
+                    }
                 }
 
                 function updateEditParam(bundleId) {
@@ -5457,6 +5959,42 @@ class DC_Recargas_Admin {
                     }
 
                     window.history.replaceState({}, '', url.toString());
+                }
+
+                function toMoneyNumber(value) {
+                    var parsed = Number(value);
+                    return isFinite(parsed) ? parsed : 0;
+                }
+
+                function normalizeCurrencyCode(value) {
+                    return String(value || '').trim().toUpperCase();
+                }
+
+                function updateEditProfitDisplay() {
+                    if (!editProfitDisplayEl) {
+                        return;
+                    }
+
+                    var sendCurrency = normalizeCurrencyCode(editSendCurrencyEl ? editSendCurrencyEl.value : '');
+                    var publicCurrency = normalizeCurrencyCode(editPublicPriceCurrencyEl ? editPublicPriceCurrencyEl.value : '');
+                    var sendValue = toMoneyNumber(editSendValueEl ? editSendValueEl.value : 0);
+                    var publicPrice = toMoneyNumber(editPublicPriceEl ? editPublicPriceEl.value : 0);
+
+                    editProfitDisplayEl.classList.remove('is-warning');
+
+                    if (!sendCurrency || !publicCurrency) {
+                        editProfitDisplayEl.textContent = 'Completa ambas monedas';
+                        editProfitDisplayEl.classList.add('is-warning');
+                        return;
+                    }
+
+                    if (sendCurrency !== publicCurrency) {
+                        editProfitDisplayEl.textContent = 'Monedas distintas: no comparable';
+                        editProfitDisplayEl.classList.add('is-warning');
+                        return;
+                    }
+
+                    editProfitDisplayEl.textContent = (publicPrice - sendValue).toFixed(2) + ' ' + publicCurrency;
                 }
 
                 function populateEditForm(bundle) {
@@ -5478,6 +6016,7 @@ class DC_Recargas_Admin {
                     if (editProviderEl) editProviderEl.value = bundle.provider_name || '';
                     if (editDescriptionEl) editDescriptionEl.value = bundle.description || '';
                     if (editIsActiveEl) editIsActiveEl.checked = !!Number(bundle.is_active || 0) || bundle.is_active === true;
+                    updateEditProfitDisplay();
                 }
 
                 function openEditModal(bundle) {
@@ -5505,6 +6044,15 @@ class DC_Recargas_Admin {
                     document.body.classList.remove('modal-open');
                     updateEditParam('');
                 }
+
+                [editSendValueEl, editSendCurrencyEl, editPublicPriceEl, editPublicPriceCurrencyEl].forEach(function (fieldEl) {
+                    if (!fieldEl) {
+                        return;
+                    }
+
+                    fieldEl.addEventListener('input', updateEditProfitDisplay);
+                    fieldEl.addEventListener('change', updateEditProfitDisplay);
+                });
 
                 function closeLandingEditModal() {
                     if (!landingEditModalEl) {
@@ -5954,6 +6502,7 @@ class DC_Recargas_Admin {
                     landingEditModalEl.hidden = false;
                     document.body.classList.add('modal-open');
                     setActiveTab('tab_landings', true);
+                    setActiveLandingsSubtab('shortcodes', true);
 
                     var url = new URL(window.location.href);
                     if (landing.id) {
@@ -5975,6 +6524,18 @@ class DC_Recargas_Admin {
                     });
 
                     setActiveTab(activeTabFromPhp || 'tab_setup', false);
+                }
+
+                if (landingSubtabButtons.length && landingSubtabPanels.length) {
+                    landingSubtabButtons.forEach(function (btn) {
+                        btn.addEventListener('click', function () {
+                            setActiveLandingsSubtab(btn.getAttribute('data-dc-landings-subtab-btn'), true);
+                        });
+                    });
+
+                    if ((activeTabFromPhp || 'tab_setup') === 'tab_landings') {
+                        setActiveLandingsSubtab(getLandingsSubtabFromUrl() || defaultLandingsSubtab, false);
+                    }
                 }
 
                 if (editableBundleRows.length) {
@@ -6315,10 +6876,10 @@ class DC_Recargas_Admin {
             'landing_shortcode_cloned' => ['success', 'Landing duplicada correctamente.'],
             'landing_shortcode_deleted' => ['success', 'Shortcode dinámico eliminado correctamente.'],
             'landing_shortcode_error' => ['error', 'Completa nombre y selecciona al menos un bundle válido para crear el shortcode dinámico.'],
-            'ticket_saved' => ['success', 'Ticket guardado correctamente en esta sección.'],
-            'ticket_deleted' => ['success', 'Ticket eliminado correctamente.'],
-            'ticket_error' => ['error', 'El ticket debe incluir al menos un título.'],
-            'ticket_not_found' => ['error', 'No se encontró el ticket solicitado.'],
+            'ticket_saved' => ['success', 'Soporte creado correctamente en esta sección.'],
+            'ticket_deleted' => ['success', 'Soporte eliminado correctamente.'],
+            'ticket_error' => ['error', 'El soporte debe incluir al menos un título.'],
+            'ticket_not_found' => ['error', 'No se encontró el soporte solicitado.'],
             'bundle_updated' => ['success', 'Producto actualizado correctamente.'],
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un producto.'],
             'bundle_duplicate' => ['error', 'Ya existe otro producto con el mismo país y SKU.'],

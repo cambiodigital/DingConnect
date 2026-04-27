@@ -147,6 +147,7 @@ Nota operativa WooCommerce (abril 2026):
 ### Nota operativa Landings dinámicas (abril 2026)
 
 - El panel admin incluye gestión de shortcodes dinámicos por objetivo de campaña/landing.
+- La pestaña `Landings` del admin está dividida en dos subsecciones internas: `Landings` (alta/configuración) y `Shortcodes dinámicos` (listado y edición), para separar creación de operación diaria.
 - Cada landing selecciona bundles específicos y opcionalmente define título y subtítulo del formulario.
 - La configuración de cada landing se administra inline en el panel (alta, edición y baja) sin salir de la pantalla de configuración del plugin.
 - El país operativo de la landing se deriva automáticamente de los `country_iso` presentes en los bundles seleccionados.
@@ -158,6 +159,11 @@ Nota operativa WooCommerce (abril 2026):
   - `title="Recargas Cuba"`
   - `subtitle="Selecciona tu paquete y confirma"`
 - Contrato de catálogo para landing: el frontend del shortcode envía `allowed_bundle_ids` al endpoint `/products` y backend prioriza esos bundles explícitos de la landing. Esto evita que se mezclen bundles activos globales del país cuando el objetivo tiene su propio catálogo curado.
+
+### Nota operativa de verificación interna (abril 2026)
+
+- La pestaña `Tareas` del panel admin consolida los tickets creados desde `Config`, `Catálogo`, `Productos`, `Landings` y `Registros`.
+- Además del resumen por apartado, la vista central ahora muestra el listado detallado de tickets con estado, tipo, checklist pendiente, notas de seguimiento y acceso directo al apartado de origen.
 - Limitación real actual: cuando `/products` resuelve bundles guardados (`source = saved`) en lugar de catálogo live DingConnect, la landing conserva orden, destacado y restricción de catálogo, pero NO conserva por defecto metadatos ricos del producto (`ProviderCode`, `IsRange`, `LookupBillsRequired`, `SettingDefinitions`, `Benefits`, markdown, branding y validaciones del proveedor).
 - Orden y destacado por landing: la configuración del shortcode dinámico permite ordenar bundles de forma explícita y marcar uno como destacado; el endpoint `/products` respeta ese orden cuando aplica filtro por `allowed_bundle_ids` y frontend resalta el paquete destacado con una variación visual amarilla suave.
 - Desactivación de destacado en landings: el control `Destacado` del checklist en admin se puede desactivar con click sobre el mismo item ya marcado (toggle), permitiendo persistir `featured_bundle_id` vacío cuando se requiere que ningún bundle aparezca resaltado.
@@ -197,13 +203,18 @@ Nota operativa WooCommerce (abril 2026):
 - Seguridad de credenciales en admin: el input `API Key DingConnect` se renderiza como contraseña sin volver a imprimir la clave guardada; al persistir queda visualmente enmascarada con puntos y para reemplazarla se debe pegar una nueva clave.
 - La tabla `Paquetes encontrados` fija la columna `Fuente` como `API` y eliminó avisos/contadores asociados a match contra CSV, para evitar ambigüedad operativa.
 - La sección `Catálogo y alta` ya no usa subpestañas internas: la pantalla permanece enfocada en `Buscar en API` y el formulario de `Alta manual` se abre como modal al pulsar `Seleccionar producto`, con precarga del paquete seleccionado.
+- Navegación WordPress sincronizada con tabs internas: el menú lateral `DingConnect CD` expone submenús nativos (`Config`, `Catálogo`, `Productos`, `Landings`, `Registros`, `Soporte`) que redirigen al panel principal con `dc_tab`, evitando duplicar vistas y manteniendo un único renderer (`render_page`).
 - Panel transversal de reporte en admin: cada pestaña principal del plugin activa un panel inferior reutilizable, colapsado por defecto y visualmente sutil, renderizado fuera del contenedor principal del plugin. Los tickets se guardan por tab (`tab_setup`, `tab_catalog`, `tab_saved`, `tab_landings`, `tab_logs`) e incluyen detalle, estado operativo, respuesta y solución; la creación ya no solicita checklist inicial.
+- Etiquetado contextual del panel por sección: el título del bloque inferior ahora usa el formato `Soporte para {sección}` (por ejemplo, `Soporte para Config`, `Soporte para Catálogo`) para dejar explícito el contexto operativo según la pestaña activa.
+- Flujo actual de soporte en admin: los paneles inferiores por apartado (`Config`, `Catálogo`, `Productos`, `Landings`, `Registros`) funcionan como formulario rápido de creación de soporte y redirección a `Soporte`; el listado y seguimiento centralizado queda en la pestaña `Soporte`.
+- Verificación operativa de reportes: el admin incorpora la pestaña `Soporte` (después de `Registros`) para revisar estado de tickets y checklist pendientes por apartado. La navegación usa etiquetas cortas: `Config`, `Catálogo`, `Productos`, `Landings`, `Registros`, `Soporte`.
 - Regla de seguridad para scripts inline en admin: evitar literales HTML como `<script>` o `</script>` dentro de comentarios/cadenas JavaScript embebidas en PHP, porque pueden truncar el bloque en el parser HTML y dejar inoperativos eventos de UI (por ejemplo, búsqueda API y cierre de modal).
 - El modelo de bundle soporta precio dual por registro: `send_value` (Coste DIN) y `public_price` (Precio al Público editable), con moneda pública por defecto en EUR.
 - Brecha contractual actual: aunque `public_price_currency` se persiste en admin, `/products` para bundles guardados sigue publicando `ReceiveCurrencyIso` con `send_currency_iso`; para que el contrato sea exacto con el precio comercial guardado, ese mapeo debe separarse o corregirse explícitamente.
 - La clasificación comercial por bundle usa `package_family` (`topup | data | combo | voucher | dth | other`) y conserva `product_type_raw` para trazabilidad contra API.
 - La vigencia del producto se guarda en texto (`validity_raw`) y, cuando es interpretable (por ejemplo `P30D` o `30 days`), se deriva `validity_days` para filtros o reglas futuras.
 - En landings dinámicas, el checklist de bundles incorpora filtros de País y Tipo de producto; los bundles ya seleccionados permanecen visibles aunque no coincidan con el filtro activo.
+- El formulario de soporte en la pestaña `Landings` distingue subapartado (`Landings` o `Shortcodes dinámicos`) y persiste esa marca para que el listado central de `Soporte` muestre el origen exacto del reporte.
 - La sección `Paquetes encontrados` de `Buscar en API` ahora se renderiza como tabla de ancho completo fuera de la `form-table`, con columnas de operación (tipo, operador, beneficio, SKU, coste, moneda, vigencia y fuente API), selección por fila y doble click para cargar en `Alta manual`.
 - Regla de legibilidad para `Vigencia` en `Buscar en API`: cuando DingConnect entrega formatos técnicos (como `P7D`, `P2W`, `P1M` o equivalentes con texto), la UI muestra una versión natural en español (`7 días`, `2 semanas`, `1 mes`) sin alterar el valor crudo usado para guardado (`validity_raw`).
 - Regla de implementación de filtros en checklist: si cada fila usa `display:flex` por estilo, debe existir una regla explícita para `label[hidden]` (`display:none !important`) para que los filtros de País/Tipo oculten realmente los bundles no coincidentes.
@@ -212,6 +223,7 @@ Nota operativa WooCommerce (abril 2026):
 - Operación sobre catálogos guardados: la pestaña `Productos guardados` (renombrada desde `Bundles guardados`) incorpora filtro en tiempo real con buscador + selectores por tipo de producto, país y operador; el filtrado aplica sobre filas ya renderizadas sin recargar la página.
 - Regla visual en `Productos guardados`: las filas con estado `Inactivo` deben mostrarse con una marca de fondo rojo suave para facilitar identificación operativa rápida durante revisión y edición del catálogo.
 - Regla UX para tablas con acciones en admin: cuando una tabla permita edición de registros, la edición primaria debe abrir por click en la fila completa (con soporte de teclado Enter/Espacio), y los controles secundarios de la columna `Acciones` deben renderizarse como botones minimalistas `icon-only` con `aria-label`/`title` para mantener accesibilidad y consistencia visual.
+- Regla UX en `Editar producto`: en el modal de `Productos guardados`, `Coste DING` y `Precio al Público` se presentan como pares `importe + moneda` en la misma fila. Además, se muestra un campo informativo `Utilidad` calculado como `precio público - coste DING`; si las monedas difieren, la UI debe advertir que no son comparables en lugar de mostrar una resta incorrecta.
 - Regla de legibilidad para acciones `icon-only`: en la tabla `Shortcodes creados`, la acción `Duplicar shortcode` usa `dashicons-controls-repeat` como glyph de referencia para evitar pérdida visual del icono en tamaños compactos.
 - El asistente visual `mejoras-solicitud-interactiva.html` mantiene un diccionario ampliado de campos de producto API (live contract) con descripciones operativas para diseñar cambios de arquitectura end-to-end (API -> persistencia -> landing -> WooCommerce) antes de pedir implementación a la IA.
 - `Catálogo y alta` conserva metadatos ricos cuando un paquete se carga desde resultados API hacia alta manual (provider/region/pricing extendido/impuestos/rangos/flags/settings/payment types/UAT), de forma que el bundle guardado pueda reutilizar ese contrato en `source=saved`.
