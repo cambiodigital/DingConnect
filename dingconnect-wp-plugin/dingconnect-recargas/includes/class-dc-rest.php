@@ -35,6 +35,18 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
         ]);
 
+        register_rest_route('dingconnect/v1', '/landing-config', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'landing_config'],
+            'permission_callback' => '__return_true',
+            'args' => [
+                'landing_key' => [
+                    'required' => true,
+                    'sanitize_callback' => 'sanitize_key',
+                ],
+            ],
+        ]);
+
         register_rest_route('dingconnect/v1', '/products', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'products'],
@@ -111,24 +123,6 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
         ]);
 
-        register_rest_route('dc-recargas/v1', '/save-shortcode-customization', [
-            'methods' => WP_REST_Server::CREATABLE,
-            'callback' => [$this, 'save_shortcode_customization'],
-            'permission_callback' => [$this, 'can_manage_options'],
-        ]);
-
-        register_rest_route('dc-recargas/v1', '/get-shortcode-customization', [
-            'methods' => WP_REST_Server::READABLE,
-            'callback' => [$this, 'get_shortcode_customization'],
-            'permission_callback' => [$this, 'can_manage_options'],
-            'args' => [
-                'key' => [
-                    'required' => true,
-                    'sanitize_callback' => 'sanitize_key',
-                ],
-            ],
-        ]);
-
     }
 
     public function status() {
@@ -179,6 +173,65 @@ class DC_Recargas_REST {
         return rest_ensure_response([
             'ok' => true,
             'result' => $active,
+        ]);
+    }
+
+    public function landing_config(WP_REST_Request $request) {
+        $landing_key = sanitize_key((string) ($request->get_param('landing_key') ?? ''));
+        if ($landing_key === '') {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => 'Debes indicar landing_key.',
+            ], 400);
+        }
+
+        $configs = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($configs)) {
+            $configs = [];
+        }
+
+        $found = null;
+        foreach ($configs as $config) {
+            if (!is_array($config)) {
+                continue;
+            }
+
+            if (sanitize_key((string) ($config['key'] ?? '')) === $landing_key) {
+                $found = $config;
+                break;
+            }
+        }
+
+        if (!is_array($found)) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => 'No se encontró configuración para la landing indicada.',
+            ], 404);
+        }
+
+        $bundle_ids = [];
+        foreach ((array) ($found['bundle_ids'] ?? []) as $bundle_id) {
+            $bundle_id = sanitize_text_field((string) $bundle_id);
+            if ($bundle_id !== '') {
+                $bundle_ids[] = $bundle_id;
+            }
+        }
+        $bundle_ids = array_values(array_unique($bundle_ids));
+
+        $featured_bundle_id = sanitize_text_field((string) ($found['featured_bundle_id'] ?? ''));
+        if (!in_array($featured_bundle_id, $bundle_ids, true)) {
+            $featured_bundle_id = '';
+        }
+
+        return rest_ensure_response([
+            'ok' => true,
+            'result' => [
+                'landing_key' => $landing_key,
+                'bundle_ids' => $bundle_ids,
+                'featured_bundle_id' => $featured_bundle_id,
+                'country_iso' => strtoupper(sanitize_text_field((string) ($found['country_iso'] ?? ''))),
+                'updated_at' => sanitize_text_field((string) ($found['updated_at'] ?? ($found['created_at'] ?? ''))),
+            ],
         ]);
     }
 
@@ -1212,66 +1265,4 @@ class DC_Recargas_REST {
         return 'unknown';
     }
 
-    public function save_shortcode_customization(WP_REST_Request $request) {
-        $shortcode_key = sanitize_key($request->get_param('shortcode_key'));
-        $customization = $request->get_json_params()['customization'] ?? [];
-
-        if (empty($shortcode_key)) {
-            return new WP_REST_Response(['ok' => false, 'message' => 'Clave de shortcode requerida'], 400);
-        }
-
-        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
-        if (!is_array($shortcodes)) {
-            $shortcodes = [];
-        }
-        $updated = false;
-
-        foreach ($shortcodes as &$shortcode) {
-            if (sanitize_key($shortcode['key'] ?? '') === $shortcode_key) {
-                $shortcode['customization'] = [
-                    'max_width' => intval($customization['max_width'] ?? 480),
-                    'bg_color' => sanitize_text_field($customization['bg_color'] ?? '#ffffff'),
-                    'primary_color' => sanitize_text_field($customization['primary_color'] ?? '#2563eb'),
-                    'text_color' => sanitize_text_field($customization['text_color'] ?? '#0f172a'),
-                    'border_radius' => intval($customization['border_radius'] ?? 16),
-                    'padding' => intval($customization['padding'] ?? 24),
-                    'shadow_intensity' => sanitize_text_field($customization['shadow_intensity'] ?? 'light'),
-                ];
-                $updated = true;
-                break;
-            }
-        }
-
-        if ($updated) {
-            update_option('dc_recargas_landing_shortcodes', $shortcodes);
-            return rest_ensure_response(['ok' => true, 'message' => 'Personalización guardada']);
-        }
-
-        return new WP_REST_Response(['ok' => false, 'message' => 'Shortcode no encontrado'], 404);
-    }
-
-    public function get_shortcode_customization(WP_REST_Request $request) {
-        $shortcode_key = sanitize_key($request->get_param('key'));
-
-        if (empty($shortcode_key)) {
-            return new WP_REST_Response(['ok' => false, 'message' => 'Clave requerida'], 400);
-        }
-
-        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
-        if (!is_array($shortcodes)) {
-            $shortcodes = [];
-        }
-
-        foreach ($shortcodes as $shortcode) {
-            if (sanitize_key($shortcode['key'] ?? '') === $shortcode_key) {
-                $customization = $shortcode['customization'] ?? null;
-                return rest_ensure_response([
-                    'ok' => true,
-                    'customization' => $customization,
-                ]);
-            }
-        }
-
-        return new WP_REST_Response(['ok' => false, 'message' => 'Shortcode no encontrado'], 404);
-    }
 }

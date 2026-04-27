@@ -19,7 +19,7 @@ El diagrama importable en Excalidraw está en [Documentación/DIAGRAMA_FLUJO_ACT
 - `Catálogo y alta` trabaja con un item AJAX normalizado desde `GetProducts`, pero al guardarlo como bundle solo conserva un subconjunto del producto live.
 - `dc_recargas_bundles` es la base del catálogo curado y del fallback, pero hoy no preserva varios campos ricos de DingConnect.
 - `dc_recargas_landing_shortcodes` no guarda un `bundle_order` separado; el orden real se persiste implícitamente en el orden final de `bundle_ids`.
-- La personalización visual de landing sí queda embebida dentro del mismo registro de landing, en `customization`, y se guarda por REST administrativo `dc-recargas/v1`.
+- La personalización visual por shortcode (estilos/vista previa) ya no forma parte del flujo operativo y fue retirada del plugin.
 - `/products` tiene dos contratos prácticos: `source=saved` y `source=dingconnect`. El segundo es claramente más completo.
 - El frontend solo activa flujos avanzados cuando el producto trae `ProviderCode`, `IsRange`, `LookupBillsRequired` o `SettingDefinitions`. En bundles guardados esos flags llegan apagados o vacíos.
 
@@ -123,28 +123,12 @@ Shape real persistido en `dc_recargas_landing_shortcodes`:
 | `created_at` | `current_time('mysql')` |
 | `updated_at` | solo en edición |
 | `cloned_from` | solo en duplicado |
-| `customization` | se añade luego por REST administrativo |
 
 Punto importante: el orden NO queda como `bundle_order` guardado aparte. El orden efectivo queda codificado en el array final `bundle_ids`.
 
 ### 5. Personalización de landing
 
-La personalización visual no va por formulario clásico; se guarda por `wp.apiFetch()` hacia:
-
-- `POST /wp-json/dc-recargas/v1/save-shortcode-customization`
-- `GET /wp-json/dc-recargas/v1/get-shortcode-customization?key=...`
-
-El payload guardado dentro del mismo registro de landing es:
-
-| Campo customization | Uso posterior |
-| --- | --- |
-| `max_width` | ancho máximo del contenedor |
-| `bg_color` | fondo de la card |
-| `primary_color` | botones / foco / selección |
-| `text_color` | títulos / textos clave |
-| `border_radius` | radios |
-| `padding` | espaciado interior |
-| `shadow_intensity` | sombra predefinida |
+No existe personalización visual activa por shortcode en la versión actual. La configuración de landing se limita a objetivo, clave, título/subtítulo, bundles permitidos, orden y destacado.
 
 ### 6. Resolución del shortcode público
 

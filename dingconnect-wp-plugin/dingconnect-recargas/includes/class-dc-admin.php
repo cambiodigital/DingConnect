@@ -29,6 +29,8 @@ class DC_Recargas_Admin {
         add_action('admin_post_dc_clone_landing_shortcode', [$this, 'handle_clone_landing_shortcode']);
         add_action('admin_post_dc_update_landing_shortcode', [$this, 'handle_update_landing_shortcode']);
         add_action('admin_post_dc_delete_landing_shortcode', [$this, 'handle_delete_landing_shortcode']);
+        add_action('admin_post_dc_save_section_ticket', [$this, 'handle_save_section_ticket']);
+        add_action('admin_post_dc_delete_section_ticket', [$this, 'handle_delete_section_ticket']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
     }
 
@@ -361,6 +363,359 @@ class DC_Recargas_Admin {
         exit;
     }
 
+    public function handle_save_section_ticket() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_save_section_ticket');
+
+        $section = sanitize_key((string) ($_POST['section'] ?? 'tab_setup'));
+        $section = $this->sanitize_admin_section_key($section);
+        $ticket_id = sanitize_text_field((string) ($_POST['ticket_id'] ?? ''));
+        $status = sanitize_key((string) ($_POST['status'] ?? 'open'));
+        if (!in_array($status, ['open', 'in_progress', 'solved'], true)) {
+            $status = 'open';
+        }
+
+        $tickets = $this->get_section_tickets_store();
+        $section_tickets = isset($tickets[$section]) && is_array($tickets[$section]) ? array_values($tickets[$section]) : [];
+
+        if ($ticket_id === '') {
+            $title = sanitize_text_field((string) ($_POST['title'] ?? ''));
+            $type = sanitize_key((string) ($_POST['type'] ?? 'improvement'));
+            if (!in_array($type, ['improvement', 'bug'], true)) {
+                $type = 'improvement';
+            }
+
+            $details = $this->sanitize_textarea_value((string) ($_POST['details'] ?? ''));
+            $response = $this->sanitize_textarea_value((string) ($_POST['response'] ?? ''));
+            $solution = $this->sanitize_textarea_value((string) ($_POST['solution'] ?? ''));
+
+            if ($title === '') {
+                wp_safe_redirect(add_query_arg([
+                    'page' => 'dc-recargas',
+                    'dc_tab' => $section,
+                    'dc_msg' => 'ticket_error',
+                ], admin_url('admin.php')));
+                exit;
+            }
+
+            $section_tickets[] = [
+                'id' => uniqid('ticket_', true),
+                'title' => $title,
+                'type' => $type,
+                'status' => $status,
+                'details' => $details,
+                'response' => $response,
+                'solution' => $solution,
+                'checklist' => [],
+                'created_at' => current_time('mysql'),
+                'updated_at' => current_time('mysql'),
+            ];
+        } else {
+            $updated = false;
+            $done_items = wp_unslash($_POST['checklist_done'] ?? []);
+            $done_map = [];
+            if (is_array($done_items)) {
+                foreach ($done_items as $item_id) {
+                    $item_id = sanitize_text_field((string) $item_id);
+                    if ($item_id !== '') {
+                        $done_map[$item_id] = true;
+                    }
+                }
+            }
+
+            foreach ($section_tickets as $index => $ticket) {
+                if (sanitize_text_field((string) ($ticket['id'] ?? '')) !== $ticket_id) {
+                    continue;
+                }
+
+                $section_tickets[$index]['status'] = $status;
+                $section_tickets[$index]['response'] = $this->sanitize_textarea_value((string) ($_POST['response'] ?? ''));
+                $section_tickets[$index]['solution'] = $this->sanitize_textarea_value((string) ($_POST['solution'] ?? ''));
+                $section_tickets[$index]['updated_at'] = current_time('mysql');
+
+                $existing_checklist = isset($ticket['checklist']) && is_array($ticket['checklist']) ? $ticket['checklist'] : [];
+                $normalized_checklist = [];
+                foreach ($existing_checklist as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $item_id = sanitize_text_field((string) ($item['id'] ?? ''));
+                    $item_text = sanitize_text_field((string) ($item['text'] ?? ''));
+                    if ($item_id === '' || $item_text === '') {
+                        continue;
+                    }
+                    $normalized_checklist[] = [
+                        'id' => $item_id,
+                        'text' => $item_text,
+                        'done' => isset($done_map[$item_id]),
+                    ];
+                }
+                $section_tickets[$index]['checklist'] = $normalized_checklist;
+                $updated = true;
+                break;
+            }
+
+            if (!$updated) {
+                wp_safe_redirect(add_query_arg([
+                    'page' => 'dc-recargas',
+                    'dc_tab' => $section,
+                    'dc_msg' => 'ticket_not_found',
+                ], admin_url('admin.php')));
+                exit;
+            }
+        }
+
+        $tickets[$section] = array_values($section_tickets);
+        update_option('dc_recargas_section_tickets', $tickets);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_tab' => $section,
+            'dc_msg' => 'ticket_saved',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_delete_section_ticket() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_delete_section_ticket');
+
+        $section = sanitize_key((string) ($_GET['section'] ?? 'tab_setup'));
+        $section = $this->sanitize_admin_section_key($section);
+        $ticket_id = sanitize_text_field((string) ($_GET['ticket_id'] ?? ''));
+
+        if ($ticket_id === '') {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_tab' => $section,
+                'dc_msg' => 'ticket_not_found',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $tickets = $this->get_section_tickets_store();
+        $section_tickets = isset($tickets[$section]) && is_array($tickets[$section]) ? array_values($tickets[$section]) : [];
+
+        $new_tickets = array_values(array_filter($section_tickets, function ($ticket) use ($ticket_id) {
+            return sanitize_text_field((string) ($ticket['id'] ?? '')) !== $ticket_id;
+        }));
+
+        $tickets[$section] = $new_tickets;
+        update_option('dc_recargas_section_tickets', $tickets);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_tab' => $section,
+            'dc_msg' => 'ticket_deleted',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    private function sanitize_admin_section_key($section) {
+        $section = sanitize_key((string) $section);
+        $allowed = ['tab_setup', 'tab_catalog', 'tab_saved', 'tab_landings', 'tab_logs'];
+        if (!in_array($section, $allowed, true)) {
+            return 'tab_setup';
+        }
+        return $section;
+    }
+
+    private function parse_ticket_checklist($checklist_raw) {
+        $lines = preg_split('/\r\n|\r|\n/', (string) $checklist_raw);
+        if (!is_array($lines)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($lines as $line) {
+            $text = sanitize_text_field((string) $line);
+            if ($text === '') {
+                continue;
+            }
+            $items[] = [
+                'id' => uniqid('item_', true),
+                'text' => $text,
+                'done' => false,
+            ];
+        }
+
+        return $items;
+    }
+
+    private function sanitize_textarea_value($value) {
+        $value = (string) $value;
+        $lines = preg_split('/\r\n|\r|\n/', $value);
+        if (!is_array($lines)) {
+            return sanitize_text_field($value);
+        }
+
+        $clean_lines = array_map('sanitize_text_field', $lines);
+        return implode("\n", $clean_lines);
+    }
+
+    private function get_section_tickets_store() {
+        $tickets = get_option('dc_recargas_section_tickets', []);
+        if (!is_array($tickets)) {
+            return [];
+        }
+        return $tickets;
+    }
+
+    private function render_section_feedback_panel($section_key, $section_title) {
+        $section_key = $this->sanitize_admin_section_key($section_key);
+        $tickets_store = $this->get_section_tickets_store();
+        $section_tickets = isset($tickets_store[$section_key]) && is_array($tickets_store[$section_key])
+            ? array_values($tickets_store[$section_key])
+            : [];
+        ?>
+        <section class="dc-feedback-panel" data-dc-feedback-section="<?php echo esc_attr($section_key); ?>" hidden>
+            <details class="dc-feedback-panel__details">
+                <summary class="dc-feedback-panel__summary">Reportar mejora/fallo · <?php echo esc_html($section_title); ?></summary>
+
+                <div class="dc-feedback-panel__content">
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dc-feedback-panel__new-ticket">
+                        <input type="hidden" name="action" value="dc_save_section_ticket">
+                        <input type="hidden" name="section" value="<?php echo esc_attr($section_key); ?>">
+                        <input type="hidden" name="ticket_id" value="">
+                        <?php wp_nonce_field('dc_save_section_ticket'); ?>
+
+                        <div class="dc-feedback-panel__grid">
+                            <label>
+                                Tipo
+                                <select name="type">
+                                    <option value="improvement">Mejora</option>
+                                    <option value="bug">Fallo</option>
+                                </select>
+                            </label>
+                            <label>
+                                Estado
+                                <select name="status">
+                                    <option value="open">Abierto</option>
+                                    <option value="in_progress">En progreso</option>
+                                    <option value="solved">Resuelto</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <label>
+                            Título del ticket
+                            <input type="text" name="title" class="regular-text" required placeholder="Ej: Ajustar validación del flujo en esta sección">
+                        </label>
+
+                        <label>
+                            Detalle de la mejora o fallo
+                            <textarea name="details" rows="3" class="large-text" placeholder="Describe qué pasa, qué esperas y el impacto."></textarea>
+                        </label>
+
+                        <div class="dc-feedback-panel__actions">
+                            <button type="submit" class="button button-primary">Crear ticket</button>
+                        </div>
+                    </form>
+
+                    <div class="dc-feedback-panel__tickets">
+                        <?php if (empty($section_tickets)) : ?>
+                            <p class="description">No hay tickets aún en esta sección.</p>
+                        <?php else : ?>
+                            <?php foreach ($section_tickets as $ticket) : ?>
+                                <?php
+                                $ticket_id = sanitize_text_field((string) ($ticket['id'] ?? ''));
+                                $ticket_type = sanitize_key((string) ($ticket['type'] ?? 'improvement'));
+                                if (!in_array($ticket_type, ['improvement', 'bug'], true)) {
+                                    $ticket_type = 'improvement';
+                                }
+                                $ticket_status = sanitize_key((string) ($ticket['status'] ?? 'open'));
+                                if (!in_array($ticket_status, ['open', 'in_progress', 'solved'], true)) {
+                                    $ticket_status = 'open';
+                                }
+                                $ticket_checklist = isset($ticket['checklist']) && is_array($ticket['checklist']) ? $ticket['checklist'] : [];
+                                ?>
+                                <article class="dc-feedback-ticket">
+                                    <header class="dc-feedback-ticket__header">
+                                        <h4><?php echo esc_html((string) ($ticket['title'] ?? 'Ticket sin título')); ?></h4>
+                                        <span class="dc-feedback-ticket__type is-<?php echo esc_attr($ticket_type); ?>"><?php echo esc_html($ticket_type === 'bug' ? 'Fallo' : 'Mejora'); ?></span>
+                                    </header>
+
+                                    <p class="dc-feedback-ticket__meta">
+                                        Creado: <?php echo esc_html((string) ($ticket['created_at'] ?? 'N/D')); ?>
+                                        <?php if (!empty($ticket['updated_at'])) : ?>
+                                            · Última actualización: <?php echo esc_html((string) $ticket['updated_at']); ?>
+                                        <?php endif; ?>
+                                    </p>
+
+                                    <?php if (!empty($ticket['details'])) : ?>
+                                        <p class="dc-feedback-ticket__details"><?php echo esc_html((string) $ticket['details']); ?></p>
+                                    <?php endif; ?>
+
+                                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dc-feedback-ticket__form">
+                                        <input type="hidden" name="action" value="dc_save_section_ticket">
+                                        <input type="hidden" name="section" value="<?php echo esc_attr($section_key); ?>">
+                                        <input type="hidden" name="ticket_id" value="<?php echo esc_attr($ticket_id); ?>">
+                                        <?php wp_nonce_field('dc_save_section_ticket'); ?>
+
+                                        <label>
+                                            Estado
+                                            <select name="status">
+                                                <option value="open" <?php selected($ticket_status, 'open'); ?>>Abierto</option>
+                                                <option value="in_progress" <?php selected($ticket_status, 'in_progress'); ?>>En progreso</option>
+                                                <option value="solved" <?php selected($ticket_status, 'solved'); ?>>Resuelto</option>
+                                            </select>
+                                        </label>
+
+                                        <?php if (!empty($ticket_checklist)) : ?>
+                                            <div class="dc-feedback-ticket__checklist">
+                                                <p>Checklist</p>
+                                                <?php foreach ($ticket_checklist as $item) : ?>
+                                                    <?php
+                                                    $item_id = sanitize_text_field((string) ($item['id'] ?? ''));
+                                                    $item_text = sanitize_text_field((string) ($item['text'] ?? ''));
+                                                    $item_done = !empty($item['done']);
+                                                    if ($item_id === '' || $item_text === '') {
+                                                        continue;
+                                                    }
+                                                    ?>
+                                                    <label class="dc-feedback-ticket__check-item">
+                                                        <input type="checkbox" name="checklist_done[]" value="<?php echo esc_attr($item_id); ?>" <?php checked($item_done); ?>>
+                                                        <span><?php echo esc_html($item_text); ?></span>
+                                                    </label>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
+
+                                        <label>
+                                            Respuesta
+                                            <textarea name="response" rows="2" class="large-text" placeholder="Seguimiento o respuesta al reporte."><?php echo esc_textarea((string) ($ticket['response'] ?? '')); ?></textarea>
+                                        </label>
+
+                                        <label>
+                                            Solución aplicada
+                                            <textarea name="solution" rows="2" class="large-text" placeholder="Documenta la solución final."><?php echo esc_textarea((string) ($ticket['solution'] ?? '')); ?></textarea>
+                                        </label>
+
+                                        <div class="dc-feedback-ticket__actions">
+                                            <button type="submit" class="button button-secondary">Guardar seguimiento</button>
+                                            <a class="button dc-feedback-ticket__delete" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
+                                                'action' => 'dc_delete_section_ticket',
+                                                'section' => $section_key,
+                                                'ticket_id' => $ticket_id,
+                                            ], admin_url('admin-post.php')), 'dc_delete_section_ticket')); ?>" onclick="return confirm('¿Eliminar este ticket de reporte?');">Eliminar</a>
+                                        </div>
+                                    </form>
+                                </article>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </details>
+        </section>
+        <?php
+    }
+
     public function sanitize_options($input) {
         $current_options = $this->api->get_options();
         $mode = sanitize_text_field((string) ($input['payment_mode'] ?? 'direct'));
@@ -454,9 +809,14 @@ class DC_Recargas_Admin {
             $allow_real_recharge = 1;
         }
 
+        $new_api_key = sanitize_text_field((string) ($input['api_key'] ?? ''));
+        if ($new_api_key === '') {
+            $new_api_key = sanitize_text_field((string) ($current_options['api_key'] ?? ''));
+        }
+
         $sanitized = [
             'api_base' => esc_url_raw(trim((string) ($input['api_base'] ?? 'https://www.dingconnect.com/api/V1'))),
-            'api_key' => sanitize_text_field((string) ($input['api_key'] ?? '')),
+            'api_key' => $new_api_key,
             'payment_mode' => $mode,
             'woo_allowed_gateways' => $woo_allowed_gateways,
             'recharge_mode' => $recharge_mode,
@@ -1281,6 +1641,10 @@ class DC_Recargas_Admin {
             $active_tab = 'tab_landings';
         }
 
+        if (in_array($msg, ['ticket_saved', 'ticket_deleted', 'ticket_error', 'ticket_not_found'], true) && $requested_tab !== '') {
+            $active_tab = $this->sanitize_admin_section_key($requested_tab);
+        }
+
         if (!empty($editing_landing)) {
             $active_tab = 'tab_landings';
         }
@@ -1736,135 +2100,6 @@ class DC_Recargas_Admin {
                 .dc-row-editable:focus-visible {
                     outline: 2px solid #0f4aa3;
                     outline-offset: -2px;
-                }
-
-                /* ─ Modal de Personalización de Shortcodes ─ */
-                .dc-customize-compact {
-                    display: flex;
-                    gap: 16px;
-                    align-items: flex-start;
-                    margin-bottom: 12px;
-                }
-
-                .dc-customize-grid {
-                    display: grid;
-                    grid-template-columns: repeat(4, 1fr);
-                    gap: 12px;
-                    flex: 1;
-                }
-
-                .dc-customize-field {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 6px;
-                }
-
-                .dc-customize-field label {
-                    margin: 0;
-                    color: #334155;
-                    font-size: 12px;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                }
-
-                .dc-customize-field input[type="number"],
-                .dc-customize-field select {
-                    border: 1px solid #c9d6ea;
-                    border-radius: 6px;
-                    padding: 6px 8px;
-                    font-size: 13px;
-                    background: white;
-                }
-
-                .dc-customize-field input[type="color"] {
-                    width: 100%;
-                    height: 36px;
-                    border: 1px solid #c9d6ea;
-                    border-radius: 6px;
-                    cursor: pointer;
-                }
-
-                .dc-customize-unit {
-                    position: absolute;
-                    font-size: 11px;
-                    color: #64748b;
-                    margin-top: -20px;
-                    pointer-events: none;
-                }
-
-                .dc-customize-preview-compact {
-                    background: #f8fafc;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    padding: 12px;
-                    min-width: 200px;
-                    max-width: 240px;
-                }
-
-                .dc-customize-preview-compact h4 {
-                    margin: 0 0 10px;
-                    color: #334155;
-                    font-size: 12px;
-                    font-weight: 600;
-                }
-
-                .dc-customize-preview-container-compact {
-                    background: white;
-                    border-radius: 8px;
-                    padding: 12px;
-                    font-size: 12px;
-                    color: #334155;
-                }
-
-                .dc-customize-preview-container-compact h2 {
-                    margin: 0 0 6px;
-                    font-size: 14px;
-                    font-weight: 700;
-                }
-
-                .dc-customize-preview-container-compact p {
-                    margin: 0 0 10px;
-                    font-size: 11px;
-                    opacity: 0.8;
-                }
-
-                .dc-customize-preview-container-compact button {
-                    width: 100%;
-                    padding: 6px;
-                    font-size: 11px;
-                    font-weight: 600;
-                    border: none;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    color: white;
-                    margin-bottom: 6px;
-                    transition: opacity 0.2s;
-                }
-
-                .dc-customize-preview-container-compact button:hover {
-                    opacity: 0.9;
-                }
-
-                @media (max-width: 1024px) {
-                    .dc-customize-compact {
-                        flex-direction: column;
-                    }
-
-                    .dc-customize-grid {
-                        grid-template-columns: repeat(3, 1fr);
-                    }
-
-                    .dc-customize-preview-compact {
-                        width: 100%;
-                        max-width: 100%;
-                    }
-                }
-
-                @media (max-width: 768px) {
-                    .dc-customize-grid {
-                        grid-template-columns: repeat(2, 1fr);
-                    }
                 }
 
                 /* Keep datalist-enhanced fields visually aligned with the admin UI. */
@@ -2431,6 +2666,188 @@ class DC_Recargas_Admin {
                     margin: 0;
                 }
 
+                .dc-feedback-drawers {
+                    margin-top: 12px;
+                }
+
+                .dc-feedback-panel {
+                    max-width: 1120px;
+                    margin: 0 auto 10px;
+                }
+
+                .dc-feedback-panel__details {
+                    border: 1px solid #dfe8f6;
+                    border-radius: 10px;
+                    background: #fbfdff;
+                }
+
+                .dc-feedback-panel__summary {
+                    padding: 9px 12px;
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: #334155;
+                    cursor: pointer;
+                    user-select: none;
+                    list-style: none;
+                }
+
+                .dc-feedback-panel__summary::-webkit-details-marker {
+                    display: none;
+                }
+
+                .dc-feedback-panel__summary::before {
+                    content: '▸';
+                    display: inline-block;
+                    margin-right: 6px;
+                    color: #64748b;
+                    transition: transform 0.12s ease;
+                }
+
+                .dc-feedback-panel__details[open] .dc-feedback-panel__summary::before {
+                    transform: rotate(90deg);
+                }
+
+                .dc-feedback-panel__content {
+                    padding: 0 12px 12px;
+                    border-top: 1px solid #eef3fb;
+                }
+
+                .dc-feedback-panel__new-ticket {
+                    margin-top: 10px;
+                    padding: 12px;
+                    border: 1px solid #dbe7f7;
+                    border-radius: 10px;
+                    background: #ffffff;
+                    display: grid;
+                    gap: 10px;
+                }
+
+                .dc-feedback-panel__grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                    gap: 10px;
+                }
+
+                .dc-feedback-panel__new-ticket label,
+                .dc-feedback-ticket__form label {
+                    display: grid;
+                    gap: 4px;
+                    color: #334155;
+                    font-weight: 600;
+                    font-size: 12px;
+                }
+
+                .dc-feedback-panel__actions,
+                .dc-feedback-ticket__actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    align-items: center;
+                }
+
+                .dc-feedback-panel__tickets {
+                    margin-top: 14px;
+                    display: grid;
+                    gap: 10px;
+                }
+
+                .dc-feedback-ticket {
+                    border: 1px solid #dbe7f7;
+                    border-radius: 10px;
+                    background: #ffffff;
+                    padding: 12px;
+                }
+
+                .dc-feedback-ticket__header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .dc-feedback-ticket__header h4 {
+                    margin: 0;
+                    font-size: 14px;
+                    color: #0f172a;
+                }
+
+                .dc-feedback-ticket__type {
+                    border-radius: 999px;
+                    padding: 2px 8px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.03em;
+                }
+
+                .dc-feedback-ticket__type.is-improvement {
+                    background: #dbeafe;
+                    color: #1e3a8a;
+                }
+
+                .dc-feedback-ticket__type.is-bug {
+                    background: #fee2e2;
+                    color: #991b1b;
+                }
+
+                .dc-feedback-ticket__meta {
+                    margin: 6px 0;
+                    color: #64748b;
+                    font-size: 12px;
+                }
+
+                .dc-feedback-ticket__details {
+                    margin: 0 0 8px;
+                    color: #334155;
+                    font-size: 13px;
+                }
+
+                .dc-feedback-ticket__form {
+                    display: grid;
+                    gap: 8px;
+                }
+
+                .dc-feedback-ticket__checklist {
+                    border: 1px dashed #d1def2;
+                    border-radius: 8px;
+                    padding: 8px;
+                    background: #f8fbff;
+                    display: grid;
+                    gap: 6px;
+                }
+
+                .dc-feedback-ticket__checklist p {
+                    margin: 0;
+                    color: #334155;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+
+                .dc-feedback-ticket__check-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+
+                .dc-feedback-ticket__delete {
+                    color: #b91c1c;
+                    border-color: #fecaca;
+                    background: #fff5f5;
+                }
+
+                @media (max-width: 782px) {
+                    .dc-feedback-panel {
+                        margin-left: 0;
+                        margin-right: 0;
+                    }
+
+                    .dc-feedback-panel__summary {
+                        font-size: 11px;
+                    }
+                }
+
             </style>
 
             <div class="dc-admin-tabs">
@@ -2456,8 +2873,9 @@ class DC_Recargas_Admin {
                     <tr>
                         <th scope="row"><label for="dc_api_key">API Key DingConnect</label></th>
                         <td>
-                            <input type="text" id="dc_api_key" name="dc_recargas_options[api_key]" class="regular-text" value="<?php echo esc_attr($options['api_key']); ?>">
-                            <p class="description">Nunca publiques esta clave en JavaScript. El plugin la usa solo en el servidor.</p>
+                            <?php $has_saved_api_key = !empty((string) ($options['api_key'] ?? '')); ?>
+                            <input type="password" id="dc_api_key" name="dc_recargas_options[api_key]" class="regular-text" value="" placeholder="<?php echo $has_saved_api_key ? esc_attr('••••••••••••') : ''; ?>" autocomplete="new-password" spellcheck="false" aria-describedby="dc_api_key_help">
+                            <p id="dc_api_key_help" class="description">Pega una nueva clave solo cuando quieras reemplazar la actual. Si guardas este campo vacío, se conserva la clave existente en modo oculto.</p>
                         </td>
                     </tr>
                     <tr>
@@ -2592,7 +3010,7 @@ class DC_Recargas_Admin {
             <h2>Landings y shortcodes dinámicos</h2>
             <p>Define objetivos de landing y asocia bundles concretos para generar shortcodes reutilizables.</p>
 
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="dc_create_landing_form">
                 <input type="hidden" name="action" value="dc_add_landing_shortcode">
                 <?php wp_nonce_field('dc_add_landing_shortcode'); ?>
                 <table class="form-table" role="presentation">
@@ -2723,7 +3141,6 @@ class DC_Recargas_Admin {
                                 <td><code><?php echo esc_html($shortcode_text); ?></code></td>
                                 <td>
                                     <div class="dc-table-actions">
-                                    <button type="button" class="button dc-table-icon-btn dc-customize-shortcode-btn" data-shortcode-key="<?php echo esc_attr($landing_key); ?>" data-shortcode-text="<?php echo esc_attr($shortcode_text); ?>" title="Personalizar shortcode" aria-label="Personalizar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-admin-customizer" aria-hidden="true"></span></button>
                                     <a class="button dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
                                         'action' => 'dc_clone_landing_shortcode',
                                         'landing_id' => $landing_id,
@@ -2788,6 +3205,11 @@ class DC_Recargas_Admin {
                                         <option value="all">Todos</option>
                                     </select>
                                 </label>
+                                <label>Buscar
+                                    <input type="search" id="dc_edit_landing_filter_search" class="regular-text" placeholder="Buscar por nombre, SKU u operador">
+                                </label>
+                                <button type="button" class="button button-secondary" id="dc_edit_landing_select_visible">Marcar visibles</button>
+                                <button type="button" class="button button-secondary" id="dc_edit_landing_clear_visible">Quitar visibles</button>
                             </div>
                             <div class="dc-landing-bundles-table-wrap">
                             <table class="widefat striped dc-landing-bundles-checklist">
@@ -2848,70 +3270,6 @@ class DC_Recargas_Admin {
                         <?php submit_button('Guardar cambios del shortcode', 'primary', 'submit', false); ?>
                         <button type="button" class="button button-secondary" data-dc-landing-edit-close>Cancelar</button>
                     </form>
-                </div>
-            </div>
-
-            <div id="dc-customize-shortcode-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-customize-shortcode-modal-title" hidden>
-                <div class="dc-edit-modal__backdrop" data-dc-customize-close></div>
-                <div class="dc-edit-modal__dialog" style="max-width: 720px;">
-                    <div class="dc-edit-modal__header">
-                        <div>
-                            <h3 id="dc-customize-shortcode-modal-title">Personalizar Diseño</h3>
-                            <p>Ajusta colores, tamaño y estilos (se aplican automáticamente).</p>
-                        </div>
-                        <button type="button" class="dc-edit-modal__close" aria-label="Cerrar" data-dc-customize-close>&times;</button>
-                    </div>
-
-                    <div class="dc-customize-compact">
-                        <div class="dc-customize-grid">
-                            <div class="dc-customize-field">
-                                <label for="dc_customize_max_width">Ancho máximo</label>
-                                <input type="number" id="dc_customize_max_width" min="300" max="800" step="10" value="480" class="small-text">
-                                <span class="dc-customize-unit">px</span>
-                            </div>
-                            <div class="dc-customize-field">
-                                <label for="dc_customize_bg_color">Fondo</label>
-                                <input type="color" id="dc_customize_bg_color" value="#ffffff" class="dc-color-picker">
-                            </div>
-                            <div class="dc-customize-field">
-                                <label for="dc_customize_primary_color">Botones</label>
-                                <input type="color" id="dc_customize_primary_color" value="#2563eb" class="dc-color-picker">
-                            </div>
-                            <div class="dc-customize-field">
-                                <label for="dc_customize_text_color">Texto</label>
-                                <input type="color" id="dc_customize_text_color" value="#0f172a" class="dc-color-picker">
-                            </div>
-                            <div class="dc-customize-field">
-                                <label for="dc_customize_border_radius">Bordes</label>
-                                <input type="number" id="dc_customize_border_radius" min="0" max="30" step="2" value="16" class="small-text">
-                                <span class="dc-customize-unit">px</span>
-                            </div>
-                            <div class="dc-customize-field">
-                                <label for="dc_customize_padding">Espaciado</label>
-                                <input type="number" id="dc_customize_padding" min="10" max="50" step="5" value="24" class="small-text">
-                                <span class="dc-customize-unit">px</span>
-                            </div>
-                            <div class="dc-customize-field">
-                                <label for="dc_customize_shadow_intensity">Sombra</label>
-                                <select id="dc_customize_shadow_intensity" class="small-text">
-                                    <option value="none">Ninguna</option>
-                                    <option value="light" selected>Ligera</option>
-                                    <option value="medium">Media</option>
-                                    <option value="heavy">Fuerte</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="dc-customize-preview-compact">
-                            <h4 style="margin: 0 0 12px; font-size: 13px;">Vista previa</h4>
-                            <div id="dc_customize_preview" class="dc-customize-preview-container-compact"></div>
-                        </div>
-                    </div>
-
-                    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; display: flex; gap: 10px; justify-content: space-between;">
-                        <div id="dc_customize_status" style="color: #64748b; font-size: 13px; align-self: center;"></div>
-                        <button type="button" class="button button-secondary" data-dc-customize-close>Cerrar</button>
-                    </div>
                 </div>
             </div>
 
@@ -4666,9 +5024,18 @@ class DC_Recargas_Admin {
                         });
                     })();
                     </script>
+
                 </section>
             </div>
 
+        </div>
+
+        <div class="dc-feedback-drawers" id="dc-feedback-drawers" aria-live="polite">
+            <?php $this->render_section_feedback_panel('tab_setup', 'Credenciales y modo de operación'); ?>
+            <?php $this->render_section_feedback_panel('tab_catalog', 'Catálogo y alta de bundles'); ?>
+            <?php $this->render_section_feedback_panel('tab_saved', 'Productos guardados'); ?>
+            <?php $this->render_section_feedback_panel('tab_landings', 'Landings y shortcodes dinámicos'); ?>
+            <?php $this->render_section_feedback_panel('tab_logs', 'Registros y diagnóstico'); ?>
         </div>
 
         <?php // Shared datalists for combobox fields — populated from existing bundles. ?>
@@ -4741,12 +5108,18 @@ class DC_Recargas_Admin {
                 var landingEditKeyEl = document.getElementById('dc_edit_landing_key');
                 var landingEditTitleEl = document.getElementById('dc_edit_landing_title');
                 var landingEditSubtitleEl = document.getElementById('dc_edit_landing_subtitle');
+                var landingCreateFormEl = document.getElementById('dc_create_landing_form');
+                var landingEditFormEl = document.getElementById('dc_edit_landing_form');
                 var landingCreateChecklistEl = document.getElementById('dc_landing_bundle_ids');
                 var landingEditChecklistEl = document.getElementById('dc_edit_landing_bundle_ids');
                 var landingCreateCountryFilterEl = document.getElementById('dc_landing_filter_country');
                 var landingCreateFamilyFilterEl = document.getElementById('dc_landing_filter_family');
                 var landingEditCountryFilterEl = document.getElementById('dc_edit_landing_filter_country');
                 var landingEditFamilyFilterEl = document.getElementById('dc_edit_landing_filter_family');
+                var landingEditSearchFilterEl = document.getElementById('dc_edit_landing_filter_search');
+                var landingEditSelectVisibleBtnEl = document.getElementById('dc_edit_landing_select_visible');
+                var landingEditClearVisibleBtnEl = document.getElementById('dc_edit_landing_clear_visible');
+                var feedbackSectionEls = document.querySelectorAll('[data-dc-feedback-section]');
                 var landingCreateBundleCheckboxEls = document.querySelectorAll('.dc-create-landing-bundle-checkbox');
                 var landingCreateFeaturedRadioEls = document.querySelectorAll('.dc-create-landing-featured-radio');
                 var landingEditBundleCheckboxEls = document.querySelectorAll('#dc_edit_landing_form .dc-edit-landing-bundle-checkbox');
@@ -5059,6 +5432,11 @@ class DC_Recargas_Admin {
                         panel.classList.remove('is-active');
                     });
 
+                    feedbackSectionEls.forEach(function (panel) {
+                        var section = panel.getAttribute('data-dc-feedback-section');
+                        panel.hidden = section !== tabId;
+                    });
+
                     if (updateUrl) {
                         var url = new URL(window.location.href);
                         url.searchParams.set('dc_tab', tabId);
@@ -5149,7 +5527,7 @@ class DC_Recargas_Admin {
                     return !!event.target.closest('a,button,input,select,textarea,label');
                 }
 
-                function initLandingBundleChecklist(checklistEl, countryFilterEl, familyFilterEl) {
+                function initLandingBundleChecklist(checklistEl, countryFilterEl, familyFilterEl, searchFilterEl) {
                     if (!checklistEl) {
                         return;
                     }
@@ -5242,16 +5620,42 @@ class DC_Recargas_Admin {
                     function applyRowFilters() {
                         var selectedCountry = countryFilterEl ? String(countryFilterEl.value || 'all') : 'all';
                         var selectedFamily = familyFilterEl ? String(familyFilterEl.value || 'all') : 'all';
+                        var searchTerm = String(searchFilterEl ? searchFilterEl.value : '').trim().toLowerCase();
 
                         getRows().forEach(function (rowEl) {
                             var checkboxEl = getCheckboxFromRow(rowEl);
                             var isSelected = !!(checkboxEl && checkboxEl.checked);
                             var rowCountry = String(rowEl.getAttribute('data-country-iso') || '').toUpperCase();
                             var rowFamily = String(rowEl.getAttribute('data-package-family') || 'other').toLowerCase();
+                            var rowText = String(rowEl.textContent || '').toLowerCase();
                             var countryMatch = selectedCountry === 'all' || rowCountry === selectedCountry;
                             var familyMatch = selectedFamily === 'all' || rowFamily === selectedFamily;
-                            rowEl.hidden = !(isSelected || (countryMatch && familyMatch));
+                            var searchMatch = !searchTerm || rowText.indexOf(searchTerm) !== -1;
+                            rowEl.hidden = !(isSelected || (countryMatch && familyMatch && searchMatch));
                         });
+                    }
+
+                    function setVisibleSelection(checked) {
+                        getRows().forEach(function (rowEl) {
+                            if (rowEl.hidden) {
+                                return;
+                            }
+
+                            var checkboxEl = getCheckboxFromRow(rowEl);
+                            if (checkboxEl) {
+                                checkboxEl.checked = !!checked;
+                            }
+
+                            if (!checked) {
+                                var radioEl = rowEl.querySelector('input[type="radio"][name="featured_bundle_id"]');
+                                if (radioEl && radioEl.checked) {
+                                    radioEl.checked = false;
+                                }
+                            }
+                        });
+
+                        syncSelectedState();
+                        applyRowFilters();
                     }
 
                     function syncFilterOptions() {
@@ -5316,6 +5720,9 @@ class DC_Recargas_Admin {
                     }
                     if (familyFilterEl) {
                         familyFilterEl.addEventListener('change', applyRowFilters);
+                    }
+                    if (searchFilterEl) {
+                        searchFilterEl.addEventListener('input', applyRowFilters);
                     }
 
                     checklistEl.addEventListener('change', function (event) {
@@ -5438,14 +5845,71 @@ class DC_Recargas_Admin {
                     checklistEl.__dcSyncSelectedState = syncSelectedState;
                     checklistEl.__dcApplyFilters = applyRowFilters;
                     checklistEl.__dcSyncFilterOptions = syncFilterOptions;
+                    checklistEl.__dcSetVisibleSelection = setVisibleSelection;
                 }
 
-                initLandingBundleChecklist(landingCreateChecklistEl, landingCreateCountryFilterEl, landingCreateFamilyFilterEl);
-                initLandingBundleChecklist(landingEditChecklistEl, landingEditCountryFilterEl, landingEditFamilyFilterEl);
+                initLandingBundleChecklist(landingCreateChecklistEl, landingCreateCountryFilterEl, landingCreateFamilyFilterEl, null);
+                initLandingBundleChecklist(landingEditChecklistEl, landingEditCountryFilterEl, landingEditFamilyFilterEl, landingEditSearchFilterEl);
+
+                function syncLandingBundleOrderInputs(formEl, checklistEl) {
+                    if (!formEl || !checklistEl) {
+                        return;
+                    }
+
+                    var staleInputs = formEl.querySelectorAll('input[data-dc-bundle-order="1"]');
+                    staleInputs.forEach(function (inputEl) { inputEl.remove(); });
+
+                    var rows = checklistEl.querySelectorAll('.dc-landing-bundles-checklist__item');
+                    rows.forEach(function (rowEl, index) {
+                        var bundleId = String(rowEl.getAttribute('data-bundle-id') || '').trim();
+                        if (!bundleId) {
+                            return;
+                        }
+
+                        var orderInputEl = document.createElement('input');
+                        orderInputEl.type = 'hidden';
+                        orderInputEl.name = 'bundle_order[' + bundleId + ']';
+                        orderInputEl.value = String(index + 1);
+                        orderInputEl.setAttribute('data-dc-bundle-order', '1');
+                        formEl.appendChild(orderInputEl);
+                    });
+                }
+
+                if (landingCreateFormEl && landingCreateChecklistEl) {
+                    landingCreateFormEl.addEventListener('submit', function () {
+                        syncLandingBundleOrderInputs(landingCreateFormEl, landingCreateChecklistEl);
+                    });
+                }
+
+                if (landingEditFormEl && landingEditChecklistEl) {
+                    landingEditFormEl.addEventListener('submit', function () {
+                        syncLandingBundleOrderInputs(landingEditFormEl, landingEditChecklistEl);
+                    });
+                }
+
+                if (landingEditSelectVisibleBtnEl && landingEditChecklistEl) {
+                    landingEditSelectVisibleBtnEl.addEventListener('click', function () {
+                        if (typeof landingEditChecklistEl.__dcSetVisibleSelection === 'function') {
+                            landingEditChecklistEl.__dcSetVisibleSelection(true);
+                        }
+                    });
+                }
+
+                if (landingEditClearVisibleBtnEl && landingEditChecklistEl) {
+                    landingEditClearVisibleBtnEl.addEventListener('click', function () {
+                        if (typeof landingEditChecklistEl.__dcSetVisibleSelection === 'function') {
+                            landingEditChecklistEl.__dcSetVisibleSelection(false);
+                        }
+                    });
+                }
 
                 function openLandingEditModal(landing) {
                     if (!landingEditModalEl || !landing) {
                         return;
+                    }
+
+                    if (landingEditSearchFilterEl) {
+                        landingEditSearchFilterEl.value = '';
                     }
 
                     if (landingEditIdEl) landingEditIdEl.value = landing.id || '';
@@ -5831,165 +6295,6 @@ class DC_Recargas_Admin {
                 });
             })();
 
-            // -- Modal de Personalización de Shortcodes ----
-            (function () {
-                var customizeModal = document.getElementById('dc-customize-shortcode-modal');
-                var customizeButtons = document.querySelectorAll('.dc-customize-shortcode-btn');
-                var customizeCloseEls = document.querySelectorAll('[data-dc-customize-close]');
-                var maxWidthInput = document.getElementById('dc_customize_max_width');
-                var bgColorInput = document.getElementById('dc_customize_bg_color');
-                var primaryColorInput = document.getElementById('dc_customize_primary_color');
-                var textColorInput = document.getElementById('dc_customize_text_color');
-                var borderRadiusInput = document.getElementById('dc_customize_border_radius');
-                var paddingInput = document.getElementById('dc_customize_padding');
-                var shadowIntensitySelect = document.getElementById('dc_customize_shadow_intensity');
-                var preview = document.getElementById('dc_customize_preview');
-                var customizeStatus = document.getElementById('dc_customize_status');
-                var customizeInputs = [maxWidthInput, bgColorInput, primaryColorInput, textColorInput, borderRadiusInput, paddingInput, shadowIntensitySelect];
-                var currentShortcodeKey = '';
-
-                function closeCustomizeModal() {
-                    if (customizeModal) {
-                        customizeModal.hidden = true;
-                        document.body.classList.remove('modal-open');
-                    }
-                }
-
-                function updatePreview() {
-                    var maxWidth = parseInt(maxWidthInput.value) || 480;
-                    var bgColor = bgColorInput.value || '#ffffff';
-                    var primaryColor = primaryColorInput.value || '#2563eb';
-                    var textColor = textColorInput.value || '#0f172a';
-                    var borderRadius = parseInt(borderRadiusInput.value) || 16;
-                    var padding = parseInt(paddingInput.value) || 24;
-                    var shadowIntensity = shadowIntensitySelect.value || 'light';
-
-                    var shadowMap = {
-                        'none': 'none',
-                        'light': '0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06)',
-                        'medium': '0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 40px rgba(0, 0, 0, 0.12)',
-                        'heavy': '0 10px 25px rgba(0, 0, 0, 0.15), 0 15px 50px rgba(0, 0, 0, 0.2)'
-                    };
-
-                    var shadow = shadowMap[shadowIntensity] || shadowMap['light'];
-
-                    var previewHTML = '<div class="dc-preview-content" style="'
-                        + 'background: ' + bgColor + '; '
-                        + 'border-radius: ' + borderRadius + 'px; '
-                        + 'padding: ' + padding + 'px; '
-                        + 'box-shadow: ' + shadow + '; '
-                        + 'color: ' + textColor + '; '
-                        + 'max-width: ' + maxWidth + 'px; '
-                        + 'margin: 0 auto;'
-                        + '">'
-                        + '<h2 style="margin: 0 0 8px; color: ' + textColor + '; font-size: 14px; font-weight: 700;">Recargas</h2>'
-                        + '<p style="margin: 0 0 10px; color: ' + textColor + '; opacity: 0.8; font-size: 11px;">Elige tu paquete</p>'
-                        + '<input type="text" placeholder="Teléfono..." class="dc-preview-input" style="border-color: ' + primaryColor + '22; color: ' + textColor + '; margin-bottom: 8px; font-size: 11px;">'
-                        + '<button class="dc-preview-button" style="background: ' + primaryColor + '; color: white; width: 100%; margin-bottom: 4px; font-size: 11px;">Buscar</button>'
-                        + '<button class="dc-preview-button" style="background: white; color: ' + primaryColor + '; border: 2px solid ' + primaryColor + '; width: 100%; font-size: 11px;">Confirmar</button>'
-                        + '</div>';
-
-                    preview.innerHTML = previewHTML;
-                }
-
-                function saveCustomization() {
-                    var customization = {
-                        max_width: parseInt(maxWidthInput.value) || 480,
-                        bg_color: bgColorInput.value || '#ffffff',
-                        primary_color: primaryColorInput.value || '#2563eb',
-                        text_color: textColorInput.value || '#0f172a',
-                        border_radius: parseInt(borderRadiusInput.value) || 16,
-                        padding: parseInt(paddingInput.value) || 24,
-                        shadow_intensity: shadowIntensitySelect.value || 'light'
-                    };
-
-                    if (customizeStatus) {
-                        customizeStatus.textContent = 'Guardando...';
-                    }
-
-                    wp.apiFetch({
-                        path: '/dc-recargas/v1/save-shortcode-customization',
-                        method: 'POST',
-                        data: {
-                            shortcode_key: currentShortcodeKey,
-                            customization: customization
-                        }
-                    }).then(function (response) {
-                        if (customizeStatus) {
-                            customizeStatus.textContent = '✓ Guardado';
-                            setTimeout(function () {
-                                customizeStatus.textContent = '';
-                            }, 2000);
-                        }
-                    }).catch(function (error) {
-                        if (customizeStatus) {
-                            customizeStatus.textContent = '✗ Error al guardar';
-                        }
-                        console.error('Error guardando personalización:', error);
-                    });
-                }
-
-                customizeButtons.forEach(function (btn) {
-                    btn.addEventListener('click', function () {
-                        var key = btn.getAttribute('data-shortcode-key');
-                        currentShortcodeKey = key;
-
-                        // Reset status
-                        if (customizeStatus) {
-                            customizeStatus.textContent = '';
-                        }
-
-                        // Load saved customization if exists
-                        wp.apiFetch({
-                            path: '/dc-recargas/v1/get-shortcode-customization?key=' + key,
-                            method: 'GET'
-                        }).then(function (response) {
-                            if (response && response.customization) {
-                                var custom = response.customization;
-                                if (maxWidthInput) maxWidthInput.value = custom.max_width || 480;
-                                if (bgColorInput) bgColorInput.value = custom.bg_color || '#ffffff';
-                                if (primaryColorInput) primaryColorInput.value = custom.primary_color || '#2563eb';
-                                if (textColorInput) textColorInput.value = custom.text_color || '#0f172a';
-                                if (borderRadiusInput) borderRadiusInput.value = custom.border_radius || 16;
-                                if (paddingInput) paddingInput.value = custom.padding || 24;
-                                if (shadowIntensitySelect) shadowIntensitySelect.value = custom.shadow_intensity || 'light';
-                            }
-
-                            updatePreview();
-                            customizeModal.hidden = false;
-                            document.body.classList.add('modal-open');
-                        }).catch(function (error) {
-                            console.warn('No saved customization found, using defaults', error);
-                            updatePreview();
-                            customizeModal.hidden = false;
-                            document.body.classList.add('modal-open');
-                        });
-                    });
-                });
-
-                customizeCloseEls.forEach(function (el) {
-                    el.addEventListener('click', closeCustomizeModal);
-                });
-
-                customizeInputs.forEach(function (input) {
-                    if (input) {
-                        input.addEventListener('change', function () {
-                            updatePreview();
-                            saveCustomization();
-                        });
-                        input.addEventListener('input', function () {
-                            updatePreview();
-                        });
-                    }
-                });
-
-                document.addEventListener('keydown', function (event) {
-                    if (event.key === 'Escape' && customizeModal && !customizeModal.hidden) {
-                        closeCustomizeModal();
-                    }
-                });
-            })();
-
         </script>
         <?php
     }
@@ -6010,6 +6315,10 @@ class DC_Recargas_Admin {
             'landing_shortcode_cloned' => ['success', 'Landing duplicada correctamente.'],
             'landing_shortcode_deleted' => ['success', 'Shortcode dinámico eliminado correctamente.'],
             'landing_shortcode_error' => ['error', 'Completa nombre y selecciona al menos un bundle válido para crear el shortcode dinámico.'],
+            'ticket_saved' => ['success', 'Ticket guardado correctamente en esta sección.'],
+            'ticket_deleted' => ['success', 'Ticket eliminado correctamente.'],
+            'ticket_error' => ['error', 'El ticket debe incluir al menos un título.'],
+            'ticket_not_found' => ['error', 'No se encontró el ticket solicitado.'],
             'bundle_updated' => ['success', 'Producto actualizado correctamente.'],
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un producto.'],
             'bundle_duplicate' => ['error', 'Ya existe otro producto con el mismo país y SKU.'],

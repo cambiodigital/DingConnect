@@ -66,6 +66,7 @@
         ? appCountries
         : (Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : []);
     var defaultCountryIso = String(app.getAttribute('data-default-country-iso') || '').toUpperCase();
+    var landingKey = String(app.getAttribute('data-landing-key') || '').trim();
     var featuredBundleId = String(app.getAttribute('data-featured-bundle-id') || '').trim();
     var allowedBundleIds = String(app.getAttribute('data-allowed-bundle-ids') || '')
         .split(',').map(function (id) { return id.trim(); }).filter(Boolean);
@@ -99,6 +100,59 @@
         selectedSendValue: 0,
         wizardStep: 'phone',  // phone | confirm | result
     };
+
+    function setAllowedBundles(bundleIds) {
+        var nextIds = Array.isArray(bundleIds) ? bundleIds.map(function (id) {
+            return String(id || '').trim();
+        }).filter(Boolean) : [];
+
+        allowedBundleIds = nextIds;
+        allowedBundleMap = {};
+        nextIds.forEach(function (id) {
+            allowedBundleMap[id] = true;
+        });
+        state.allowedBundleMap = allowedBundleMap;
+    }
+
+    function applyLandingRuntimeConfig(config) {
+        if (!config || typeof config !== 'object') {
+            return;
+        }
+
+        if (Array.isArray(config.bundle_ids)) {
+            setAllowedBundles(config.bundle_ids);
+        }
+
+        var runtimeFeatured = String(config.featured_bundle_id || '').trim();
+        state.featuredBundleId = runtimeFeatured;
+
+        var runtimeCountryIso = String(config.country_iso || '').trim().toUpperCase();
+        if (runtimeCountryIso) {
+            defaultCountryIso = runtimeCountryIso;
+        }
+    }
+
+    async function refreshLandingRuntimeConfig() {
+        if (!landingKey) {
+            return null;
+        }
+
+        try {
+            var response = await fetchJson('/landing-config?landing_key=' + encodeURIComponent(landingKey), {
+                cache: 'no-store'
+            });
+            if (response && response.ok && response.result) {
+                applyLandingRuntimeConfig(response.result);
+                return response.result;
+            }
+        } catch (err) {
+            // Mantener configuración estática del shortcode si falla el refresco runtime.
+        }
+
+        return null;
+    }
+
+    var landingConfigPromise = refreshLandingRuntimeConfig();
 
     /* ===== Wizard navigation ===== */
     var paneMap = {
@@ -889,6 +943,11 @@
     async function searchBundles(opts) {
         opts = opts || {};
 
+        if (landingConfigPromise) {
+            await landingConfigPromise;
+            landingConfigPromise = null;
+        }
+
         if (!state.country) {
             if (!opts.silent) setFeedback('Selecciona un país primero.', 'warning');
             return;
@@ -1021,6 +1080,13 @@
             return;
         }
 
+        if (bundles.length > 1) {
+            var placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Selecciona un paquete...';
+            packageSelect.appendChild(placeholder);
+        }
+
         bundles.forEach(function (bundle, index) {
             var option = document.createElement('option');
             option.value = String(index);
@@ -1028,13 +1094,26 @@
             packageSelect.appendChild(option);
         });
 
-        if (!state.selected || bundles.indexOf(state.selected) === -1) {
-            var featured = bundles.find(function (bundle) { return isFeaturedBundle(bundle); });
-            state.selected = featured || bundles[0];
+        if (bundles.length === 1) {
+            state.selected = bundles[0];
+            packageSelect.value = '0';
+            renderPackageCard(state.selected);
+            btnContinueConfirm.disabled = false;
+            return;
         }
 
-        packageSelect.value = String(bundles.indexOf(state.selected));
-        renderPackageCard(state.selected);
+        if (!state.selected || bundles.indexOf(state.selected) === -1) {
+            state.selected = null;
+        }
+
+        if (state.selected) {
+            packageSelect.value = String(bundles.indexOf(state.selected));
+            renderPackageCard(state.selected);
+        } else {
+            packageSelect.value = '';
+            renderPackageCard(null);
+        }
+
         btnContinueConfirm.disabled = !state.selected;
     }
 
@@ -1467,7 +1546,7 @@
 
     packageSelect.addEventListener('change', function () {
         var selectedIndex = parseInt(packageSelect.value, 10);
-        state.selected = state.visibleBundles[selectedIndex] || null;
+        state.selected = isNaN(selectedIndex) ? null : (state.visibleBundles[selectedIndex] || null);
         renderPackageCard(state.selected);
     });
 

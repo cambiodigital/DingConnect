@@ -22,7 +22,6 @@ flowchart TB
         C3 --> C5["key = generate_unique_landing_key()<br/>si vacío usa sanitize_title(name)"]
         C3 --> C6["featured_bundle_id solo si pertenece a bundle_ids"]
         C3 --> C7["Option dc_recargas_landing_shortcodes[]<br/>id = uniqid(landing_)<br/>name, key, title, subtitle<br/>country_iso derivado<br/>bundle_ids ORDENADOS<br/>featured_bundle_id<br/>created_at / updated_at<br/>cloned_from?"]
-        C8["Personalizar diseño<br/>REST dc-recargas/v1/save-shortcode-customization<br/>max_width, bg_color, primary_color,<br/>text_color, border_radius, padding, shadow_intensity"] --> C7
     end
 
     subgraph D["4. Shortcode público"]
@@ -33,7 +32,6 @@ flowchart TB
         D3 --> D4["Fusión atts + config landing<br/>bundle_ids = config.bundle_ids + atts.bundles<br/>featured_bundle_id validado<br/>default_country_iso = atts.country | config.country_iso | único país disponible<br/>title/subtitle = atts o config"]
         D4 --> D5["HTML + data-*<br/>data-allowed-bundle-ids<br/>data-featured-bundle-id<br/>data-default-country-iso<br/>data-available-countries"]
         D2 --> D6["wp_localize_script DC_RECARGAS_DATA<br/>restBase, nonce, countries,<br/>woocommerce_active, cartUrl, checkoutUrl"]
-        D3 --> D7["customization -> CSS inline por instancia"]
     end
 
     subgraph E["5. Frontend.js: búsqueda y selección"]

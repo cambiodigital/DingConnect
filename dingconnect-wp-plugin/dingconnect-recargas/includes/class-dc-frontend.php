@@ -117,7 +117,7 @@ class DC_Recargas_Frontend {
 
         ob_start();
         ?>
-        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-featured-bundle-id="<?php echo esc_attr($featured_bundle_id); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
+        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-landing-key="<?php echo esc_attr($landing_key); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-featured-bundle-id="<?php echo esc_attr($featured_bundle_id); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
             <div class="dc-card">
 
                 <!-- Viewport del wizard -->
@@ -206,68 +206,6 @@ class DC_Recargas_Frontend {
         </div>
         <?php
 
-        // Generate and inject custom CSS if customization is saved
-        if (!empty($config['customization']) && is_array($config['customization'])) {
-            $custom = $config['customization'];
-            echo $this->generate_custom_css($instance_id, $custom);
-        }
-
-        return ob_get_clean();
-    }
-
-    private function generate_custom_css($instance_id, $customization) {
-        $max_width = intval($customization['max_width'] ?? 480);
-        $bg_color = sanitize_text_field($customization['bg_color'] ?? '#ffffff');
-        $primary_color = sanitize_text_field($customization['primary_color'] ?? '#2563eb');
-        $text_color = sanitize_text_field($customization['text_color'] ?? '#0f172a');
-        $border_radius = max(6, intval($customization['border_radius'] ?? 16));
-        $padding = intval($customization['padding'] ?? 24);
-        $shadow_intensity = sanitize_text_field($customization['shadow_intensity'] ?? 'light');
-
-        $shadow_map = [
-            'none' => '0 0 0 transparent',
-            'light' => '0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06)',
-            'medium' => '0 4px 6px rgba(0, 0, 0, 0.1), 0 10px 40px rgba(0, 0, 0, 0.12)',
-            'heavy' => '0 10px 25px rgba(0, 0, 0, 0.15), 0 15px 50px rgba(0, 0, 0, 0.2)'
-        ];
-
-        $shadow = $shadow_map[$shadow_intensity] ?? $shadow_map['light'];
-
-        ob_start();
-        ?>
-        <style>
-            #<?php echo esc_attr($instance_id); ?> {
-                max-width: <?php echo intval($max_width); ?>px;
-            }
-
-            #<?php echo esc_attr($instance_id); ?> .dc-card {
-                background-color: <?php echo esc_attr($bg_color); ?>;
-                box-shadow: <?php echo esc_attr($shadow); ?>;
-                border-radius: <?php echo intval($border_radius); ?>px;
-                padding: <?php echo intval($padding); ?>px <?php echo intval($padding); ?>px <?php echo intval($padding - 4); ?>px;
-            }
-
-            #<?php echo esc_attr($instance_id); ?> .dc-pane-header h2,
-            #<?php echo esc_attr($instance_id); ?> .dc-context-strip strong {
-                color: <?php echo esc_attr($text_color); ?> !important;
-            }
-
-            #<?php echo esc_attr($instance_id); ?> .dc-confirm-btn,
-            #<?php echo esc_attr($instance_id); ?> .dc-step.is-active .dc-step-dot,
-            #<?php echo esc_attr($instance_id); ?> .dc-provider-btn.active {
-                background-color: <?php echo esc_attr($primary_color); ?>;
-                border-color: <?php echo esc_attr($primary_color); ?>;
-                color: #ffffff;
-                border-radius: <?php echo intval($border_radius - 4); ?>px;
-                box-shadow: 0 0 0 4px <?php echo esc_attr($primary_color); ?>22;
-            }
-
-            #<?php echo esc_attr($instance_id); ?> input,
-            #<?php echo esc_attr($instance_id); ?> select {
-                border-radius: <?php echo intval($border_radius - 6); ?>px;
-            }
-        </style>
-        <?php
         return ob_get_clean();
     }
 
