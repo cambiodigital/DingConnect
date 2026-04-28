@@ -237,3 +237,72 @@ if (!function_exists('WC')) {
         return $instance;
     }
 }
+
+// WooCommerce specific functions
+if (!function_exists('is_cart')) { function is_cart() { return false; } }
+if (!function_exists('is_checkout')) { function is_checkout() { return false; } }
+if (!function_exists('is_product')) { function is_product() { return false; } }
+if (!function_exists('wc_format_datetime')) { function wc_format_datetime($datetime, $format = null, $timezone_aware = false) { return (string) $datetime; } }
+if (!function_exists('wc_get_product')) { function wc_get_product($product = null, $deprecated = false) { return null; } }
+if (!function_exists('wc_get_order')) { function wc_get_order($the_order = false) { return null; } }
+
+// WordPress functions for blog/site info
+if (!function_exists('get_bloginfo')) { function get_bloginfo($show = '', $filter = 'raw') { return ''; } }
+if (!function_exists('get_home_url')) { function get_home_url($blog_id = null, $path = '', $scheme = null) { return ''; } }
+if (!function_exists('get_theme_mod')) { function get_theme_mod($name, $default = false) { return $default; } }
+if (!function_exists('get_site_icon_url')) { function get_site_icon_url($size = 512, $default = '', $blog_id = 0) { return $default; } }
+if (!function_exists('wp_get_attachment_image_url')) { function wp_get_attachment_image_url($attachment_id, $size = 'thumbnail', $icon = false) { return ''; } }
+
+// Localization functions
+if (!function_exists('esc_html_e')) { function esc_html_e($text, $domain = 'default') { echo esc_html($text); } }
+if (!function_exists('_e')) { function _e($text, $domain = 'default') { echo (string) $text; } }
+
+// WooCommerce Email class
+if (!class_exists('WC_Email')) {
+    class WC_Email {
+        public $id = '';
+        public $title = '';
+        public $description = '';
+        public $heading = '';
+        public $subject = '';
+        public $customer_email = false;
+        public $recipient = '';
+        public $object = null;
+        public $template_html = '';
+        public $template_plain = '';
+        public $placeholders = [];
+        public $recarga_data = [];
+
+        public function __construct() {
+            add_action('woocommerce_email_' . $this->id, [$this, 'trigger'], 10, 10);
+        }
+
+        public function setup_locale() {}
+        public function restore_locale() {}
+        public function is_enabled() { return false; }
+        public function get_recipient() { return $this->recipient; }
+        public function get_subject() { return $this->subject; }
+        public function get_heading() { return $this->heading; }
+        public function get_content() { return ''; }
+        public function get_headers() { return ''; }
+        public function get_attachments() { return []; }
+        public function send($to, $subject, $message, $headers = '', $attachments = []) { return true; }
+        public function trigger($order_id = 0, $item = null, array $snapshot = []) {}
+    }
+}
+
+// Order class extensions
+if (!class_exists('WC_Order')) {
+    class WC_Order {
+        public function get_items($types = 'line_item') { return []; }
+        public function get_meta($key = '', $single = true) { return null; }
+        public function update_meta_data($key, $value) {}
+        public function add_order_note($note, $is_customer_note = 0, $added_by_user = false) {}
+        public function save() {}
+        public function is_paid() { return false; }
+        public function get_id() { return 0; }
+        public function get_billing_email() { return ''; }
+        public function get_order_number() { return ''; }
+        public function get_date_created() { return null; }
+    }
+}

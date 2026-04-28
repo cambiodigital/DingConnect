@@ -130,6 +130,18 @@ add_action('plugins_loaded', function () {
             require_once $woo_file;
             new DC_Recargas_WooCommerce($api);
         }
+
+        // Registrar email de confirmación de recarga en el sistema de emails de WooCommerce
+        $email_file = $resolve_required_file('includes/class-dc-email-recarga-confirmacion.php', $base_paths);
+        if ($email_file !== '') {
+            add_filter('woocommerce_email_classes', function ($email_classes) use ($email_file) {
+                if (!isset($email_classes['WC_DC_Email_Recarga_Confirmacion'])) {
+                    require_once $email_file;
+                    $email_classes['WC_DC_Email_Recarga_Confirmacion'] = new WC_DC_Email_Recarga_Confirmacion();
+                }
+                return $email_classes;
+            });
+        }
     }
 
     add_action('init', ['DC_Recargas_API', 'register_transfer_log_cpt']);

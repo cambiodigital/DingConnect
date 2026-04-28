@@ -38,18 +38,27 @@ class DC_Recargas_WooCommerce {
         // Order meta
         add_action('woocommerce_checkout_create_order_line_item', [$this, 'save_order_item_meta'], 10, 4);
 
-        // Mandatory registration
+        // Redirect DC-only cart directly to checkout (skip cart page)
+        add_action('template_redirect', [$this, 'redirect_dc_only_cart_to_checkout'], 5);
+
+        // Mandatory registration (only when cart is mixed DC + regular products)
         add_filter('woocommerce_checkout_registration_required', [$this, 'force_registration']);
         add_filter('pre_option_woocommerce_enable_guest_checkout', [$this, 'disable_guest_checkout']);
 
-        // Checkout fields
+        // Checkout fields + address validation bypass for DC-only
         add_filter('woocommerce_checkout_fields', [$this, 'customize_checkout_fields']);
         add_filter('woocommerce_new_customer_data', [$this, 'prefill_customer_phone']);
+        add_action('woocommerce_after_checkout_validation', [$this, 'clear_address_validation_errors_for_dc'], 10, 2);
 
         // Phone login
         add_filter('authenticate', [$this, 'authenticate_by_phone'], 30, 3);
 
         // Order processing - fire DingConnect transfer on payment
+        // Three hooks to cover all gateway patterns:
+        // - payment_complete: Stripe, PayPal IPN and other gateways that call $order->payment_complete() directly
+        // - status_processing: gateways that transition to "processing" after payment
+        // - status_completed: gateways that go directly to "completed" (e.g., free/manual orders)
+        add_action('woocommerce_payment_complete', [$this, 'process_recarga_on_payment']);
         add_action('woocommerce_order_status_processing', [$this, 'process_recarga_on_payment']);
         add_action('woocommerce_order_status_completed', [$this, 'process_recarga_on_payment']);
         add_action('dc_recargas_retry_transfer', [$this, 'process_retry_transfer'], 10, 2);
@@ -252,18 +261,33 @@ class DC_Recargas_WooCommerce {
      * 7. Mandatory Registration (no guest checkout for recargas)
      * ------------------------------------------------------------- */
 
+    /**
+     * Force registration only for mixed carts (DC recargas + other products).
+     * DC-only checkouts allow guest to keep the flow as simple as possible.
+     */
     public function force_registration($registration_required) {
-        if ($this->cart_has_recargas()) {
+        if ($this->cart_has_recargas() && !$this->cart_has_only_recargas()) {
             return true;
         }
         return $registration_required;
     }
 
     public function disable_guest_checkout($value) {
-        if ($this->cart_has_recargas()) {
+        if ($this->cart_has_recargas() && !$this->cart_has_only_recargas()) {
             return 'no';
         }
         return $value;
+    }
+
+    /**
+     * When the cart contains ONLY DC recargas, redirect /cart to /checkout
+     * so the user never sees the generic cart page.
+     */
+    public function redirect_dc_only_cart_to_checkout() {
+        if (!is_cart()) return;
+        if (!$this->cart_has_only_recargas()) return;
+        wp_safe_redirect(wc_get_checkout_url());
+        exit;
     }
 
     private function cart_has_recargas() {
@@ -274,6 +298,21 @@ class DC_Recargas_WooCommerce {
             }
         }
         return false;
+    }
+
+    /**
+     * Returns true only when EVERY item in the cart is a DC recarga.
+     * Used to apply DC-specific checkout simplifications without affecting
+     * regular WooCommerce products.
+     */
+    private function cart_has_only_recargas() {
+        if (!WC()->cart) return false;
+        $items = WC()->cart->get_cart();
+        if (empty($items)) return false;
+        foreach ($items as $cart_item) {
+            if (empty($cart_item['dc_recarga'])) return false;
+        }
+        return true;
     }
 
     public function filter_available_payment_gateways($gateways) {
@@ -307,17 +346,63 @@ class DC_Recargas_WooCommerce {
      * 8. Checkout Fields & Phone Login
      * ------------------------------------------------------------- */
 
-    /** Make billing phone required and prominent when cart has recargas. */
+    /**
+     * Customize checkout fields.
+     *
+     * - DC-only cart: simplify to first name, last name, email and billing phone.
+     *   All address/shipping/order fields are removed so the checkout is minimal.
+     * - Mixed cart (DC + regular products): keep all WC fields, just enforce phone.
+     */
     public function customize_checkout_fields($fields) {
         if (!$this->cart_has_recargas()) return $fields;
 
+        if ($this->cart_has_only_recargas()) {
+            // Minimal DC checkout: name + email + phone only
+            $allowed_billing = ['billing_first_name', 'billing_last_name', 'billing_email', 'billing_phone'];
+
+            if (isset($fields['billing']) && is_array($fields['billing'])) {
+                foreach (array_keys($fields['billing']) as $key) {
+                    if (!in_array($key, $allowed_billing, true)) {
+                        unset($fields['billing'][$key]);
+                    }
+                }
+            }
+
+            // Shipping and order comment fields are not needed for virtual products
+            $fields['shipping'] = [];
+            $fields['order']    = [];
+        }
+
+        // Always ensure billing_phone is required and labelled clearly
         if (isset($fields['billing']['billing_phone'])) {
-            $fields['billing']['billing_phone']['required'] = true;
-            $fields['billing']['billing_phone']['priority'] = 15;
-            $fields['billing']['billing_phone']['label']    = 'Número de celular';
+            $fields['billing']['billing_phone']['required']    = true;
+            $fields['billing']['billing_phone']['priority']    = 30;
+            $fields['billing']['billing_phone']['label']       = 'Tu número de teléfono';
+            $fields['billing']['billing_phone']['placeholder'] = 'Ej: +34 600 000 000';
         }
 
         return $fields;
+    }
+
+    /**
+     * Safety net: remove any WC address validation errors that may fire
+     * even after fields are removed via the checkout_fields filter.
+     * Only active for DC-only carts.
+     */
+    public function clear_address_validation_errors_for_dc($data, $errors) {
+        if (!$this->cart_has_only_recargas()) return;
+
+        $address_fields = [
+            'billing_address_1', 'billing_address_2', 'billing_city',
+            'billing_state', 'billing_postcode', 'billing_country', 'billing_company',
+            'shipping_first_name', 'shipping_last_name', 'shipping_address_1',
+            'shipping_address_2', 'shipping_city', 'shipping_state',
+            'shipping_postcode', 'shipping_country',
+        ];
+
+        foreach ($address_fields as $field) {
+            $errors->remove($field);
+        }
     }
 
     /** Pre-fill billing phone from recarga data during registration. */
@@ -594,6 +679,21 @@ class DC_Recargas_WooCommerce {
         return $this->is_successful_transfer_status($status);
     }
 
+    /**
+     * Dispara el email de confirmación de recarga al cliente.
+     * Delega al sistema de emails de WooCommerce (wp_mail + cualquier SMTP plugin activo).
+     *
+     * @param WC_Order                  $order
+     * @param WC_Order_Item_Product     $item
+     * @param array                     $snapshot  Snapshot del transfer.
+     */
+    private function send_recarga_confirmacion_email($order, $item, array $snapshot) {
+        $emails = WC()->mailer()->get_emails();
+        if (isset($emails['WC_DC_Email_Recarga_Confirmacion'])) {
+            $emails['WC_DC_Email_Recarga_Confirmacion']->trigger($order->get_id(), $item, $snapshot);
+        }
+    }
+
     private function attempt_transfer_for_item($order, $item, $manual = false) {
         $account_number = (string) $item->get_meta('_dc_account_number');
         $sku_code = (string) $item->get_meta('_dc_sku_code');
@@ -718,6 +818,11 @@ class DC_Recargas_WooCommerce {
 
         $order->add_order_note($note);
 
+        // Enviar email de confirmación al cliente cuando la recarga es exitosa
+        if ($is_success) {
+            $this->send_recarga_confirmacion_email($order, $item, $snapshot);
+        }
+
         delete_transient($lock_key);
 
         return ['success' => $is_success, 'pending_retry' => $is_pending, 'status' => $snapshot['status']];
@@ -757,6 +862,8 @@ class DC_Recargas_WooCommerce {
         $send_value = (float) $item->get_meta('_dc_send_value');
         $this->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
 
+        $is_now_success = $this->is_successful_transfer_status($snapshot['status']);
+
         if ($snapshot['status'] !== $previous_status) {
             $order->add_order_note(sprintf(
                 'Reconciliacion DingConnect para %s (SKU: %s): estado %s.',
@@ -764,11 +871,16 @@ class DC_Recargas_WooCommerce {
                 (string) $item->get_meta('_dc_sku_code'),
                 $snapshot['status_label'] !== '' ? $snapshot['status_label'] : strtoupper($snapshot['status'])
             ));
+
+            // Enviar email de confirmación cuando la reconciliación transiciona a éxito
+            if ($is_now_success && !$this->is_successful_transfer_status($previous_status)) {
+                $this->send_recarga_confirmacion_email($order, $item, $snapshot);
+            }
         }
 
         return [
             'synced' => true,
-            'success' => $this->is_successful_transfer_status($snapshot['status']),
+            'success' => $is_now_success,
             'pending' => $this->is_pending_transfer_status($snapshot['status']),
             'status' => $snapshot['status'],
         ];
