@@ -105,18 +105,25 @@ class DC_Recargas_WooCommerce {
      * ------------------------------------------------------------- */
 
     private function ensure_wc_session() {
-        if (defined('REST_REQUEST') && REST_REQUEST) {
-            if (WC()->session === null) {
-                WC()->session = new WC_Session_Handler();
-                WC()->session->init();
-            }
-            if (WC()->cart === null) {
-                WC()->cart = new WC_Cart();
-                WC()->cart->get_cart();
-            }
-            if (WC()->customer === null) {
-                WC()->customer = new WC_Customer(get_current_user_id());
-            }
+        if (!defined('REST_REQUEST') || !REST_REQUEST) return;
+
+        // wc_load_cart() is the official WC function for non-standard contexts (WC >= 3.6.4)
+        if (function_exists('wc_load_cart')) {
+            wc_load_cart();
+            return;
+        }
+
+        // Fallback for older WC versions
+        if (WC()->session === null) {
+            WC()->session = new WC_Session_Handler();
+            WC()->session->init();
+        }
+        if (WC()->cart === null) {
+            WC()->cart = new WC_Cart();
+            WC()->cart->get_cart();
+        }
+        if (WC()->customer === null) {
+            WC()->customer = new WC_Customer(get_current_user_id());
         }
     }
 

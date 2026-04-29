@@ -1563,7 +1563,7 @@
         }
 
         if (DC_RECARGAS_DATA.woocommerce_active) {
-            confirmBtn.textContent = 'Añadir al carrito';
+            confirmBtn.textContent = 'Proceder al pago';
         } else {
             confirmBtn.textContent = 'Confirmar recarga';
         }
@@ -1659,7 +1659,7 @@
             bill_ref: state.selectedBillRef || '',
         };
 
-        confirmBtn.textContent = 'Añadiendo...';
+        confirmBtn.textContent = 'Procesando pago...';
         setFeedbackConfirm('Preparando tu recarga...', 'info');
 
         try {
@@ -1672,14 +1672,14 @@
                 setFeedbackConfirm('Redirigiendo al checkout...', 'success');
                 window.location.href = res.redirect;
             } else {
-                setFeedbackConfirm(res.message || 'Error al añadir al carrito.', 'error');
+                setFeedbackConfirm(res.message || 'Error al procesar el pago.', 'error');
                 confirmBtn.disabled = false;
-                confirmBtn.textContent = 'Añadir al carrito';
+                confirmBtn.textContent = 'Proceder al pago';
             }
         } catch (err) {
-            setFeedbackConfirm(err.message || 'No se pudo añadir al carrito.', 'error');
+            setFeedbackConfirm(err.message || 'No se pudo procesar el pago.', 'error');
             confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Añadir al carrito';
+            confirmBtn.textContent = 'Proceder al pago';
         }
     }
 

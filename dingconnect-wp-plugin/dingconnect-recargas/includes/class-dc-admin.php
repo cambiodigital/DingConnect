@@ -1784,8 +1784,8 @@ class DC_Recargas_Admin {
             $active_tab = 'tab_landings';
         }
         ?>
+        <?php settings_errors('dc_recargas_options'); ?>
         <div class="wrap dc-admin-wrap">
-            <?php settings_errors('dc_recargas_options'); ?>
             <div class="dc-admin-hero">
                 <div class="dc-admin-hero__content">
                     <p><em>Hecho por Cambiodigital.net, personalizado para cubakilos.com.</em></p>
@@ -1817,6 +1817,41 @@ class DC_Recargas_Admin {
             <?php $this->render_notice($msg); ?>
 
             <style>
+                /* Posicionar avisos de WordPress arriba del contenedor principal */
+                .notice {
+                    margin: 0 0 20px 0 !important;
+                    position: relative;
+                    z-index: 1000;
+                }
+
+                .notice.notice-error {
+                    border-left: 4px solid #dc2626 !important;
+                    border-radius: 6px !important;
+                    background: #fee2e2 !important;
+                }
+
+                .notice.notice-error p {
+                    color: #991b1b !important;
+                }
+
+                .notice.notice-warning {
+                    border-left: 4px solid #ea8c55 !important;
+                    border-radius: 6px !important;
+                    background: #fef3c7 !important;
+                }
+
+                .notice.notice-success {
+                    border-left: 4px solid #16a34a !important;
+                    border-radius: 6px !important;
+                    background: #dcfce7 !important;
+                }
+
+                .notice.notice-info {
+                    border-left: 4px solid #0f4aa3 !important;
+                    border-radius: 6px !important;
+                    background: #eaf2ff !important;
+                }
+
                 .dc-admin-wrap {
                     --dc-bg: #f4f7fc;
                     --dc-card: #ffffff;
