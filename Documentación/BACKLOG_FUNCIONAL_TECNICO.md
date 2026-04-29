@@ -222,6 +222,8 @@ Una iniciativa se considera lista cuando cumple:
 142. Hotfix de estabilidad en admin `DingConnect CD`: la vista de edición de producto ahora evita evaluar `array_key_exists` sobre `$editing_bundle` nulo; con esto se previene `TypeError` fatal y deja de caer la pantalla `admin.php?page=dc-recargas` con error 500 al abrir pestañas sin bundle seleccionado.
 143. Compatibilidad de checkout con bundles legacy: el backend ahora resuelve `bundle_benefit` con prioridad `description -> receive -> benefits` y el endpoint `/products` para `source=saved` también usa fallback `description -> receive`, garantizando que el texto `Beneficios recibidos` llegue a carrito/checkout aun en productos antiguos.
 144. Enforcement payment-first restablecido en API REST: `POST /wp-json/dingconnect/v1/transfer` vuelve a bloquearse con `403` cuando `payment_mode=woocommerce`, forzando el flujo `add-to-cart -> checkout -> pago confirmado` y evitando bypass de recarga directa antes del pago.
+145. Hardening de checkout para carritos restaurados: los ítems DingConnect reconstruidos desde sesión ahora rehidratan `bundle_benefit`, `bundle_label`, `provider_name`, `public_price` y `public_price_currency` desde el bundle guardado cuando faltan en el carrito, evitando drift en checkout para productos legacy o sesiones previas.
+146. Compatibilidad de precio dinámico con CURCY/Multi Currency: el hook `woocommerce_before_calculate_totals` ya no se corta tras la primera pasada y normaliza el `Precio al público` desde la moneda comercial guardada hacia la moneda base de WooCommerce antes de `set_price()`, evitando que CURCY reconvierta de nuevo importes como `1,00 EUR` a valores erróneos durante el refresh del checkout.
 
 ## Backlog actualizado por impacto
 

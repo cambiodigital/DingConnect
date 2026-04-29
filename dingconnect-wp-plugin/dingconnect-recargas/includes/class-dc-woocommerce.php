@@ -338,6 +338,8 @@ class DC_Recargas_WooCommerce {
             }
         }
 
+        $this->hydrate_recarga_cart_item_data($session_data);
+
         return $session_data;
     }
 
@@ -459,6 +461,10 @@ class DC_Recargas_WooCommerce {
                 WC()->cart->cart_contents[$cart_item_key]['quantity'] = 1;
             }
 
+            $updated = true;
+        }
+
+        if ($this->hydrate_recarga_cart_item_data(WC()->cart->cart_contents[$cart_item_key])) {
             $updated = true;
         }
 
@@ -637,13 +643,25 @@ class DC_Recargas_WooCommerce {
     /** Set the dynamic price for recarga cart items. */
     public function set_custom_price($cart) {
         if (is_admin() && !defined('DOING_AJAX')) return;
-        if (did_action('woocommerce_before_calculate_totals') >= 2) return;
+        if (!$cart || !method_exists($cart, 'get_cart')) return;
 
-        foreach ($cart->get_cart() as $cart_item) {
+        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
             if (!empty($cart_item['dc_recarga']) && isset($cart_item['dc_send_value'])) {
+                $this->hydrate_recarga_cart_item_data($cart->cart_contents[$cart_item_key]);
+                $cart_item = $cart->cart_contents[$cart_item_key];
+
                 $public_price = isset($cart_item['dc_public_price']) ? (float) $cart_item['dc_public_price'] : 0.0;
-                $billing_price = $public_price > 0 ? $public_price : (float) $cart_item['dc_send_value'];
-                $cart_item['data']->set_price($billing_price);
+                $public_currency = (string) ($cart_item['dc_public_currency_iso'] ?? ($cart_item['dc_send_currency_iso'] ?? ''));
+                $send_value = isset($cart_item['dc_send_value']) ? (float) $cart_item['dc_send_value'] : 0.0;
+                $send_currency = (string) ($cart_item['dc_send_currency_iso'] ?? '');
+
+                $billing_price = $public_price > 0
+                    ? $this->normalize_price_for_store_currency($public_price, $public_currency)
+                    : $this->normalize_price_for_store_currency($send_value, $send_currency);
+
+                if (isset($cart_item['data']) && is_object($cart_item['data']) && method_exists($cart_item['data'], 'set_price')) {
+                    $cart_item['data']->set_price($billing_price);
+                }
             }
         }
     }
@@ -701,12 +719,158 @@ class DC_Recargas_WooCommerce {
             $label    = $cart_item['dc_bundle_label'] ?? 'Recarga';
             $benefit  = trim((string) ($cart_item['dc_bundle_benefit'] ?? ''));
             if ($benefit !== '') {
-                $label = $benefit;
+                return esc_html($benefit);
             }
             $provider = $cart_item['dc_provider_name'] ?? '';
             return esc_html($provider ? $provider . ' - ' . $label : $label);
         }
         return $name;
+    }
+
+    private function hydrate_recarga_cart_item_data(&$cart_item) {
+        if (!is_array($cart_item) || empty($cart_item['dc_recarga'])) {
+            return false;
+        }
+
+        $matched_bundle = $this->find_saved_bundle_for_cart_item($cart_item);
+        if (!is_array($matched_bundle)) {
+            return false;
+        }
+
+        $updated = false;
+
+        if (empty($cart_item['dc_bundle_id']) && !empty($matched_bundle['id'])) {
+            $cart_item['dc_bundle_id'] = sanitize_text_field((string) $matched_bundle['id']);
+            $updated = true;
+        }
+
+        if (empty($cart_item['dc_bundle_label']) && !empty($matched_bundle['label'])) {
+            $cart_item['dc_bundle_label'] = sanitize_text_field((string) $matched_bundle['label']);
+            $updated = true;
+        }
+
+        if (empty($cart_item['dc_provider_name']) && !empty($matched_bundle['provider_name'])) {
+            $cart_item['dc_provider_name'] = sanitize_text_field((string) $matched_bundle['provider_name']);
+            $updated = true;
+        }
+
+        if (empty($cart_item['dc_public_currency_iso']) && !empty($matched_bundle['public_price_currency'])) {
+            $cart_item['dc_public_currency_iso'] = strtoupper(sanitize_text_field((string) $matched_bundle['public_price_currency']));
+            $updated = true;
+        }
+
+        if ((!isset($cart_item['dc_public_price']) || (float) $cart_item['dc_public_price'] <= 0) && isset($matched_bundle['public_price'])) {
+            $stored_public_price = (float) $matched_bundle['public_price'];
+            if ($stored_public_price > 0) {
+                $cart_item['dc_public_price'] = $stored_public_price;
+                $updated = true;
+            }
+        }
+
+        $benefit_text = $this->extract_bundle_benefit_for_checkout($matched_bundle);
+        if ($benefit_text !== '' && empty($cart_item['dc_bundle_benefit'])) {
+            $cart_item['dc_bundle_benefit'] = $benefit_text;
+            $updated = true;
+        }
+
+        return $updated;
+    }
+
+    private function find_saved_bundle_for_cart_item(array $cart_item) {
+        $options = $this->api->get_options();
+        $bundles = (array) ($options['bundles'] ?? []);
+        if (empty($bundles)) {
+            return null;
+        }
+
+        $bundle_id = sanitize_text_field((string) ($cart_item['dc_bundle_id'] ?? ''));
+        $sku_code = sanitize_text_field((string) ($cart_item['dc_sku_code'] ?? ''));
+        $country_iso = strtoupper(sanitize_text_field((string) ($cart_item['dc_country_iso'] ?? '')));
+
+        if ($bundle_id !== '') {
+            foreach ($bundles as $bundle) {
+                if (!is_array($bundle)) {
+                    continue;
+                }
+
+                $candidate_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
+                if ($candidate_id !== '' && $candidate_id === $bundle_id) {
+                    return $bundle;
+                }
+            }
+        }
+
+        foreach ($bundles as $bundle) {
+            if (!is_array($bundle)) {
+                continue;
+            }
+
+            $candidate_sku = sanitize_text_field((string) ($bundle['sku_code'] ?? ''));
+            if ($candidate_sku === '' || $candidate_sku !== $sku_code) {
+                continue;
+            }
+
+            $candidate_country = strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? '')));
+            if ($country_iso !== '' && $candidate_country !== '' && $candidate_country !== $country_iso) {
+                continue;
+            }
+
+            return $bundle;
+        }
+
+        return null;
+    }
+
+    private function extract_bundle_benefit_for_checkout(array $bundle) {
+        $description = sanitize_text_field((string) ($bundle['description'] ?? ''));
+        if ($description !== '') {
+            return $description;
+        }
+
+        $legacy_receive = sanitize_text_field((string) ($bundle['receive'] ?? ''));
+        if ($legacy_receive !== '') {
+            return $legacy_receive;
+        }
+
+        $benefits = [];
+        foreach ((array) ($bundle['benefits'] ?? []) as $benefit) {
+            $clean = sanitize_text_field((string) $benefit);
+            if ($clean !== '') {
+                $benefits[] = $clean;
+            }
+        }
+
+        return !empty($benefits) ? implode(', ', $benefits) : '';
+    }
+
+    private function normalize_price_for_store_currency($amount, $amount_currency) {
+        $normalized_amount = (float) $amount;
+        if ($normalized_amount <= 0) {
+            return 0.0;
+        }
+
+        $source_currency = strtoupper(sanitize_text_field((string) $amount_currency));
+        $store_currency = strtoupper(sanitize_text_field((string) get_option('woocommerce_currency', '')));
+        if ($source_currency === '' || $store_currency === '' || $source_currency === $store_currency) {
+            return $normalized_amount;
+        }
+
+        if (!class_exists('WOOMULTI_CURRENCY_Data') || !method_exists('WOOMULTI_CURRENCY_Data', 'get_ins')) {
+            return $normalized_amount;
+        }
+
+        $multi_currency_settings = WOOMULTI_CURRENCY_Data::get_ins();
+        if (!$multi_currency_settings || !method_exists($multi_currency_settings, 'get_list_currencies')) {
+            return $normalized_amount;
+        }
+
+        $currencies = (array) $multi_currency_settings->get_list_currencies();
+        $source_rate = isset($currencies[$source_currency]['rate']) ? (float) $currencies[$source_currency]['rate'] : 0.0;
+        if ($source_rate <= 0) {
+            return $normalized_amount;
+        }
+
+        return $normalized_amount / $source_rate;
     }
 
     /**
