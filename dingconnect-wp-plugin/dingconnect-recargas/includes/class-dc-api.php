@@ -225,11 +225,37 @@ class DC_Recargas_API {
         $query = array_merge($query, $this->build_array_query('CountryIsos', array_map('strtoupper', (array) ($filters['country_isos'] ?? []))));
         $query = array_merge($query, $this->build_array_query('ProviderCodes', (array) ($filters['provider_codes'] ?? [])));
 
-        return $this->request('GET', 'GetPromotions', $query);
+        // Performance Optimization: Cache promotion responses to reduce API calls
+        $cache_key = 'dc_promotions_' . md5(wp_json_encode($query));
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $result = $this->request('GET', 'GetPromotions', $query);
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        }
+
+        return $result;
     }
 
     public function get_promotion_descriptions($language_codes = []) {
-        return $this->request('GET', 'GetPromotionDescriptions', $this->build_array_query('LanguageCodes', (array) $language_codes));
+        // Performance Optimization: Cache promotion descriptions to reduce API calls
+        $cache_key = 'dc_promo_desc_' . md5(wp_json_encode($language_codes));
+        $cached = get_transient($cache_key);
+        if (false !== $cached) {
+            return $cached;
+        }
+
+        $result = $this->request('GET', 'GetPromotionDescriptions', $this->build_array_query('LanguageCodes', (array) $language_codes));
+
+        if (!is_wp_error($result)) {
+            set_transient($cache_key, $result, 10 * MINUTE_IN_SECONDS);
+        }
+
+        return $result;
     }
 
     public function get_product_descriptions($sku_codes = [], $language_codes = []) {
