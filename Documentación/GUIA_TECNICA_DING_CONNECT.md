@@ -137,6 +137,9 @@ Nota operativa WooCommerce (abril 2026):
 - Si no se selecciona ninguna pasarela en esa lista, checkout conserva todas las pasarelas activas de WooCommerce.
 - Hardening de bypass REST: cuando `payment_mode=woocommerce`, el endpoint `POST /wp-json/dingconnect/v1/transfer` responde `403` y obliga a usar `POST /wp-json/dingconnect/v1/add-to-cart` + checkout.
 - Hardening de cumplimiento en despacho: antes de ejecutar `SendTransfer`, el backend valida que `order->payment_method` esté dentro de `woo_allowed_gateways`; si no coincide, marca el item como `blocked_gateway`, limpia reintentos pendientes y registra nota de orden para operación/soporte.
+- Política de estado de pedido post-pago: una vez pagada la orden, el estado WooCommerce se sincroniza por resultado agregado de recargas DingConnect: `completed` cuando todos los ítems están en estado exitoso, `processing` cuando hay ítems pendientes (`submitted/pending/processing/pending_retry`) y `on-hold` cuando existe al menos un ítem con error definitivo o escalado de soporte.
+- Trazabilidad extendida en la orden: cada evento operativo relevante (inicio de proceso post-pago, intento por ítem, lock anti-duplicado, reconciliación vía `ListTransferRecords`, reintento programado, decisión de política y transición de estado) se registra en notas del pedido para auditoría de soporte.
+- Operación manual desde admin (`Registros`): el monitor de pendientes soporta acciones de reintento por ítem (fila individual) y en lote (selección múltiple). Ambas rutas disparan el mismo mecanismo backend de reintento por ítem (`dc_recargas_retry_transfer`) y dejan nota explícita en el pedido para trazabilidad operativa.
 
 ### Nota operativa Wizard v2 (abril 2026)
 
@@ -191,6 +194,7 @@ Nota operativa WooCommerce (abril 2026):
 - En modo WooCommerce, `settings` y `bill_ref` ya no se pierden: se guardan en carrito/pedido y el despachador backend los incorpora a `SendTransfer` junto con la reconciliación previa por `ListTransferRecords`.
 - UX dinámica endurecida para payload real: el frontend procesa `ResultCode` y `ErrorCodes` de `EstimatePrices/LookupBills`, muestra mensajes accionables por código DingConnect y refleja estado de carga durante la estimación.
 - Coherencia de datos en productos con factura: al cambiar importe o `SettingDefinitions`, el frontend invalida `BillRef` y obliga a reconsulta para evitar enviar una factura obsoleta.
+- Regla de extensión WooCommerce: cualquier email personalizado que extienda `WC_Email` debe respetar exactamente las firmas del padre. En abril 2026 un override propio de `get_content_type()` sin el parámetro opcional esperado por WooCommerce provocó fatal error de carga del plugin en `wp-admin`.
 - Alcance exacto del flujo dinámico: estas capacidades avanzadas quedan plenamente activas cuando `/products` entrega catálogo live normalizado desde DingConnect. Si el shortcode trabaja sobre bundles guardados del admin, hoy el backend expone un contrato degradado (`ProviderCode` normalmente vacío, `IsRange = false`, `LookupBillsRequired = false`, `SettingDefinitions = []`), por lo que `provider-status`, `EstimatePrices`, `LookupBills` y campos dinámicos suelen no activarse.
 - Cambio mínimo recomendado para alinear runtime y documentación: al guardar un bundle desde catálogo live, persistir también `ProviderCode`, `Benefits`, `DescriptionMarkdown`, `ReadMoreMarkdown`, `LookupBillsRequired`, `SettingDefinitions`, `ValidationRegex`, `CustomerCareNumber`, `LogoUrl`, `PaymentTypes`, `RegionCodes`, `RedemptionMechanism`, `ProcessingMode` e indicador real de rango; después, hacer que `/products` reutilice esos campos cuando `source = saved`.
 - Presentación visual del paquete activo: la tarjeta pública usa `LogoUrl` del bundle seleccionado para mostrar el icono del paquete a la derecha del bloque de operador; como ese campo ya sale del contrato REST live y `source=saved`, la imagen se conserva al cambiar de paquete y al reutilizar bundles persistidos.
@@ -229,6 +233,10 @@ Nota operativa WooCommerce (abril 2026):
 - El asistente visual `mejoras-solicitud-interactiva.html` mantiene un diccionario ampliado de campos de producto API (live contract) con descripciones operativas para diseñar cambios de arquitectura end-to-end (API -> persistencia -> landing -> WooCommerce) antes de pedir implementación a la IA.
 - `Catálogo y alta` conserva metadatos ricos cuando un paquete se carga desde resultados API hacia alta manual (provider/region/pricing extendido/impuestos/rangos/flags/settings/payment types/UAT), de forma que el bundle guardado pueda reutilizar ese contrato en `source=saved`.
 - Contrato de moneda comercial en `source=saved`: `ReceiveCurrencyIso` debe priorizar `public_price_currency` (con fallback a `send_currency_iso`) para reflejar correctamente la moneda pública definida por negocio en frontend.
+- Regla de precio visible al cliente en shortcode público: la UI de selección y confirmación debe mostrar `Precio al público` (valor comercial) y no el coste interno de proveedor (`SendValue`).
+- Regla de consistencia fiscal para bundles guardados: en `source=saved`, `ReceiveValueExcludingTax` se normaliza al precio comercial para evitar residuos heredados en otra escala/moneda que distorsionen el resumen al cliente.
+- Regla contractual de precio dual en WooCommerce: `public_price/public_price_currency` se usan para importe cobrado y visualización de cliente (checkout, thank-you y email), mientras `send_value/send_currency_iso` se reservan para operación `SendTransfer` y diagnóstico backend.
+- Regla de auditoría en pedido: cada item de recarga debe persistir ambos planos de precio (`_dc_public_*` y `_dc_send_*`) para facilitar conciliación comercial vs técnica sin mezclar semánticas.
 - El asistente visual incluye nodo de auditoría `API -> Persistencia -> Landing` con estado por campo (`Persistido`, `Derivado`, `Pendiente`) para control rápido de cobertura contractual.
 - El asistente `mejoras-solicitud-interactiva.html` refleja explícitamente el orden operativo actual del plugin: `Buscar en API -> Hidratación en Alta manual -> Guardado en bundles -> REST /products -> Frontend shortcode -> WooCommerce`, para que los cambios de campos se diseñen sobre el flujo real y no sobre un esquema abstracto.
 - En `Buscar en API`, diferenciar `columnas visibles` vs `payload interno`: la tabla operativa muestra 8 columnas (Tipo, Operador, Beneficios, SKU, Coste, Moneda, Vigencia, Fuente), mientras el payload interno puede incluir más campos para hidratación/persistencia (por ejemplo settings/rangos/impuestos/provider metadata).
@@ -628,3 +636,13 @@ Mitigación aplicada en el plugin:
 
 1. Fallback de carga para detectar subcarpeta anidada con `glob("*/includes/class-dc-api.php")`.
 2. Si no se encuentran archivos requeridos, mostrar aviso en admin y evitar fatal en activación.
+
+## 19. Nota operativa: productos de rango por país y validación de importe
+
+- En `Catálogo y alta -> Buscar en API` existe filtro `Modo de monto` para separar productos de `rango` vs `fijo` dentro del país consultado.
+- Al crear bundle desde resultado API, el modal `Alta manual` permite ajustar `Monto mínimo` y `Monto máximo` del rango (coste DIN) antes de guardar.
+- En frontend público, los productos de rango mantienen input de importe y estimación (`EstimatePrices`) con validaciones de límites antes de confirmar.
+- En backend REST, tanto `POST /transfer` como `POST /add-to-cart` validan que `send_value` cumpla contrato del bundle guardado:
+  - producto de rango: `min <= send_value <= max`
+  - producto fijo: `send_value` debe coincidir con el valor configurado
+- Este guard rail evita bypass por manipulación de payload en cliente y mantiene consistencia con el precio/rango comercial definido en admin.

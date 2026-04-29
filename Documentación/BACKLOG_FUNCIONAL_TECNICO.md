@@ -211,6 +211,8 @@ Una iniciativa se considera lista cuando cumple:
 132. Flujo operativo de soporte en paneles por sección: los bloques inferiores de `Config`, `Catálogo`, `Productos`, `Landings` y `Registros` ahora muestran únicamente formulario de alta de soporte (sin listado inline), y la consulta centralizada queda en la pestaña `Soporte`; además, en `Landings` el formulario guarda subapartado (`Landings` o `Shortcodes dinámicos`) para diferenciar origen en el listado central.
 133. Edición compacta de shortcodes dinámicos en modal: `Editar shortcode dinámico` pasó a una única tabla operativa compacta para añadir/quitar bundles por fila (`Añadir`/`Quitar`), manteniendo reordenamiento drag and drop y destacado opcional, con filtros combinados por país, tipo de producto, texto y estado (`Todos`, `Solo en landing`, `Disponibles para añadir`).
 134. Navegación post-guardado en `Shortcodes dinámicos`: al guardar cambios desde el modal `Editar shortcode dinámico`, el admin ahora redirige a `Landings -> Shortcodes dinámicos` para mantener contexto operativo y evitar volver a la subpestaña general.
+135. Política de estados post-pago reforzada en WooCommerce para recargas: el pedido ahora se sincroniza automáticamente según resultado agregado por ítems DingConnect (`completed` si todo exitoso, `processing` si hay pendientes/reintentos, `on-hold` si existe error definitivo o escalado), y cada evento operativo (inicio post-pago, intentos, sync con `ListTransferRecords`, locks anti-duplicado, reintentos y decisiones de estado) queda trazado en notas del pedido.
+136. Operación de reintentos en `Registros` ampliada: el monitor de recargas pendientes ahora permite reintento manual por fila (ítem específico del pedido) y reintento masivo por selección múltiple, ambos con trazabilidad en notas de pedido y reutilizando el mismo flujo backend de retry/reconciliación para conservar política de correo y auditoría.
 
 ## Backlog actualizado por impacto
 
@@ -302,3 +304,26 @@ Avance implementado (27-04-2026) - Control de recarga manual desde admin:
 
 ## Optimizaciones de Rendimiento (Bolt)
 - **Cache de Promociones (29/04/2024):** Se añadió caché mediante `get_transient` y `set_transient` (10 minutos) a las llamadas `get_promotions` y `get_promotion_descriptions` en `class-dc-api.php` para reducir peticiones HTTP redundantes hacia el API de DingConnect.
+Corrección aplicada de compatibilidad WooCommerce (28-04-2026):
+
+- Se eliminó una sobrescritura incompatible de `get_content_type()` en el email personalizado `WC_DC_Email_Recarga_Confirmacion`, que podía provocar fatal error al cargar la jerarquía `WC_Email` y tumbar `wp-admin` tras subir el plugin.
+- Diagnóstico importante: este fallo NO estaba relacionado con el shim `dingconnect-recargas-hotfix.php`, sino con compatibilidad de herencia dentro de `includes/class-dc-email-recarga-confirmacion.php`.
+
+Corrección aplicada de precio comercial en frontend (28-04-2026):
+
+- El shortcode público ahora muestra el `Precio al público` en `Paquetes disponibles`, tarjeta de paquete activo y tarjeta de confirmación, usando el valor comercial (`ReceiveValue`) en lugar del coste interno (`SendValue`).
+- En respuestas `source=saved`, el backend normaliza `ReceiveValueExcludingTax` al precio comercial para evitar mostrar importes heredados fuera de escala/moneda (por ejemplo, `3000.00 EUR`) durante la confirmación.
+
+Corrección aplicada de normalización end-to-end comercial (28-04-2026):
+
+- El contrato de `POST /add-to-cart` ahora transporta `public_price` y `public_price_currency` además de `send_value`, separando explícitamente precio visible al cliente vs coste operativo DingConnect.
+- WooCommerce usa `public_price` para el total cobrado en carrito/checkout, pero conserva `send_value` para `SendTransfer` y trazabilidad de coste interno.
+- El pedido persiste ambos ejes (`_dc_public_price/_dc_public_currency_iso` y `_dc_send_value/_dc_send_currency_iso`) para auditoría clara en admin.
+- El correo de confirmación al cliente muestra `Precio pagado` y `Monto operación DingConnect` como campos distintos para evitar ambigüedad comercial.
+
+Corrección aplicada de operación de rango por país (28-04-2026):
+
+- En `Catálogo y alta -> Buscar en API` se añadió filtro operativo `Modo de monto` (`Todos`, `Solo rango`, `Solo fijo`) para localizar rápido productos de rango por país.
+- El modal `Alta manual` ahora permite ajustar explícitamente `Monto mínimo` y `Monto máximo` (coste DIN) antes de guardar el bundle, con sincronización automática de `is_range` y límites persistidos.
+- El frontend público mantiene entrada de importe para productos de rango y envía `country_iso` también en recarga directa para reforzar validación contractual en backend.
+- El backend REST (`transfer` y `add-to-cart`) valida monto contra bundle guardado: si es rango, exige límites mínimos/máximos; si es fijo, bloquea importes distintos al configurado.

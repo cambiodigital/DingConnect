@@ -133,9 +133,9 @@ class DC_Recargas_Frontend {
                             <button type="button" class="dc-country-btn" id="dc-country-btn">
                                 <span class="dc-country-flag" id="dc-country-flag"></span>
                                 <span class="dc-country-dial" id="dc-country-dial"></span>
-                                <svg class="dc-chevron-icon" viewBox="0 0 12 8" width="10" height="8"><path d="M1 1.5l5 5 5-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+                                <svg class="dc-chevron-icon" viewBox="0 0 12 8" width="10" height="8" aria-hidden="true"><path d="M1 1.5l5 5 5-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
                             </button>
-                            <input id="dc-phone" type="tel" inputmode="numeric" maxlength="15" placeholder="Número móvil" autocomplete="tel-national">
+                            <input id="dc-phone" type="tel" inputmode="numeric" maxlength="15" placeholder="Número móvil" autocomplete="tel-national" aria-label="Número móvil">
                         </div>
                         <div id="dc-loading" class="dc-loading" hidden>
                             <div class="dc-spinner"></div>
@@ -195,9 +195,9 @@ class DC_Recargas_Frontend {
                     <div class="dc-country-panel">
                         <div class="dc-country-panel-header">
                             <span>Selecciona país</span>
-                            <button type="button" class="dc-country-close" id="dc-country-close">&times;</button>
+                            <button type="button" class="dc-country-close" id="dc-country-close" aria-label="Cerrar selector de país">&times;</button>
                         </div>
-                        <input id="dc-country-search" type="text" class="dc-country-search" placeholder="Buscar país..." autocomplete="off">
+                        <input id="dc-country-search" type="text" class="dc-country-search" placeholder="Buscar país..." autocomplete="off" aria-label="Buscar país">
                         <div id="dc-country-list" class="dc-country-list"></div>
                     </div>
                 </div>

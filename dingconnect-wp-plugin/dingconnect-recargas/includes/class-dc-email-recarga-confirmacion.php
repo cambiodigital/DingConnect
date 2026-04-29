@@ -97,10 +97,20 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
 
         $send_value    = (float) $item->get_meta( '_dc_send_value' );
         $send_currency = (string) $item->get_meta( '_dc_send_currency_iso' );
+        $public_price = (float) $item->get_meta( '_dc_public_price' );
+        $public_currency = (string) $item->get_meta( '_dc_public_currency_iso' );
         $account       = (string) $item->get_meta( '_dc_account_number' );
         $provider      = (string) $item->get_meta( '_dc_provider_name' );
         $bundle        = (string) $item->get_meta( '_dc_bundle_label' );
         $country_iso   = (string) $item->get_meta( '_dc_country_iso' );
+
+        if ( $public_price <= 0 ) {
+          $public_price = $send_value;
+        }
+
+        if ( '' === $public_currency ) {
+          $public_currency = $send_currency;
+        }
 
         // PIN / providerRef desde receipt_params
         $receipt_params_raw = (string) $item->get_meta( '_dc_receipt_params' );
@@ -123,6 +133,8 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
             'receipt_text',
             'send_value',
             'send_currency',
+            'public_price',
+            'public_currency',
             'account',
             'provider',
             'bundle',
@@ -238,7 +250,8 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
               __( 'Operador',           'dingconnect-recargas' ) => $d['provider'],
               __( 'Paquete',            'dingconnect-recargas' ) => $d['bundle'],
               __( 'País',               'dingconnect-recargas' ) => $d['country_iso'],
-              __( 'Monto enviado',      'dingconnect-recargas' ) => $d['send_currency'] . ' ' . number_format( $d['send_value'], 2 ),
+              __( 'Precio pagado',      'dingconnect-recargas' ) => $d['public_currency'] . ' ' . number_format( $d['public_price'], 2 ),
+              __( 'Monto operación DingConnect', 'dingconnect-recargas' ) => $d['send_currency'] . ' ' . number_format( $d['send_value'], 2 ),
           ];
 
           if ( $d['receive_value'] > 0 ) {
@@ -344,7 +357,8 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
         $lines[] = sprintf( __( 'Operador:        %s', 'dingconnect-recargas' ), $d['provider'] );
         $lines[] = sprintf( __( 'Paquete:         %s', 'dingconnect-recargas' ), $d['bundle'] );
         $lines[] = sprintf( __( 'País:            %s', 'dingconnect-recargas' ), $d['country_iso'] );
-        $lines[] = sprintf( __( 'Monto enviado:   %s %.2f', 'dingconnect-recargas' ), $d['send_currency'], $d['send_value'] );
+        $lines[] = sprintf( __( 'Precio pagado:   %s %.2f', 'dingconnect-recargas' ), $d['public_currency'], $d['public_price'] );
+        $lines[] = sprintf( __( 'Monto operación: %s %.2f', 'dingconnect-recargas' ), $d['send_currency'], $d['send_value'] );
 
         if ( $d['receive_value'] > 0 ) {
             $lines[] = sprintf( __( 'Monto recibido:  %s %.2f', 'dingconnect-recargas' ), $d['receive_currency'], $d['receive_value'] );
@@ -408,7 +422,4 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
         return '';
     }
 
-    public function get_content_type() {
-        return 'text/html';
-    }
 }

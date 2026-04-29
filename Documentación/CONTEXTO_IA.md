@@ -150,6 +150,7 @@ Namespace actual: `dingconnect/v1`
 - Si WordPress reporta "12 caracteres de salida inesperados durante la activación", revisar primero la codificación UTF-8 BOM en los archivos PHP del plugin; cuatro archivos con BOM generan exactamente esos 12 bytes de salida antes de enviar cabeceras.
 - Si la URL de activación muestra una ruta anidada como `carpeta-extra/dingconnect-recargas/dingconnect-recargas.php`, tratarlo como síntoma de empaquetado no canónico o de copias duplicadas en `wp-content/plugins`.
 - Si el plugin se activa pero muestra el aviso de archivos requeridos faltantes, puede deberse a que el servidor Unix interpreta literalmente los `\` del ZIP de Windows. El bootstrap ahora tolera ambas variantes: `includes/class-dc-api.php` y `includes\class-dc-api.php`, usando `DIRECTORY_SEPARATOR` para ser agnóstico.
+- Si tras una actualización el admin completo cae en error 500 y el cambio reciente afecta emails WooCommerce, revisar primero compatibilidad de firmas al extender `WC_Email`; en abril 2026 la causa raíz no fue el shim `hotfix`, sino una sobrescritura incompatible de `get_content_type()` en `class-dc-email-recarga-confirmacion.php`.
 - Para repetir verificación de fase 6 en local, el flujo operativo recomendado ahora es `./scripts/staging-up.ps1` seguido de `./scripts/run-matrix-6.ps1`; si falla, validar primero disponibilidad de `docker compose` en la terminal activa.
 
 ## Riesgos y brechas actuales
