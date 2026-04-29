@@ -494,6 +494,15 @@ class DC_Recargas_REST {
             return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
         }
 
+        $options = $this->api->get_options();
+        $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
+        if ($payment_mode === 'woocommerce') {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => 'Transferencia directa deshabilitada en modo WooCommerce. Usa add-to-cart y completa el pago en checkout.',
+            ], 403);
+        }
+
         $params = $request->get_json_params();
         $country_iso = strtoupper(sanitize_text_field((string) ($params['country_iso'] ?? '')));
 
@@ -597,6 +606,23 @@ class DC_Recargas_REST {
         $amount_validation = $this->validate_send_value_against_bundle($sku_code, $country_iso, $send_value);
         if (is_wp_error($amount_validation)) {
             return $this->wp_error_to_rest_response($amount_validation);
+        }
+
+        $matched_bundle = $this->find_saved_bundle_for_cart($bundle_id, $sku_code, $country_iso);
+        if (is_array($matched_bundle)) {
+            $resolved_benefit = $this->extract_bundle_benefit_for_checkout($matched_bundle);
+            if ($bundle_benefit === '' && $resolved_benefit !== '') {
+                $bundle_benefit = $resolved_benefit;
+            }
+
+            if ($bundle_label === '') {
+                $bundle_label = sanitize_text_field((string) ($matched_bundle['label'] ?? ''));
+            }
+
+            $stored_public_currency = strtoupper(sanitize_text_field((string) ($matched_bundle['public_price_currency'] ?? '')));
+            if ($stored_public_currency !== '') {
+                $public_price_currency = $stored_public_currency;
+            }
         }
 
         // Precio comercial robusto: prioriza el precio público guardado del bundle.
@@ -978,6 +1004,11 @@ class DC_Recargas_REST {
                 ];
             }
 
+            $bundle_description = sanitize_text_field((string) ($bundle['description'] ?? ''));
+            if ($bundle_description === '') {
+                $bundle_description = sanitize_text_field((string) ($bundle['receive'] ?? ''));
+            }
+
             return [
                 'BundleId' => $bundle['id'] ?? '',
                 'SkuCode' => $bundle['sku_code'] ?? '',
@@ -1002,10 +1033,10 @@ class DC_Recargas_REST {
                 'TaxCalculation' => sanitize_text_field((string) ($bundle['tax_calculation'] ?? '')),
                 'DefaultDisplayText' => sanitize_text_field((string) ($bundle['default_display_text'] ?? ($bundle['label'] ?? ''))),
                 'DisplayText' => sanitize_text_field((string) ($bundle['display_text'] ?? ($bundle['label'] ?? ''))),
-                'Description' => $bundle['description'] ?? '',
+                'Description' => $bundle_description,
                 'DescriptionMarkdown' => sanitize_text_field((string) ($bundle['description_markdown'] ?? '')),
                 'ReadMoreMarkdown' => sanitize_text_field((string) ($bundle['read_more_markdown'] ?? '')),
-                'AdditionalInformation' => sanitize_text_field((string) ($bundle['additional_information'] ?? ($bundle['description'] ?? ''))),
+                'AdditionalInformation' => sanitize_text_field((string) ($bundle['additional_information'] ?? $bundle_description)),
                 'CountryIso' => strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? ''))),
                 'RegionCode' => sanitize_text_field((string) ($bundle['region_code'] ?? '')),
                 'RegionCodes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($bundle['region_codes'] ?? [])))),
@@ -1044,10 +1075,24 @@ class DC_Recargas_REST {
     private function resolve_public_price_for_cart($bundle_id, $sku_code, $country_iso, $incoming_public_price) {
         $incoming = (float) $incoming_public_price;
 
+        $matched = $this->find_saved_bundle_for_cart($bundle_id, $sku_code, $country_iso);
+        if (!is_array($matched)) {
+            return $incoming;
+        }
+
+        $stored_public = (float) ($matched['public_price'] ?? 0);
+        if ($stored_public > 0) {
+            return $stored_public;
+        }
+
+        return $incoming;
+    }
+
+    private function find_saved_bundle_for_cart($bundle_id, $sku_code, $country_iso) {
         $options = $this->api->get_options();
         $bundles = (array) ($options['bundles'] ?? []);
         if (empty($bundles)) {
-            return $incoming;
+            return null;
         }
 
         $bundle_id = sanitize_text_field((string) $bundle_id);
@@ -1091,15 +1136,40 @@ class DC_Recargas_REST {
         }
 
         if (!is_array($matched)) {
-            return $incoming;
+            return null;
         }
 
-        $stored_public = (float) ($matched['public_price'] ?? 0);
-        if ($stored_public > 0) {
-            return $stored_public;
+        return $matched;
+    }
+
+    private function extract_bundle_benefit_for_checkout($bundle) {
+        if (!is_array($bundle)) {
+            return '';
         }
 
-        return $incoming;
+        $description = sanitize_text_field((string) ($bundle['description'] ?? ''));
+        if ($description !== '') {
+            return $description;
+        }
+
+        $legacy_receive = sanitize_text_field((string) ($bundle['receive'] ?? ''));
+        if ($legacy_receive !== '') {
+            return $legacy_receive;
+        }
+
+        $benefits = [];
+        foreach ((array) ($bundle['benefits'] ?? []) as $benefit) {
+            $clean = sanitize_text_field((string) $benefit);
+            if ($clean !== '') {
+                $benefits[] = $clean;
+            }
+        }
+
+        if (!empty($benefits)) {
+            return implode(' · ', array_slice($benefits, 0, 3));
+        }
+
+        return sanitize_text_field((string) ($bundle['label'] ?? ''));
     }
 
     private function normalize_products_for_frontend($items, $country_iso, $query_context = []) {

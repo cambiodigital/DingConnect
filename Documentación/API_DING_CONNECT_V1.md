@@ -1115,6 +1115,8 @@ Intenta cancelar transferencias por sus `TransferId`.
 Devuelve descripciones legibles para los códigos de error.
 
 > Ding no eliminará códigos de error existentes, pero puede agregar nuevos. Los mensajes están orientados al agente, **no al usuario final**.
+>
+> En el frontend de Cubakilos, el bloque de confirmación previo al checkout no debe reutilizar copy técnico de estados `Submitted`, `Pending` o equivalentes. En ese punto el mensaje visible al cliente debe explicar el estado real del flujo: aún no se ha ejecutado la recarga y el siguiente paso es pasar al pago para completar la solicitud.
 
 **Respuesta 200:**
 

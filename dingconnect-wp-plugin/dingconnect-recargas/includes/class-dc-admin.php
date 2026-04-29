@@ -4160,7 +4160,6 @@ class DC_Recargas_Admin {
                     var maximumSendValueEl = document.getElementById('dc_maximum_send_value');
                     var minimumReceiveValueEl = document.getElementById('dc_minimum_receive_value');
                     var maximumReceiveValueEl = document.getElementById('dc_maximum_receive_value');
-                    var isRangeToggleEl = document.getElementById('dc_is_range_toggle');
                     var rangeMinVisibleEl = document.getElementById('dc_range_min_send_visible');
                     var rangeMaxVisibleEl = document.getElementById('dc_range_max_send_visible');
                     var customerFeeEl = document.getElementById('dc_customer_fee');
@@ -4221,13 +4220,11 @@ class DC_Recargas_Admin {
                     if (additionalInformationEl) additionalInformationEl.value = item.additional_information || '';
                     if (isPromotionEl) isPromotionEl.value = item.is_promotion ? '1' : '0';
                     if (isRangeEl) isRangeEl.value = item.is_range ? '1' : '0';
-                    if (isRangeToggleEl) isRangeToggleEl.checked = !!item.is_range;
                     if (allowManualAmountEl) {
                         var itemAllowManualAmount = Object.prototype.hasOwnProperty.call(item, 'allow_manual_amount')
                             ? !!item.allow_manual_amount
                             : !!item.is_range;
-                        allowManualAmountEl.checked = !!item.is_range && itemAllowManualAmount;
-                        allowManualAmountEl.disabled = !item.is_range;
+                        allowManualAmountEl.checked = itemAllowManualAmount;
                     }
                     if (rangeMinVisibleEl) rangeMinVisibleEl.value = item.minimum_send_value != null ? item.minimum_send_value : (item.send_value != null ? item.send_value : '');
                     if (rangeMaxVisibleEl) rangeMaxVisibleEl.value = item.maximum_send_value != null ? item.maximum_send_value : (item.send_value != null ? item.send_value : '');
@@ -4589,26 +4586,18 @@ class DC_Recargas_Admin {
                     var hiddenIsRangeEl = document.getElementById('dc_is_range');
                     var hiddenMinEl = document.getElementById('dc_minimum_send_value');
                     var hiddenMaxEl = document.getElementById('dc_maximum_send_value');
-                    var visibleRangeToggleEl = document.getElementById('dc_is_range_toggle');
                     var allowManualAmountToggleEl = document.getElementById('dc_allow_manual_amount_toggle');
                     var visibleMinEl = document.getElementById('dc_range_min_send_visible');
                     var visibleMaxEl = document.getElementById('dc_range_max_send_visible');
 
-                    if (!sendValueEl || !hiddenIsRangeEl || !hiddenMinEl || !hiddenMaxEl || !visibleRangeToggleEl || !visibleMinEl || !visibleMaxEl) {
+                    if (!sendValueEl || !hiddenIsRangeEl || !hiddenMinEl || !hiddenMaxEl || !allowManualAmountToggleEl || !visibleMinEl || !visibleMaxEl) {
                         return true;
                     }
 
                     var sendValue = Number(sendValueEl.value || 0);
                     var minValue = Number(visibleMinEl.value || 0);
                     var maxValue = Number(visibleMaxEl.value || 0);
-                    var wantsRange = !!visibleRangeToggleEl.checked;
-
-                    if (allowManualAmountToggleEl) {
-                        allowManualAmountToggleEl.disabled = !wantsRange;
-                        if (!wantsRange) {
-                            allowManualAmountToggleEl.checked = false;
-                        }
-                    }
+                    var wantsRange = !!allowManualAmountToggleEl.checked;
 
                     if (!isFinite(sendValue) || sendValue <= 0) {
                         return false;
@@ -4647,19 +4636,15 @@ class DC_Recargas_Admin {
 
                     var manualFormEl = document.querySelector('#dc-manual-modal form');
                     var sendValueEl = document.getElementById('dc_send_value');
-                    var rangeToggleEl = document.getElementById('dc_is_range_toggle');
                     var allowManualAmountToggleEl = document.getElementById('dc_allow_manual_amount_toggle');
                     var rangeMinEl = document.getElementById('dc_range_min_send_visible');
                     var rangeMaxEl = document.getElementById('dc_range_max_send_visible');
 
-                    if (!manualFormEl || !sendValueEl || !rangeToggleEl || !rangeMinEl || !rangeMaxEl) {
+                    if (!manualFormEl || !sendValueEl || !allowManualAmountToggleEl || !rangeMinEl || !rangeMaxEl) {
                         return;
                     }
 
-                    var controls = [sendValueEl, rangeToggleEl, rangeMinEl, rangeMaxEl];
-                    if (allowManualAmountToggleEl) {
-                        controls.push(allowManualAmountToggleEl);
-                    }
+                    var controls = [sendValueEl, allowManualAmountToggleEl, rangeMinEl, rangeMaxEl];
 
                     controls.forEach(function (el) {
                         el.addEventListener('input', syncManualRangeFields);
@@ -4755,23 +4740,13 @@ class DC_Recargas_Admin {
                         <td><input type="text" id="dc_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="USD" list="dc_dl_send_currency"></td>
                     </tr>
                     <tr>
-                        <th scope="row">Producto de rango</th>
-                        <td>
-                            <label>
-                                <input type="checkbox" id="dc_is_range_toggle" checked>
-                                Permitir monto variable para cliente final
-                            </label>
-                            <p class="description">Si se activa, el frontend permitirá que el cliente introduzca importe dentro del rango definido.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Entrada manual cliente</th>
+                        <th scope="row"><label for="dc_allow_manual_amount_toggle">Monto variable</label></th>
                         <td>
                             <label>
                                 <input type="checkbox" id="dc_allow_manual_amount_toggle" name="allow_manual_amount" value="1" checked>
-                                Cliente puede escribir el monto manualmente
+                                El cliente elige el importe dentro del rango
                             </label>
-                            <p class="description">Si se desactiva, el producto seguirá siendo de rango pero se usará solo el coste DIN fijo definido en este bundle.</p>
+                            <p class="description">Activa para que el cliente pueda introducir un importe libre entre el mínimo y máximo. Desactiva para enviar siempre el coste DIN fijo del bundle.</p>
                         </td>
                     </tr>
                     <tr>
@@ -5011,7 +4986,7 @@ class DC_Recargas_Admin {
                                 </td>
                             </tr>
                             <tr>
-                                <th scope="row">Entrada manual cliente</th>
+                                <th scope="row"><label for="dc_edit_allow_manual_amount">Monto variable</label></th>
                                 <td>
                                     <input type="hidden" name="allow_manual_amount" value="0">
                                     <?php
@@ -5023,9 +4998,9 @@ class DC_Recargas_Admin {
                                     ?>
                                     <label>
                                         <input type="checkbox" id="dc_edit_allow_manual_amount" name="allow_manual_amount" value="1" <?php checked($edit_allow_manual_checked); ?>>
-                                        Permitir que el cliente escriba monto manual
+                                        El cliente elige el importe dentro del rango
                                     </label>
-                                    <p class="description">Aplica solo si el producto es de rango. Si se desactiva, se exige el coste DIN fijo del bundle.</p>
+                                    <p class="description">Activa para que el cliente pueda introducir un importe libre entre el mínimo y máximo. Desactiva para enviar siempre el coste DIN fijo del bundle.</p>
                                 </td>
                             </tr>
                             <tr>

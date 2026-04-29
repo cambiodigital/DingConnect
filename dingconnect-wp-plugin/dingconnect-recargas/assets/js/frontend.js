@@ -1397,7 +1397,7 @@
                     nextTitle: 'Siguiente paso',
                     nextBody: 'No repitas la recarga mientras el estado siga Submitted, Pending o Processing. Espera el cierre final.',
                     confirmLabel: 'Entrega',
-                    confirmValue: 'Si el proveedor responde en diferido, DingConnect cerrara la operacion cuando reciba el estado final.',
+                    confirmValue: 'Tras confirmar, pasaras al pago para completar tu solicitud de recarga.',
                 },
                 error: {
                     title: 'Recarga no confirmada',
