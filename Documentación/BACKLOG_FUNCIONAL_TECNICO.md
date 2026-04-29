@@ -217,6 +217,8 @@ Una iniciativa se considera lista cuando cumple:
 138. Optimización de espacio en banda de filtros del modal: los cuatro filtros (`País`, `Tipo de producto`, `Buscar`, `Vista`) ahora fuerzan línea única con `nowrap`, ancho fijo por control para evitar reflow y tipografía reducida (11px etiquetas, 12px campos), ganando superficie adicional de tabla sin necesidad de scroll horizontal.
 139. Corrección de checkout WooCommerce para recargas: en carrito/checkout el detalle principal del ítem ahora prioriza `Beneficios` del producto (texto operativo editable en admin) en lugar de depender solo del nombre de paquete, manteniendo `Paquete` como dato complementario cuando difiere.
 140. Hardening de precio comercial al añadir al carrito: el flujo `add-to-cart` prioriza `Precio al público` del bundle guardado (incluyendo resolución por `bundle_id`) y solo cae a `Coste Ding` cuando el precio público es 0 o no existe, evitando cobros con importe técnico del proveedor.
+141. Control granular de monto manual por producto de rango: cada bundle ahora puede definir si permite entrada manual de importe en frontend o si fuerza el monto fijo configurado en admin; el switch global de `Config` se mantiene como guardia general y el backend valida ambos niveles para evitar inconsistencias en `transfer`/`add-to-cart`.
+142. Hotfix de estabilidad en admin `DingConnect CD`: la vista de edición de producto ahora evita evaluar `array_key_exists` sobre `$editing_bundle` nulo; con esto se previene `TypeError` fatal y deja de caer la pantalla `admin.php?page=dc-recargas` con error 500 al abrir pestañas sin bundle seleccionado.
 
 ## Backlog actualizado por impacto
 

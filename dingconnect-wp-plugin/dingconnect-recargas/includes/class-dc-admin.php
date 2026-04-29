@@ -1470,6 +1470,9 @@ class DC_Recargas_Admin {
         if ($has('is_range')) {
             $fields['is_range'] = $this->sanitize_bool_input($get('is_range')) ? 1 : 0;
         }
+        if ($has('allow_manual_amount')) {
+            $fields['allow_manual_amount'] = $this->sanitize_bool_input($get('allow_manual_amount')) ? 1 : 0;
+        }
         if ($has('lookup_bills_required')) {
             $fields['lookup_bills_required'] = $this->sanitize_bool_input($get('lookup_bills_required')) ? 1 : 0;
         }
@@ -1547,6 +1550,10 @@ class DC_Recargas_Admin {
         $bundle['minimum_receive_value'] = $minimum_receive_value;
         $bundle['maximum_receive_value'] = $maximum_receive_value;
         $bundle['is_range'] = $is_range ? 1 : 0;
+        $bundle_allow_manual_amount = array_key_exists('allow_manual_amount', $bundle)
+            ? !empty($bundle['allow_manual_amount'])
+            : $is_range;
+        $bundle['allow_manual_amount'] = ($is_range && $bundle_allow_manual_amount) ? 1 : 0;
 
         return $bundle;
     }
@@ -3434,8 +3441,8 @@ class DC_Recargas_Admin {
                                 </option>
                             </select>
                             <p class="description">
-                                Controla si el frontend permite que el cliente escriba monto en productos tipo rango.<br>
-                                Cuando está activada, se respetan límites mínimos y máximos definidos por DingConnect en el bundle guardado.
+                                Controla si el frontend permite monto manual para productos de rango.<br>
+                                Si está activada, cada producto define en su ficha si acepta entrada manual o solo monto fijo del bundle.
                             </p>
                         </td>
                     </tr>
@@ -4168,6 +4175,7 @@ class DC_Recargas_Admin {
                     var additionalInformationEl = document.getElementById('dc_additional_information');
                     var isPromotionEl = document.getElementById('dc_is_promotion');
                     var isRangeEl = document.getElementById('dc_is_range');
+                    var allowManualAmountEl = document.getElementById('dc_allow_manual_amount_toggle');
                     var benefitsEl = document.getElementById('dc_benefits');
                     var redemptionMechanismEl = document.getElementById('dc_redemption_mechanism');
                     var processingModeEl = document.getElementById('dc_processing_mode');
@@ -4214,6 +4222,13 @@ class DC_Recargas_Admin {
                     if (isPromotionEl) isPromotionEl.value = item.is_promotion ? '1' : '0';
                     if (isRangeEl) isRangeEl.value = item.is_range ? '1' : '0';
                     if (isRangeToggleEl) isRangeToggleEl.checked = !!item.is_range;
+                    if (allowManualAmountEl) {
+                        var itemAllowManualAmount = Object.prototype.hasOwnProperty.call(item, 'allow_manual_amount')
+                            ? !!item.allow_manual_amount
+                            : !!item.is_range;
+                        allowManualAmountEl.checked = !!item.is_range && itemAllowManualAmount;
+                        allowManualAmountEl.disabled = !item.is_range;
+                    }
                     if (rangeMinVisibleEl) rangeMinVisibleEl.value = item.minimum_send_value != null ? item.minimum_send_value : (item.send_value != null ? item.send_value : '');
                     if (rangeMaxVisibleEl) rangeMaxVisibleEl.value = item.maximum_send_value != null ? item.maximum_send_value : (item.send_value != null ? item.send_value : '');
                     if (benefitsEl) benefitsEl.value = JSON.stringify(item.benefits || []);
@@ -4575,6 +4590,7 @@ class DC_Recargas_Admin {
                     var hiddenMinEl = document.getElementById('dc_minimum_send_value');
                     var hiddenMaxEl = document.getElementById('dc_maximum_send_value');
                     var visibleRangeToggleEl = document.getElementById('dc_is_range_toggle');
+                    var allowManualAmountToggleEl = document.getElementById('dc_allow_manual_amount_toggle');
                     var visibleMinEl = document.getElementById('dc_range_min_send_visible');
                     var visibleMaxEl = document.getElementById('dc_range_max_send_visible');
 
@@ -4586,6 +4602,13 @@ class DC_Recargas_Admin {
                     var minValue = Number(visibleMinEl.value || 0);
                     var maxValue = Number(visibleMaxEl.value || 0);
                     var wantsRange = !!visibleRangeToggleEl.checked;
+
+                    if (allowManualAmountToggleEl) {
+                        allowManualAmountToggleEl.disabled = !wantsRange;
+                        if (!wantsRange) {
+                            allowManualAmountToggleEl.checked = false;
+                        }
+                    }
 
                     if (!isFinite(sendValue) || sendValue <= 0) {
                         return false;
@@ -4625,6 +4648,7 @@ class DC_Recargas_Admin {
                     var manualFormEl = document.querySelector('#dc-manual-modal form');
                     var sendValueEl = document.getElementById('dc_send_value');
                     var rangeToggleEl = document.getElementById('dc_is_range_toggle');
+                    var allowManualAmountToggleEl = document.getElementById('dc_allow_manual_amount_toggle');
                     var rangeMinEl = document.getElementById('dc_range_min_send_visible');
                     var rangeMaxEl = document.getElementById('dc_range_max_send_visible');
 
@@ -4632,7 +4656,12 @@ class DC_Recargas_Admin {
                         return;
                     }
 
-                    [sendValueEl, rangeToggleEl, rangeMinEl, rangeMaxEl].forEach(function (el) {
+                    var controls = [sendValueEl, rangeToggleEl, rangeMinEl, rangeMaxEl];
+                    if (allowManualAmountToggleEl) {
+                        controls.push(allowManualAmountToggleEl);
+                    }
+
+                    controls.forEach(function (el) {
                         el.addEventListener('input', syncManualRangeFields);
                         el.addEventListener('change', syncManualRangeFields);
                     });
@@ -4692,6 +4721,7 @@ class DC_Recargas_Admin {
                 <input type="hidden" id="dc_additional_information" name="additional_information" value="">
                 <input type="hidden" id="dc_is_promotion" name="is_promotion" value="0">
                 <input type="hidden" id="dc_is_range" name="is_range" value="0">
+                <input type="hidden" name="allow_manual_amount" value="0">
                 <input type="hidden" id="dc_benefits" name="benefits" value="[]">
                 <input type="hidden" id="dc_redemption_mechanism" name="redemption_mechanism" value="">
                 <input type="hidden" id="dc_processing_mode" name="processing_mode" value="">
@@ -4732,6 +4762,16 @@ class DC_Recargas_Admin {
                                 Permitir monto variable para cliente final
                             </label>
                             <p class="description">Si se activa, el frontend permitirá que el cliente introduzca importe dentro del rango definido.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Entrada manual cliente</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" id="dc_allow_manual_amount_toggle" name="allow_manual_amount" value="1" checked>
+                                Cliente puede escribir el monto manualmente
+                            </label>
+                            <p class="description">Si se desactiva, el producto seguirá siendo de rango pero se usará solo el coste DIN fijo definido en este bundle.</p>
                         </td>
                     </tr>
                     <tr>
@@ -4968,6 +5008,24 @@ class DC_Recargas_Admin {
                                 <td>
                                     <div id="dc_edit_profit_display" class="dc-profit-field" aria-live="polite"></div>
                                     <p class="description">Informativo: precio al público menos coste DING.</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Entrada manual cliente</th>
+                                <td>
+                                    <input type="hidden" name="allow_manual_amount" value="0">
+                                    <?php
+                                    $edit_allow_manual_checked = false;
+                                    if (is_array($editing_bundle)) {
+                                        $edit_allow_manual_checked = !empty($editing_bundle['allow_manual_amount'])
+                                            || (!array_key_exists('allow_manual_amount', $editing_bundle) && !empty($editing_bundle['is_range']));
+                                    }
+                                    ?>
+                                    <label>
+                                        <input type="checkbox" id="dc_edit_allow_manual_amount" name="allow_manual_amount" value="1" <?php checked($edit_allow_manual_checked); ?>>
+                                        Permitir que el cliente escriba monto manual
+                                    </label>
+                                    <p class="description">Aplica solo si el producto es de rango. Si se desactiva, se exige el coste DIN fijo del bundle.</p>
                                 </td>
                             </tr>
                             <tr>
@@ -6531,6 +6589,8 @@ class DC_Recargas_Admin {
                         return;
                     }
 
+                    var editAllowManualAmountEl = document.getElementById('dc_edit_allow_manual_amount');
+
                     if (editIdEl) editIdEl.value = bundle.id || '';
                     if (editCountryIsoEl) editCountryIsoEl.value = bundle.country_iso || '';
                     if (editLabelEl) editLabelEl.value = bundle.label || '';
@@ -6545,6 +6605,14 @@ class DC_Recargas_Admin {
                     if (editProviderEl) editProviderEl.value = bundle.provider_name || '';
                     if (editDescriptionEl) editDescriptionEl.value = bundle.description || '';
                     if (editIsActiveEl) editIsActiveEl.checked = !!Number(bundle.is_active || 0) || bundle.is_active === true;
+                    if (editAllowManualAmountEl) {
+                        var bundleIsRange = !!Number(bundle.is_range || 0) || bundle.is_range === true;
+                        var bundleAllowManualAmount = Object.prototype.hasOwnProperty.call(bundle, 'allow_manual_amount')
+                            ? (!!Number(bundle.allow_manual_amount || 0) || bundle.allow_manual_amount === true)
+                            : bundleIsRange;
+                        editAllowManualAmountEl.checked = bundleIsRange && bundleAllowManualAmount;
+                        editAllowManualAmountEl.disabled = !bundleIsRange;
+                    }
                     updateEditProfitDisplay();
                 }
 

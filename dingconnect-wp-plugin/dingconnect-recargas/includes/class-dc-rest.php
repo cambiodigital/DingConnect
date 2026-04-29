@@ -713,7 +713,10 @@ class DC_Recargas_REST {
         $max_send_value = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $bundle_send_value;
         $stored_is_range = !empty($bundle['is_range']);
         $calculated_is_range = abs($max_send_value - $min_send_value) > 0.00001;
-        $is_range = $allow_manual_amount && ($stored_is_range || $calculated_is_range);
+        $bundle_allow_manual_amount = array_key_exists('allow_manual_amount', $bundle)
+            ? !empty($bundle['allow_manual_amount'])
+            : true;
+        $is_range = $allow_manual_amount && $bundle_allow_manual_amount && ($stored_is_range || $calculated_is_range);
 
         if ($is_range) {
             if ($send_value < ($min_send_value - 0.00001) || $send_value > ($max_send_value + 0.00001)) {
@@ -922,7 +925,10 @@ class DC_Recargas_REST {
 
             $stored_is_range = !empty($bundle['is_range']);
             $calculated_is_range = abs($maximum_send_value - $minimum_send_value) > 0.00001 || abs($maximum_receive_value - $minimum_receive_value) > 0.00001;
-            $is_range = $allow_manual_amount && ($stored_is_range || $calculated_is_range);
+            $bundle_allow_manual_amount = array_key_exists('allow_manual_amount', $bundle)
+                ? !empty($bundle['allow_manual_amount'])
+                : true;
+            $is_range = $allow_manual_amount && $bundle_allow_manual_amount && ($stored_is_range || $calculated_is_range);
 
             if (!$is_range) {
                 $minimum_send_value = $send_value;
@@ -1008,6 +1014,7 @@ class DC_Recargas_REST {
                 'LogoUrl' => esc_url_raw((string) ($bundle['logo_url'] ?? '')),
                 'IsPromotion' => !empty($bundle['is_promotion']),
                 'IsRange' => $is_range,
+                'AllowManualAmount' => $bundle_allow_manual_amount,
                 'Benefits' => $benefits,
                 'ValidityPeriodIso' => sanitize_text_field((string) ($bundle['validity_raw'] ?? '')),
                 'RedemptionMechanism' => sanitize_text_field((string) ($bundle['redemption_mechanism'] ?? 'Immediate')),
