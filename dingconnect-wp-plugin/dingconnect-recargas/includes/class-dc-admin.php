@@ -2400,26 +2400,32 @@ class DC_Recargas_Admin {
 
                 .dc-landing-bundles-filters {
                     display: flex;
-                    flex-wrap: wrap;
-                    gap: 10px;
-                    margin-bottom: 10px;
+                    flex-wrap: nowrap;
+                    gap: 6px;
+                    margin-bottom: 8px;
+                    align-items: flex-end;
                 }
 
                 .dc-landing-bundles-filters label {
                     display: flex;
                     flex-direction: column;
-                    gap: 4px;
-                    font-size: 12px;
+                    gap: 2px;
+                    font-size: 11px;
                     color: #334155;
-                    font-weight: 600;
+                    font-weight: 700;
+                    white-space: nowrap;
                 }
 
                 .dc-landing-bundles-filters select {
-                    min-width: 150px;
+                    min-width: 0;
+                    width: 110px;
+                    font-size: 12px;
                 }
 
                 .dc-landing-bundles-filters .dc-landing-bundles-search {
-                    min-width: 240px;
+                    min-width: 0;
+                    width: 160px;
+                    font-size: 12px;
                 }
 
                 .dc-landings-subtabs {
@@ -2543,9 +2549,127 @@ class DC_Recargas_Admin {
                     color: #1d4ed8 !important;
                 }
 
+                #dc-edit-landing-modal .dc-landing-bundles-table-wrap {
+                    border: 1px solid #d9e3f0;
+                    border-radius: 10px;
+                    max-height: 360px;
+                    background: #ffffff;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundles-checklist {
+                    table-layout: fixed;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundles-checklist thead th {
+                    position: sticky;
+                    top: 0;
+                    z-index: 2;
+                    background: #f5f8fc;
+                    color: #1e3a5f;
+                    font-size: 11px;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    letter-spacing: 0.02em;
+                    border-bottom: 1px solid #d9e3f0;
+                    padding: 7px 8px;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundles-checklist tbody td {
+                    padding: 6px 8px;
+                    border-bottom: 1px solid #edf2f9;
+                    vertical-align: middle;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundles-checklist tbody tr:nth-child(even) > td {
+                    background: #fbfdff;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundle-product {
+                    min-width: 0;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundle-product strong {
+                    margin-bottom: 1px;
+                    font-size: 13px;
+                    color: #0f172a;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundle-product small {
+                    font-size: 11px;
+                    line-height: 1.2;
+                }
+
+                .dc-landing-bundle-meta {
+                    margin-top: 4px;
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 4px;
+                }
+
+                .dc-landing-bundle-meta span {
+                    display: inline-flex;
+                    align-items: center;
+                    border-radius: 999px;
+                    border: 1px solid #d5e2f2;
+                    background: #f3f7fc;
+                    color: #24466d;
+                    font-size: 10px;
+                    font-weight: 700;
+                    padding: 2px 7px;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundle-prices {
+                    white-space: normal;
+                    font-size: 11px;
+                    line-height: 1.25;
+                }
+
+                .dc-landing-bundle-price-line {
+                    display: inline-flex;
+                    align-items: center;
+                    border-radius: 7px;
+                    padding: 2px 7px;
+                    margin-bottom: 4px;
+                }
+
+                .dc-landing-bundle-price-line:last-child {
+                    margin-bottom: 0;
+                }
+
+                .dc-landing-bundle-price-line.is-din {
+                    background: #ecf5ff;
+                    color: #0f4aa3;
+                }
+
+                .dc-landing-bundle-price-line.is-public {
+                    background: #eefbf3;
+                    color: #166534;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundle-status {
+                    min-width: 58px;
+                    font-size: 10px;
+                    padding: 2px 7px;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundles-checklist__featured {
+                    font-size: 11px;
+                    gap: 3px;
+                }
+
+                #dc-edit-landing-modal .dc-landing-bundle-toggle {
+                    min-width: 76px;
+                    height: 28px;
+                    line-height: 26px;
+                    border-radius: 8px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    padding: 0 10px;
+                }
+
                 .dc-landing-bundles-edit-summary {
-                    margin: 8px 0 10px;
-                    font-size: 12px;
+                    margin: 6px 0 8px;
+                    font-size: 11px;
                     color: #475569;
                 }
 
@@ -3547,8 +3671,6 @@ class DC_Recargas_Admin {
                                     <tr>
                                         <th style="width:36px;"></th>
                                         <th class="dc-saved-col-logo">Logo</th>
-                                        <th>País</th>
-                                        <th>Tipo</th>
                                         <th>Producto</th>
                                         <th>Precios</th>
                                         <th>Estado</th>
@@ -3572,17 +3694,19 @@ class DC_Recargas_Admin {
                                     <tr class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" data-search-index="<?php echo esc_attr(strtolower(trim($bundle_label . ' ' . $bundle_sku . ' ' . $bundle_operator . ' ' . $bundle_country . ' ' . $bundle_fam_label))); ?>">
                                         <td><button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button></td>
                                         <td class="dc-saved-col-logo"><?php if (!empty($bundle['logo_url'])) : ?><img src="<?php echo esc_url($bundle['logo_url']); ?>" alt="<?php echo esc_attr($bundle_operator); ?>" width="28" height="28"><?php endif; ?></td>
-                                        <td><?php echo esc_html($bundle_country); ?></td>
-                                        <td><?php echo esc_html($bundle_fam_label); ?></td>
                                         <td class="dc-landing-bundle-product">
                                             <strong><?php echo esc_html($bundle_label); ?></strong>
                                             <small>SKU: <?php echo esc_html($bundle_sku); ?></small>
                                             <small>Operador: <?php echo esc_html($bundle_operator !== '' ? $bundle_operator : 'N/D'); ?></small>
+                                            <div class="dc-landing-bundle-meta">
+                                                <span><?php echo esc_html($bundle_country); ?></span>
+                                                <span><?php echo esc_html($bundle_fam_label); ?></span>
+                                            </div>
                                             <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>" aria-label="Seleccionar <?php echo esc_attr($bundle_label); ?>" hidden>
                                         </td>
                                         <td class="dc-landing-bundle-prices">
-                                            <div>DIN: <?php echo esc_html(number_format((float) ($bundle['send_value'] ?? 0), 2)); ?> <?php echo esc_html($bundle['send_currency_iso'] ?? ''); ?></div>
-                                            <div>Público: <?php echo esc_html(isset($bundle['public_price']) && $bundle['public_price'] !== '' ? number_format((float) $bundle['public_price'], 2) : ''); ?> <?php echo esc_html($bundle['public_price_currency'] ?? 'EUR'); ?></div>
+                                            <div class="dc-landing-bundle-price-line is-din">DIN: <?php echo esc_html(number_format((float) ($bundle['send_value'] ?? 0), 2)); ?> <?php echo esc_html($bundle['send_currency_iso'] ?? ''); ?></div>
+                                            <div class="dc-landing-bundle-price-line is-public">Público: <?php echo esc_html(isset($bundle['public_price']) && $bundle['public_price'] !== '' ? number_format((float) $bundle['public_price'], 2) : ''); ?> <?php echo esc_html($bundle['public_price_currency'] ?? 'EUR'); ?></div>
                                         </td>
                                         <td><span class="dc-landing-bundle-status <?php echo !empty($bundle['is_active']) ? 'is-active' : 'is-inactive'; ?>"><?php echo !empty($bundle['is_active']) ? 'Activo' : 'Inactivo'; ?></span></td>
                                         <td class="dc-landing-bundles-checklist__featured"><input type="radio" class="dc-edit-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>"> Dest.</td>
