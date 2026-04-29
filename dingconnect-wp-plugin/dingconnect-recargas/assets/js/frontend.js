@@ -328,6 +328,31 @@
         };
     }
 
+    function getBundleBenefitText(bundle) {
+        if (!bundle || typeof bundle !== 'object') {
+            return '';
+        }
+
+        var description = String(bundle.Description || '').trim();
+        if (description) {
+            return description;
+        }
+
+        var benefits = Array.isArray(bundle.Benefits)
+            ? bundle.Benefits.map(function (entry) {
+                return String(entry || '').trim();
+            }).filter(function (entry) {
+                return entry !== '';
+            })
+            : [];
+
+        if (benefits.length > 0) {
+            return benefits.join(' · ');
+        }
+
+        return String(bundle.DefaultDisplayText || bundle.SkuCode || '').trim();
+    }
+
     function getMandatorySettingDefinitions(bundle) {
         return Array.isArray(bundle && bundle.SettingDefinitions)
             ? bundle.SettingDefinitions.filter(function (definition) {
@@ -668,7 +693,18 @@
             });
         }
         var response = await fetch(url, opts);
-        var data = await response.json();
+        var raw = await response.text();
+        var data = null;
+        try {
+            data = raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            data = null;
+        }
+
+        if (!data && !response.ok) {
+            throw new Error('El servidor devolvio una respuesta invalida (HTTP ' + response.status + ').');
+        }
+
         if (!response.ok) throw new Error((data && data.message) || 'Error en la solicitud.');
         return data;
     }
@@ -1640,16 +1676,24 @@
     /* ===== WooCommerce: add to cart ===== */
     async function addToCart(selected) {
         var displayPrice = getDisplayPrice(selected);
+        var sendValue = Number(getCurrentSendValue(selected) || 0);
+        var receiveValue = Number((selected && selected.ReceiveValue) || 0);
+        var checkoutPublicPrice = receiveValue > 0 ? receiveValue : Number(displayPrice.amount || 0);
+        if (checkoutPublicPrice <= 0) {
+            checkoutPublicPrice = sendValue;
+        }
         var payload = {
             account_number: state.fullPhone,
             country_iso: state.country.iso,
             sku_code: selected.SkuCode,
-            send_value: Number(getCurrentSendValue(selected) || 0),
+            send_value: sendValue,
             send_currency_iso: selected.SendCurrencyIso || 'EUR',
-            public_price: Number(displayPrice.amount || 0),
+            public_price: checkoutPublicPrice,
             public_price_currency: String(displayPrice.currency || selected.SendCurrencyIso || 'EUR'),
             provider_name: getProviderLabel(selected),
             bundle_label: selected.DefaultDisplayText || selected.SkuCode,
+            bundle_benefit: getBundleBenefitText(selected),
+            bundle_id: String((selected && selected.BundleId) || ''),
             product_type: String(selected.ProductType || ''),
             redemption_mechanism: String(selected.RedemptionMechanism || ''),
             lookup_bills_required: !!selected.LookupBillsRequired,

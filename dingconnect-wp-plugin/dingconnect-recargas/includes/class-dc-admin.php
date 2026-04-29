@@ -773,6 +773,7 @@ class DC_Recargas_Admin {
         $submitted_non_retryable_codes = implode(',', array_values(array_unique($submitted_non_retryable_codes)));
 
         $submitted_escalation_email = sanitize_email((string) ($input['submitted_escalation_email'] ?? ''));
+        $hide_acfw_store_credit_dc_only = !empty($input['hide_acfw_store_credit_dc_only']) ? 1 : 0;
 
         // Convert recharge mode select to validate_only and allow_real_recharge flags
         $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
@@ -805,6 +806,7 @@ class DC_Recargas_Admin {
             'api_key' => $new_api_key,
             'payment_mode' => $mode,
             'woo_allowed_gateways' => $woo_allowed_gateways,
+            'hide_acfw_store_credit_dc_only' => $hide_acfw_store_credit_dc_only,
             'recharge_mode' => $recharge_mode,
             'manual_amount_mode' => $manual_amount_mode,
             'validate_only' => $validate_only,
@@ -1631,6 +1633,7 @@ class DC_Recargas_Admin {
             $wc_gateways = WC_Payment_Gateways::instance()->payment_gateways();
         }
         $selected_woo_gateways = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+        $hide_acfw_store_credit_dc_only = !empty($options['hide_acfw_store_credit_dc_only']);
         $landing_shortcodes = get_option('dc_recargas_landing_shortcodes', []);
         if (!is_array($landing_shortcodes)) {
             $landing_shortcodes = [];
@@ -3384,6 +3387,18 @@ class DC_Recargas_Admin {
                                     Si no seleccionas ninguna pasarela, se permitirán todas las pasarelas activas del checkout.
                                 </p>
                             <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Checkout DC-only: Store Credit</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="dc_recargas_options[hide_acfw_store_credit_dc_only]" value="1" <?php checked($hide_acfw_store_credit_dc_only); ?>>
+                                Ocultar bloque de "Store Credit" de Advanced Coupons cuando el carrito contiene solo recargas DingConnect.
+                            </label>
+                            <p class="description">
+                                Esta opción no desactiva Advanced Coupons globalmente. Solo oculta su bloque visual en checkout DC-only para evitar interferencia en el flujo de recargas.
+                            </p>
                         </td>
                     </tr>
                     <tr>

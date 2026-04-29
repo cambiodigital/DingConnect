@@ -27,6 +27,13 @@ class DC_Recargas_WooCommerce {
 
         // Add-to-cart is handled by DC_Recargas_REST, which delegates here via filter
 
+        // Compatibility mitigation: initialize PHP session early on checkout requests
+        // when third-party gateways (e.g., Tropipay) start sessions too late.
+        add_action('init', [$this, 'stabilize_checkout_php_session_compat'], 0);
+
+        // Initialize WC cart/session early for REST requests (must be on woocommerce_init, not inside the callback)
+        add_action('woocommerce_init', [$this, 'maybe_load_cart_for_rest']);
+
         // Add-to-cart filter (delegated from REST class)
         add_filter('dc_recargas_add_to_cart', [$this, 'handle_add_to_cart'], 10, 2);
 
@@ -34,6 +41,17 @@ class DC_Recargas_WooCommerce {
         add_action('woocommerce_before_calculate_totals', [$this, 'set_custom_price'], 20, 1);
         add_filter('woocommerce_get_item_data', [$this, 'display_cart_item_data'], 10, 2);
         add_filter('woocommerce_cart_item_name', [$this, 'custom_cart_item_name'], 10, 3);
+        add_filter('woocommerce_cart_item_thumbnail', [$this, 'suppress_recarga_cart_item_thumbnail'], 10, 3);
+        add_filter('woocommerce_is_purchasable', [$this, 'force_recarga_product_purchasable'], 10, 2);
+        add_filter('woocommerce_cart_item_is_purchasable', [$this, 'force_recarga_cart_item_purchasable'], 10, 3);
+        add_filter('woocommerce_cart_item_is_in_stock', [$this, 'force_recarga_cart_item_in_stock'], 10, 3);
+        add_filter('woocommerce_add_error', [$this, 'suppress_generic_cart_issue_error_for_dc_only'], 10, 1);
+        add_filter('woocommerce_get_cart_item_from_session', [$this, 'restore_recarga_cart_item_from_session'], 20, 3);
+        add_action('woocommerce_cart_loaded_from_session', [$this, 'normalize_dc_cart_after_session_load'], 20);
+        add_action('woocommerce_check_cart_items', [$this, 'diagnose_dc_cart_item_issues'], 1);
+        add_action('woocommerce_check_cart_items', [$this, 'cleanup_dc_only_generic_cart_notice_late'], 999);
+        add_action('woocommerce_before_checkout_form', [$this, 'cleanup_dc_only_generic_cart_notice_late'], 1);
+        add_action('woocommerce_checkout_process', [$this, 'cleanup_dc_only_generic_cart_notice_late'], 1);
 
         // Order meta
         add_action('woocommerce_checkout_create_order_line_item', [$this, 'save_order_item_meta'], 10, 4);
@@ -64,7 +82,11 @@ class DC_Recargas_WooCommerce {
         add_action('dc_recargas_retry_transfer', [$this, 'process_retry_transfer'], 10, 2);
 
         // Restrict checkout payment gateways for recarga carts
+        add_filter('woocommerce_payment_gateways', [$this, 'filter_gateway_classes_for_dc_checkout'], 1);
         add_filter('woocommerce_available_payment_gateways', [$this, 'filter_available_payment_gateways'], 20);
+
+        // Optional UI guard: hide Advanced Coupons store credit block in DC-only checkout
+        add_action('wp_footer', [$this, 'maybe_hide_acfw_store_credit_ui'], 99);
 
         // Manual reconciliation + voucher rendering
         add_filter('woocommerce_order_actions', [$this, 'register_manual_reconcile_action']);
@@ -84,6 +106,23 @@ class DC_Recargas_WooCommerce {
         $product_id = (int) get_option('dc_recargas_wc_product_id', 0);
 
         if ($product_id && get_post_status($product_id) === 'publish') {
+            $existing = wc_get_product($product_id);
+            if ($existing instanceof WC_Product_Simple) {
+                // Keep base recarga product always purchasable for checkout/cart validation.
+                $existing->set_catalog_visibility('hidden');
+                $existing->set_virtual(true);
+                $existing->set_sold_individually(false);
+                $existing->set_regular_price('0');
+                $existing->save();
+            }
+
+            // Stock flags via meta to stay compatible with local WP stubs.
+            update_post_meta($product_id, '_manage_stock', 'no');
+            update_post_meta($product_id, '_stock_status', 'instock');
+            update_post_meta($product_id, '_backorders', 'no');
+            delete_post_meta($product_id, '_thumbnail_id');
+            delete_post_meta($product_id, '_product_image_gallery');
+
             return $product_id;
         }
 
@@ -96,6 +135,12 @@ class DC_Recargas_WooCommerce {
         $product->set_sold_individually(false);
         $product_id = (int) $product->save();
 
+        update_post_meta($product_id, '_manage_stock', 'no');
+        update_post_meta($product_id, '_stock_status', 'instock');
+        update_post_meta($product_id, '_backorders', 'no');
+        delete_post_meta($product_id, '_thumbnail_id');
+        delete_post_meta($product_id, '_product_image_gallery');
+
         update_option('dc_recargas_wc_product_id', $product_id);
         return $product_id;
     }
@@ -104,26 +149,40 @@ class DC_Recargas_WooCommerce {
      * 2. WC Session Helper (critical for REST + WC cart)
      * ------------------------------------------------------------- */
 
+    /**
+     * Load WC cart/session for REST requests.
+     * Must run on woocommerce_init (early), not inside the REST callback.
+     */
+    public function maybe_load_cart_for_rest() {
+        if (!defined('REST_REQUEST') || !REST_REQUEST) return;
+        if (function_exists('wc_load_cart')) {
+            wc_load_cart();
+        }
+    }
+
+    /**
+     * Defensive session/cart bootstrap for REST add-to-cart.
+     * Some hosting/plugin combinations skip cart bootstrap before REST callbacks.
+     */
     private function ensure_wc_session() {
         if (!defined('REST_REQUEST') || !REST_REQUEST) return;
 
-        // wc_load_cart() is the official WC function for non-standard contexts (WC >= 3.6.4)
-        if (function_exists('wc_load_cart')) {
+        if (function_exists('wc_load_cart') && (WC()->cart === null || WC()->session === null)) {
             wc_load_cart();
-            return;
         }
 
-        // Fallback for older WC versions
         if (WC()->session === null) {
             WC()->session = new WC_Session_Handler();
             WC()->session->init();
         }
+
+        if (WC()->customer === null) {
+            WC()->customer = new WC_Customer(get_current_user_id());
+        }
+
         if (WC()->cart === null) {
             WC()->cart = new WC_Cart();
             WC()->cart->get_cart();
-        }
-        if (WC()->customer === null) {
-            WC()->customer = new WC_Customer(get_current_user_id());
         }
     }
 
@@ -134,6 +193,10 @@ class DC_Recargas_WooCommerce {
 
     public function handle_add_to_cart($result, $data) {
         $this->ensure_wc_session();
+
+        if (WC()->cart === null) {
+            return new WP_Error('dc_cart_unavailable', 'No se pudo inicializar el carrito en este entorno.');
+        }
 
         $product_type = sanitize_text_field((string) ($data['product_type'] ?? ''));
         $redemption_mechanism = sanitize_text_field((string) ($data['redemption_mechanism'] ?? ''));
@@ -164,6 +227,8 @@ class DC_Recargas_WooCommerce {
             'dc_public_currency_iso' => (string) ($data['public_price_currency'] ?? $data['send_currency_iso']),
             'dc_provider_name'    => $data['provider_name'],
             'dc_bundle_label'     => $data['bundle_label'],
+            'dc_bundle_benefit'   => $data['bundle_benefit'] ?? '',
+            'dc_bundle_id'        => $data['bundle_id'] ?? '',
             'dc_product_type'     => $product_type,
             'dc_redemption_mechanism' => $redemption_mechanism,
             'dc_lookup_bills_required' => $lookup_bills_required,
@@ -175,13 +240,394 @@ class DC_Recargas_WooCommerce {
             'unique_key'          => md5($data['account_number'] . $data['sku_code'] . microtime()),
         ];
 
+        if (function_exists('wc_clear_notices')) {
+            wc_clear_notices();
+        }
+
         $added = WC()->cart->add_to_cart($product_id, 1, 0, [], $cart_item_data);
 
         if (!$added) {
-            return new WP_Error('dc_cart_error', 'No se pudo añadir la recarga al carrito.');
+            return new WP_Error('dc_cart_error', $this->build_add_to_cart_error_message($product_id));
         }
 
         return true;
+    }
+
+    private function build_add_to_cart_error_message($product_id) {
+        $notice_messages = [];
+        if (function_exists('wc_get_notices')) {
+            $notices = wc_get_notices('error');
+            if (is_array($notices)) {
+                foreach ($notices as $notice) {
+                    $raw = is_array($notice) ? (string) ($notice['notice'] ?? '') : (string) $notice;
+                    $clean = trim(wp_strip_all_tags($raw));
+                    if ($clean !== '') {
+                        $notice_messages[] = $clean;
+                    }
+                }
+            }
+        }
+
+        if (function_exists('wc_clear_notices')) {
+            wc_clear_notices();
+        }
+
+        if (!empty($notice_messages)) {
+            return implode(' | ', array_slice($notice_messages, 0, 2));
+        }
+
+        $product = function_exists('wc_get_product') ? wc_get_product($product_id) : null;
+        if (!$product) {
+            return 'No se pudo añadir la recarga al carrito (producto base no disponible).';
+        }
+
+        if (!$product->is_purchasable()) {
+            return 'No se pudo añadir la recarga al carrito (producto no comprable en este entorno).';
+        }
+
+        return 'No se pudo añadir la recarga al carrito.';
+    }
+
+    public function force_recarga_product_purchasable($is_purchasable, $product) {
+        if (!$product || !is_object($product) || !method_exists($product, 'get_id')) {
+            return $is_purchasable;
+        }
+
+        $recarga_product_id = (int) get_option('dc_recargas_wc_product_id', 0);
+        if ($recarga_product_id > 0 && (int) $product->get_id() === $recarga_product_id) {
+            return true;
+        }
+
+        return $is_purchasable;
+    }
+
+    public function force_recarga_cart_item_purchasable($is_purchasable, $values, $product) {
+        if (!empty($values['dc_recarga'])) {
+            return true;
+        }
+        return $is_purchasable;
+    }
+
+    public function force_recarga_cart_item_in_stock($is_in_stock, $values, $product) {
+        if (!empty($values['dc_recarga'])) {
+            return true;
+        }
+        return $is_in_stock;
+    }
+
+    public function restore_recarga_cart_item_from_session($session_data, $values, $cart_item_key) {
+        $is_dc_recarga = !empty($session_data['dc_recarga']) || !empty($values['dc_recarga']);
+        if (!$is_dc_recarga) {
+            return $session_data;
+        }
+
+        $product_id = (int) ($session_data['product_id'] ?? 0);
+        $product = $product_id > 0 ? wc_get_product($product_id) : null;
+        if (!$product || !$product->exists()) {
+            $product_id = $this->get_or_create_base_product();
+            $product = $product_id > 0 ? wc_get_product($product_id) : null;
+        }
+
+        if ($product && $product->exists()) {
+            $session_data['product_id'] = (int) $product->get_id();
+            $session_data['variation_id'] = 0;
+            $session_data['data'] = $product;
+            $session_data['dc_recarga'] = true;
+            if (empty($session_data['quantity']) || (int) $session_data['quantity'] < 1) {
+                $session_data['quantity'] = 1;
+            }
+        }
+
+        return $session_data;
+    }
+
+    public function diagnose_dc_cart_item_issues() {
+        if (!WC()->cart) {
+            return;
+        }
+
+        $has_dc = false;
+        $issues = [];
+        $healed = false;
+
+        foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
+            if (empty($cart_item['dc_recarga'])) {
+                continue;
+            }
+
+            $has_dc = true;
+            $item_issues = [];
+            $product = $cart_item['data'] ?? null;
+
+            if (!$product || !is_object($product) || !method_exists($product, 'exists') || !$product->exists()) {
+                $base_product_id = $this->get_or_create_base_product();
+                $base_product = $base_product_id > 0 ? wc_get_product($base_product_id) : null;
+                if ($base_product && $base_product->exists()) {
+                    WC()->cart->cart_contents[$cart_item_key]['product_id'] = (int) $base_product->get_id();
+                    WC()->cart->cart_contents[$cart_item_key]['variation_id'] = 0;
+                    WC()->cart->cart_contents[$cart_item_key]['data'] = $base_product;
+                    $product = $base_product;
+                    $healed = true;
+                } else {
+                    $item_issues[] = 'missing_product';
+                }
+            }
+
+            if (!$product || !is_object($product) || !method_exists($product, 'is_purchasable') || !$product->is_purchasable()) {
+                $item_issues[] = 'not_purchasable';
+            }
+
+            if (!$product || !is_object($product) || !method_exists($product, 'is_in_stock') || !$product->is_in_stock()) {
+                $item_issues[] = 'out_of_stock';
+            }
+
+            if (!empty($item_issues)) {
+                $issues[] = [
+                    'cart_item_key' => (string) $cart_item_key,
+                    'product_id' => (int) ($cart_item['product_id'] ?? 0),
+                    'sku_code' => (string) ($cart_item['dc_sku_code'] ?? ''),
+                    'issues' => array_values(array_unique($item_issues)),
+                ];
+            }
+        }
+
+        if ($healed && method_exists(WC()->cart, 'set_session')) {
+            WC()->cart->set_session();
+        }
+
+        if (!$has_dc) {
+            return;
+        }
+
+        // Heartbeat log: confirms the checkout validator runs for DC carts in production.
+        error_log('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
+            'issues_count' => count($issues),
+            'has_dc_only_cart' => $this->cart_has_only_recargas(),
+        ]));
+
+        if (empty($issues)) {
+            $this->relax_generic_dc_cart_notice_if_needed();
+            return;
+        }
+
+        $error_notices = [];
+        if (function_exists('wc_get_notices')) {
+            foreach ((array) wc_get_notices('error') as $notice) {
+                $raw = is_array($notice) ? (string) ($notice['notice'] ?? '') : (string) $notice;
+                $clean = trim(wp_strip_all_tags($raw));
+                if ($clean !== '') {
+                    $error_notices[] = $clean;
+                }
+            }
+        }
+
+        error_log('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
+            'issues' => $issues,
+            'error_notices' => array_values(array_unique($error_notices)),
+        ]));
+
+        $this->relax_generic_dc_cart_notice_if_needed();
+    }
+
+    public function normalize_dc_cart_after_session_load($cart) {
+        if (!$cart || !method_exists($cart, 'get_cart')) {
+            return;
+        }
+
+        $updated = false;
+        foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
+            if (empty($cart_item['dc_recarga'])) {
+                continue;
+            }
+
+            $product = $cart_item['data'] ?? null;
+            if ($product && is_object($product) && method_exists($product, 'exists') && $product->exists()) {
+                continue;
+            }
+
+            $base_product_id = $this->get_or_create_base_product();
+            $base_product = $base_product_id > 0 ? wc_get_product($base_product_id) : null;
+            if (!$base_product || !$base_product->exists()) {
+                continue;
+            }
+
+            WC()->cart->cart_contents[$cart_item_key]['product_id'] = (int) $base_product->get_id();
+            WC()->cart->cart_contents[$cart_item_key]['variation_id'] = 0;
+            WC()->cart->cart_contents[$cart_item_key]['data'] = $base_product;
+            WC()->cart->cart_contents[$cart_item_key]['dc_recarga'] = true;
+            if (empty(WC()->cart->cart_contents[$cart_item_key]['quantity']) || (int) WC()->cart->cart_contents[$cart_item_key]['quantity'] < 1) {
+                WC()->cart->cart_contents[$cart_item_key]['quantity'] = 1;
+            }
+
+            $updated = true;
+        }
+
+        if ($updated && method_exists($cart, 'set_session')) {
+            $cart->set_session();
+            error_log('[DingConnect][cart_loaded_from_session] normalizacion aplicada a items de recarga');
+        }
+    }
+
+    public function cleanup_dc_only_generic_cart_notice_late() {
+        $this->relax_generic_dc_cart_notice_if_needed();
+    }
+
+    public function stabilize_checkout_php_session_compat() {
+        if (is_admin()) {
+            return;
+        }
+
+        $is_checkout_page = function_exists('is_checkout') && is_checkout();
+        $wc_ajax = isset($_REQUEST['wc-ajax']) ? sanitize_key((string) wp_unslash($_REQUEST['wc-ajax'])) : '';
+        $is_checkout_ajax = in_array($wc_ajax, ['checkout', 'update_order_review'], true);
+
+        if (!$is_checkout_page && !$is_checkout_ajax) {
+            return;
+        }
+
+        if (function_exists('session_status') && session_status() === PHP_SESSION_NONE) {
+            @session_start();
+            if (function_exists('session_status') && session_status() === PHP_SESSION_ACTIVE) {
+                error_log('[DingConnect][checkout_env] php_session_iniciada_temprano_para_compatibilidad_checkout');
+            }
+        }
+    }
+
+    public function suppress_generic_cart_issue_error_for_dc_only($message) {
+        if (!$this->is_dc_only_checkout_context()) {
+            return $message;
+        }
+
+        $clean = trim(wp_strip_all_tags((string) $message));
+        $is_suppressible_checkout_notice = $this->is_suppressible_dc_only_checkout_notice($clean);
+
+        if ($is_suppressible_checkout_notice) {
+            error_log('[DingConnect][checkout_cart_validation] generic_error_suppressed_at_source');
+            return '';
+        }
+
+        if ($clean !== '') {
+            error_log('[DingConnect][checkout_cart_validation] notice_no_suprimido: ' . $clean);
+        }
+
+        return $message;
+    }
+
+    private function relax_generic_dc_cart_notice_if_needed() {
+        if (!$this->is_dc_only_checkout_context() || !function_exists('wc_get_notices') || !function_exists('wc_clear_notices') || !function_exists('wc_add_notice')) {
+            return;
+        }
+
+        $errors = (array) wc_get_notices('error');
+        if (empty($errors)) {
+            return;
+        }
+
+        $keep = [];
+        $removed = 0;
+
+        foreach ($errors as $notice) {
+            $raw = is_array($notice) ? (string) ($notice['notice'] ?? '') : (string) $notice;
+            $clean = trim(wp_strip_all_tags($raw));
+            $is_generic_cart_issue = $this->is_suppressible_dc_only_checkout_notice($clean);
+
+            if ($is_generic_cart_issue) {
+                $removed++;
+                continue;
+            }
+
+            $keep[] = $clean;
+        }
+
+        if ($removed < 1) {
+            return;
+        }
+
+        wc_clear_notices();
+        foreach ($keep as $message) {
+            if ($message !== '') {
+                wc_add_notice($message, 'error');
+            }
+        }
+
+        error_log('[DingConnect][checkout_cart_validation] notice_generico_carrito_removido para carrito DC-only: ' . (string) $removed);
+    }
+
+    private function is_suppressible_dc_only_checkout_notice($message) {
+        $clean = trim((string) $message);
+        if ($clean === '') {
+            return false;
+        }
+
+        $decoded = html_entity_decode($clean, ENT_QUOTES, 'UTF-8');
+        $normalized_raw = function_exists('remove_accents') ? remove_accents($decoded) : $decoded;
+        $normalized = strtolower($normalized_raw);
+        $normalized = preg_replace('/\s+/u', ' ', $normalized);
+        $normalized = trim((string) $normalized);
+
+        $patterns = [
+            'problemas con los articulos de tu carrito',
+            'problemas con algunos articulos de tu carrito',
+            'vuelve a la pagina del carrito',
+            'resuelve los problemas antes de pagar',
+            'para poder hacer un pedido',
+            'el total del carro de compra debe ser de al menos',
+            'el total del carrito debe ser de al menos',
+            'pedido minimo',
+            'compra minima',
+            'problems with the items in your cart',
+            'please go back to the cart page',
+            'before checking out',
+            'minimum order',
+            'must be at least',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (strpos($normalized, $pattern) !== false) {
+                return true;
+            }
+        }
+
+        $has_cart_problem = (strpos($normalized, 'problemas con') !== false || strpos($normalized, 'problems with') !== false)
+            && (strpos($normalized, 'articulos de tu carrito') !== false || strpos($normalized, 'items in your cart') !== false);
+        $has_return_to_cart = strpos($normalized, 'vuelve a la pagina del carrito') !== false
+            || strpos($normalized, 'please go back to the cart page') !== false;
+        $has_minimum_order_problem = (strpos($normalized, 'pedido') !== false || strpos($normalized, 'order') !== false)
+            && ((strpos($normalized, 'al menos') !== false) || (strpos($normalized, 'at least') !== false) || (strpos($normalized, 'minim') !== false));
+        $has_cart_total_minimum = (strpos($normalized, 'total del carro de compra') !== false || strpos($normalized, 'total del carrito') !== false)
+            && (strpos($normalized, 'al menos') !== false || strpos($normalized, 'at least') !== false);
+
+        if ($has_cart_problem || ($has_return_to_cart && strpos($normalized, 'pagar') !== false) || $has_minimum_order_problem || $has_cart_total_minimum) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private function is_dc_only_checkout_context() {
+        if ($this->cart_has_only_recargas()) {
+            return true;
+        }
+
+        if (!function_exists('WC') || !WC() || !WC()->session) {
+            return false;
+        }
+
+        $session_cart = (array) WC()->session->get('cart', []);
+        if (empty($session_cart)) {
+            return false;
+        }
+
+        $has_dc = false;
+        foreach ($session_cart as $item) {
+            $is_dc = !empty($item['dc_recarga']);
+            if (!$is_dc) {
+                return false;
+            }
+            $has_dc = true;
+        }
+
+        return $has_dc;
     }
 
     /* ---------------------------------------------------------------
@@ -206,10 +652,20 @@ class DC_Recargas_WooCommerce {
     public function display_cart_item_data($item_data, $cart_item) {
         if (empty($cart_item['dc_recarga'])) return $item_data;
 
+        $benefit_text = trim((string) ($cart_item['dc_bundle_benefit'] ?? ''));
+        $bundle_label = trim((string) ($cart_item['dc_bundle_label'] ?? ''));
+
         $item_data[] = ['key' => 'País',     'value' => strtoupper($cart_item['dc_country_iso'] ?? '')];
         $item_data[] = ['key' => 'Teléfono', 'value' => $cart_item['dc_account_number'] ?? ''];
         $item_data[] = ['key' => 'Operador', 'value' => $cart_item['dc_provider_name'] ?? ''];
-        $item_data[] = ['key' => 'Paquete',  'value' => $cart_item['dc_bundle_label'] ?? ''];
+
+        if ($benefit_text !== '') {
+            $item_data[] = ['key' => 'Beneficios', 'value' => $benefit_text];
+        }
+
+        if ($bundle_label !== '' && strcasecmp($bundle_label, $benefit_text) !== 0) {
+            $item_data[] = ['key' => 'Paquete', 'value' => $bundle_label];
+        }
 
         $public_price = isset($cart_item['dc_public_price']) ? (float) $cart_item['dc_public_price'] : 0.0;
         $public_currency = (string) ($cart_item['dc_public_currency_iso'] ?? ($cart_item['dc_send_currency_iso'] ?? ''));
@@ -243,10 +699,25 @@ class DC_Recargas_WooCommerce {
     public function custom_cart_item_name($name, $cart_item, $cart_item_key) {
         if (!empty($cart_item['dc_recarga'])) {
             $label    = $cart_item['dc_bundle_label'] ?? 'Recarga';
+            $benefit  = trim((string) ($cart_item['dc_bundle_benefit'] ?? ''));
+            if ($benefit !== '') {
+                $label = $benefit;
+            }
             $provider = $cart_item['dc_provider_name'] ?? '';
             return esc_html($provider ? $provider . ' - ' . $label : $label);
         }
         return $name;
+    }
+
+    /**
+     * Avoid media attachment metadata lookups for synthetic recarga items.
+     */
+    public function suppress_recarga_cart_item_thumbnail($thumbnail, $cart_item, $cart_item_key) {
+        if (!empty($cart_item['dc_recarga'])) {
+            return '';
+        }
+
+        return $thumbnail;
     }
 
     /* ---------------------------------------------------------------
@@ -267,6 +738,7 @@ class DC_Recargas_WooCommerce {
         $item->add_meta_data('_dc_public_currency_iso', $values['dc_public_currency_iso'] ?? ($values['dc_send_currency_iso'] ?? ''), true);
         $item->add_meta_data('_dc_provider_name',     $values['dc_provider_name'] ?? '', true);
         $item->add_meta_data('_dc_bundle_label',      $values['dc_bundle_label'] ?? '', true);
+        $item->add_meta_data('_dc_bundle_benefit',    $values['dc_bundle_benefit'] ?? '', true);
         $item->add_meta_data('_dc_product_type',      $values['dc_product_type'] ?? '', true);
         $item->add_meta_data('_dc_redemption_mechanism', $values['dc_redemption_mechanism'] ?? '', true);
         $item->add_meta_data('_dc_lookup_bills_required', !empty($values['dc_lookup_bills_required']) ? 'yes' : '', true);
@@ -326,6 +798,10 @@ class DC_Recargas_WooCommerce {
      * regular WooCommerce products.
      */
     private function cart_has_only_recargas() {
+        // WC cart is not ready before wp_loaded. Calling get_cart() before that
+        // triggers wc_doing_it_wrong and cascades into other early-call errors
+        // (e.g. when Mollie fires woocommerce_payment_gateways during woocommerce_init).
+        if (!did_action('wp_loaded')) return false;
         if (!WC()->cart) return false;
         $items = WC()->cart->get_cart();
         if (empty($items)) return false;
@@ -357,9 +833,195 @@ class DC_Recargas_WooCommerce {
 
         $allowed_map = array_fill_keys($allowed, true);
 
-        return array_filter($gateways, function ($gateway, $gateway_id) use ($allowed_map) {
+        $filtered = array_filter($gateways, function ($gateway, $gateway_id) use ($allowed_map) {
             return isset($allowed_map[sanitize_key((string) $gateway_id)]);
         }, ARRAY_FILTER_USE_BOTH);
+
+        if (empty($filtered)) {
+            error_log('[DingConnect][checkout_gateways] allowed_gateways configuradas sin coincidencias disponibles; se usa fallback a gateways activos de WooCommerce');
+            return $gateways;
+        }
+
+        error_log('[DingConnect][checkout_gateways] gateways aplicadas para recarga: ' . implode(',', array_keys($filtered)));
+        return $filtered;
+    }
+
+    public function filter_gateway_classes_for_dc_checkout($gateway_classes) {
+        if (!is_array($gateway_classes) || empty($gateway_classes)) {
+            return $gateway_classes;
+        }
+
+        if (!$this->is_checkout_request_context() || !$this->is_dc_only_checkout_context()) {
+            return $gateway_classes;
+        }
+
+        $options = $this->api->get_options();
+        $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
+        if ($payment_mode !== 'woocommerce') {
+            return $gateway_classes;
+        }
+
+        $allowed = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+        if (empty($allowed)) {
+            return $gateway_classes;
+        }
+
+        $tropipay_allowed = in_array('tropipay', $allowed, true) || in_array('wc_tropipay', $allowed, true);
+        if ($tropipay_allowed) {
+            return $gateway_classes;
+        }
+
+        $filtered = [];
+        $removed = false;
+        foreach ($gateway_classes as $key => $gateway_class) {
+            $key_norm = sanitize_key((string) $key);
+            $class_norm = sanitize_key(is_string($gateway_class) ? $gateway_class : '');
+            $is_tropipay = (strpos($key_norm, 'tropipay') !== false) || (strpos($class_norm, 'tropipay') !== false);
+            if ($is_tropipay) {
+                $removed = true;
+                continue;
+            }
+            $filtered[$key] = $gateway_class;
+        }
+
+        if ($removed) {
+            error_log('[DingConnect][checkout_gateways] clase gateway Tropipay excluida en checkout DC-only por configuracion de pasarelas permitidas');
+            return $filtered;
+        }
+
+        return $gateway_classes;
+    }
+
+    private function is_checkout_request_context() {
+        if (is_admin()) {
+            return false;
+        }
+
+        $is_checkout_page = function_exists('is_checkout') && is_checkout();
+        $wc_ajax = isset($_REQUEST['wc-ajax']) ? sanitize_key((string) wp_unslash($_REQUEST['wc-ajax'])) : '';
+        $is_checkout_ajax = in_array($wc_ajax, ['checkout', 'update_order_review'], true);
+
+        return $is_checkout_page || $is_checkout_ajax;
+    }
+
+    private function should_hide_acfw_store_credit_ui() {
+        if (!$this->is_checkout_request_context()) {
+            return false;
+        }
+
+        if (!$this->cart_has_only_recargas()) {
+            return false;
+        }
+
+        $options = $this->api->get_options();
+        $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
+        if ($payment_mode !== 'woocommerce') {
+            return false;
+        }
+
+        return !empty($options['hide_acfw_store_credit_dc_only']);
+    }
+
+    public function maybe_hide_acfw_store_credit_ui() {
+        if (!$this->should_hide_acfw_store_credit_ui()) {
+            return;
+        }
+
+        ?>
+        <style id="dc-hide-acfw-store-credit">
+            .dc-hide-store-credit {
+                display: none !important;
+            }
+
+            .woocommerce-checkout [class*="acfw"][class*="store-credit"],
+            .woocommerce-checkout [class*="acfw"][class*="credit"],
+            .woocommerce-checkout [id*="acfw"][id*="credit"] {
+                display: none !important;
+            }
+        </style>
+        <script id="dc-hide-acfw-store-credit-script">
+            (function () {
+                function normalize(text) {
+                    return String(text || '')
+                        .toLowerCase()
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                }
+
+                function hasStoreCreditText(text) {
+                    var value = normalize(text);
+                    if (!value) {
+                        return false;
+                    }
+
+                    return value.indexOf('apply store credit discounts') !== -1
+                        || value.indexOf('available store credits') !== -1
+                        || value.indexOf('introduce la cantidad de creditos en la tienda') !== -1
+                        || value.indexOf('introduce la cantidad') !== -1
+                        || value.indexOf('creditos en la tienda') !== -1;
+                }
+
+                function hideNode(node) {
+                    if (!node || !node.classList) {
+                        return;
+                    }
+                    node.classList.add('dc-hide-store-credit');
+                }
+
+                function findTarget(node) {
+                    if (!node || !node.closest) {
+                        return null;
+                    }
+
+                    return node.closest(
+                        '.acfw-checkout-ui, .acfw-checkout-store-credit, .acfw-store-credits, .acfw-widget, [class*="acfw"], [id*="acfw"], .woocommerce-form-coupon-toggle, .wc-block-components-panel, .wc-block-components-totals-item, .woocommerce-checkout-review-order'
+                    ) || node.parentElement;
+                }
+
+                function run() {
+                    var selectors = [
+                        '.acfw-checkout-ui',
+                        '.acfw-checkout-store-credit',
+                        '.acfw-store-credits',
+                        '.acfw-widget',
+                        '[class*="acfw"][class*="credit"]',
+                        '[id*="acfw"][id*="credit"]',
+                        'summary',
+                        'label',
+                        'h2',
+                        'h3',
+                        'p',
+                        'span'
+                    ];
+
+                    for (var i = 0; i < selectors.length; i++) {
+                        var nodes = document.querySelectorAll(selectors[i]);
+                        for (var j = 0; j < nodes.length; j++) {
+                            var node = nodes[j];
+                            var className = normalize(node.className || '');
+                            var idName = normalize(node.id || '');
+                            var isAcfwCandidate = className.indexOf('acfw') !== -1 || idName.indexOf('acfw') !== -1;
+
+                            if (isAcfwCandidate || hasStoreCreditText(node.textContent)) {
+                                hideNode(findTarget(node));
+                            }
+                        }
+                    }
+                }
+
+                run();
+
+                if (typeof MutationObserver !== 'undefined') {
+                    var observer = new MutationObserver(function () {
+                        run();
+                    });
+                    observer.observe(document.body, { childList: true, subtree: true });
+                }
+            })();
+        </script>
+        <?php
     }
 
     /* ---------------------------------------------------------------
@@ -652,6 +1314,7 @@ class DC_Recargas_WooCommerce {
             '_dc_account_number'  => 'Teléfono',
             '_dc_country_iso'     => 'País',
             '_dc_provider_name'   => 'Operador',
+            '_dc_bundle_benefit'  => 'Beneficios',
             '_dc_bundle_label'    => 'Paquete',
             '_dc_public_price'    => 'Precio al público',
             '_dc_public_currency_iso' => 'Moneda precio público',

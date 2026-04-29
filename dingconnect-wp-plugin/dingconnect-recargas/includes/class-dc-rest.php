@@ -577,6 +577,8 @@ class DC_Recargas_REST {
         $public_price_currency = strtoupper(sanitize_text_field($params['public_price_currency'] ?? $send_currency_iso));
         $provider_name = sanitize_text_field($params['provider_name'] ?? '');
         $bundle_label = sanitize_text_field($params['bundle_label'] ?? '');
+        $bundle_benefit = sanitize_text_field((string) ($params['bundle_benefit'] ?? ''));
+        $bundle_id = sanitize_text_field((string) ($params['bundle_id'] ?? ''));
         $product_type = sanitize_text_field((string) ($params['product_type'] ?? ''));
         $redemption_mechanism = sanitize_text_field((string) ($params['redemption_mechanism'] ?? ''));
         $lookup_bills_required = !empty($params['lookup_bills_required']);
@@ -597,6 +599,15 @@ class DC_Recargas_REST {
             return $this->wp_error_to_rest_response($amount_validation);
         }
 
+        // Precio comercial robusto: prioriza el precio público guardado del bundle.
+        // Solo usa coste Ding cuando no existe precio público (> 0).
+        $resolved_public_price = $this->resolve_public_price_for_cart($bundle_id, $sku_code, $country_iso, $public_price);
+        if ($resolved_public_price > 0) {
+            $public_price = $resolved_public_price;
+        } elseif ($public_price <= 0) {
+            $public_price = $send_value;
+        }
+
         // Delegate to WooCommerce class via filter
         $result = apply_filters('dc_recargas_add_to_cart', null, [
             'account_number' => $account_number,
@@ -608,6 +619,8 @@ class DC_Recargas_REST {
             'public_price_currency' => $public_price_currency,
             'provider_name' => $provider_name,
             'bundle_label' => $bundle_label,
+            'bundle_benefit' => $bundle_benefit,
+            'bundle_id' => $bundle_id,
             'product_type' => $product_type,
             'redemption_mechanism' => $redemption_mechanism,
             'lookup_bills_required' => $lookup_bills_required,
@@ -1019,6 +1032,67 @@ class DC_Recargas_REST {
         }
 
         return array_values(array_unique($clean));
+    }
+
+    private function resolve_public_price_for_cart($bundle_id, $sku_code, $country_iso, $incoming_public_price) {
+        $incoming = (float) $incoming_public_price;
+
+        $options = $this->api->get_options();
+        $bundles = (array) ($options['bundles'] ?? []);
+        if (empty($bundles)) {
+            return $incoming;
+        }
+
+        $bundle_id = sanitize_text_field((string) $bundle_id);
+        $sku_code = sanitize_text_field((string) $sku_code);
+        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+
+        $matched = null;
+        if ($bundle_id !== '') {
+            foreach ($bundles as $bundle) {
+                if (!is_array($bundle)) {
+                    continue;
+                }
+
+                $candidate_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
+                if ($candidate_id !== '' && $candidate_id === $bundle_id) {
+                    $matched = $bundle;
+                    break;
+                }
+            }
+        }
+
+        if ($matched === null) {
+            foreach ($bundles as $bundle) {
+                if (!is_array($bundle)) {
+                    continue;
+                }
+
+                $candidate_sku = sanitize_text_field((string) ($bundle['sku_code'] ?? ''));
+                if ($candidate_sku === '' || $candidate_sku !== $sku_code) {
+                    continue;
+                }
+
+                $candidate_country = strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? '')));
+                if ($country_iso !== '' && $candidate_country !== '' && $candidate_country !== $country_iso) {
+                    continue;
+                }
+
+                $matched = $bundle;
+                break;
+            }
+        }
+
+        if (!is_array($matched)) {
+            return $incoming;
+        }
+
+        $stored_public = (float) ($matched['public_price'] ?? 0);
+        if ($stored_public > 0) {
+            return $stored_public;
+        }
+
+        return $incoming;
     }
 
     private function normalize_products_for_frontend($items, $country_iso, $query_context = []) {

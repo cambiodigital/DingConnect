@@ -215,6 +215,8 @@ Una iniciativa se considera lista cuando cumple:
 136. Operación de reintentos en `Registros` ampliada: el monitor de recargas pendientes ahora permite reintento manual por fila (ítem específico del pedido) y reintento masivo por selección múltiple, ambos con trazabilidad en notas de pedido y reutilizando el mismo flujo backend de retry/reconciliación para conservar política de correo y auditoría.
 137. Mejora de diseño en modal `Editar shortcode dinámico`: la tabla de bundles fue reorganizada para reducir columnas visibles, agrupar contexto (`País`/`Tipo`) dentro de `Producto`, aplicar cabecera fija, filas más compactas y badges de precios/estado, elevando legibilidad sin alterar filtros ni lógica de selección por fila.
 138. Optimización de espacio en banda de filtros del modal: los cuatro filtros (`País`, `Tipo de producto`, `Buscar`, `Vista`) ahora fuerzan línea única con `nowrap`, ancho fijo por control para evitar reflow y tipografía reducida (11px etiquetas, 12px campos), ganando superficie adicional de tabla sin necesidad de scroll horizontal.
+139. Corrección de checkout WooCommerce para recargas: en carrito/checkout el detalle principal del ítem ahora prioriza `Beneficios` del producto (texto operativo editable en admin) en lugar de depender solo del nombre de paquete, manteniendo `Paquete` como dato complementario cuando difiere.
+140. Hardening de precio comercial al añadir al carrito: el flujo `add-to-cart` prioriza `Precio al público` del bundle guardado (incluyendo resolución por `bundle_id`) y solo cae a `Coste Ding` cuando el precio público es 0 o no existe, evitando cobros con importe técnico del proveedor.
 
 ## Backlog actualizado por impacto
 
@@ -329,3 +331,23 @@ Corrección aplicada de operación de rango por país (28-04-2026):
 - El modal `Alta manual` ahora permite ajustar explícitamente `Monto mínimo` y `Monto máximo` (coste DIN) antes de guardar el bundle, con sincronización automática de `is_range` y límites persistidos.
 - El frontend público mantiene entrada de importe para productos de rango y envía `country_iso` también en recarga directa para reforzar validación contractual en backend.
 - El backend REST (`transfer` y `add-to-cart`) valida monto contra bundle guardado: si es rango, exige límites mínimos/máximos; si es fijo, bloquea importes distintos al configurado.
+
+Corrección aplicada de checkout inválido por rehidratación de carrito (29-04-2026):
+
+- WooCommerce ahora rehidrata defensivamente los ítems `dc_recarga` desde sesión (`woocommerce_get_cart_item_from_session`) para asegurar `product_id`/`data` válidos aunque haya deriva de sesión en hosting.
+- Se añadió diagnóstico dirigido en `woocommerce_check_cart_items` para registrar en `debug.log` causas reales de invalidez (`missing_product`, `not_purchasable`, `out_of_stock`) y notices activos en checkout.
+- El producto base de recarga se endureció con metadato `_backorders = no` además de `_manage_stock = no` y `_stock_status = instock`, reduciendo bloqueos por validaciones de inventario de terceros.
+- Se añadió normalización posterior de carrito (`woocommerce_cart_loaded_from_session`) para reparar ítems `dc_recarga` con objeto `data` inválido inmediatamente al recuperar sesión.
+- Se agregó traza heartbeat `[DingConnect][checkout_cart_validation]` en checkout para confirmar ejecución del hardening en producción aun cuando no haya incidencias detectadas.
+- En carritos exclusivamente de recarga se elimina el notice genérico de WooCommerce sobre "problemas con artículos del carrito" cuando no hay errores específicos, evitando falsos bloqueos por interferencia de plugins externos.
+- La limpieza del notice genérico para carrito `DC-only` se reforzó también al final de `woocommerce_check_cart_items` (prioridad 999) para cubrir mensajes inyectados tardíamente por plugins de terceros.
+- Se añadió supresión en origen del notice genérico de carrito inválido usando `woocommerce_add_error` para carritos `DC-only`, evitando que WooCommerce lo registre cuando no existen incidencias reales en ítems DingConnect.
+- Se robusteció la detección del notice genérico de carrito inválido con matching tolerante a variantes ES/EN (incluyendo texto de retorno al carrito) y se ejecuta limpieza también al entrar en checkout/proceso (`woocommerce_before_checkout_form` y `woocommerce_checkout_process`).
+- Se añadió fallback de pasarelas en checkout de recargas: si `woo_allowed_gateways` queda sin coincidencias disponibles, se evita bloqueo devolviendo gateways activos de WooCommerce y se registra traza diagnóstica en log.
+- Se añadió mitigación de compatibilidad para checkout: inicio temprano de sesión PHP en requests de checkout (`init` prioridad 0) para reducir interferencia de pasarelas de terceros que invocan `session_start()` tarde (caso observado en Tropipay).
+- La lógica de supresión/limpieza del aviso genérico ya no depende solo del carrito hidratado en runtime; ahora también detecta contexto `DC-only` leyendo carrito desde sesión WooCommerce cuando el objeto carrito llega incompleto.
+- Se añadió aislamiento preventivo de gateway en checkout `DC-only`: filtro sobre `woocommerce_payment_gateways` para excluir la clase de Tropipay cuando no está en `woo_allowed_gateways`, evitando su inicialización y su `session_start()` tardío en ese flujo.
+- Se neutralizó la dependencia de miniaturas en ítems `dc_recarga`: el producto base fuerza `image_id=0` y la línea de carrito suprime thumbnail, evitando warnings/deprecations en `wp-includes/media.php` por metadatos de adjunto inconsistentes durante checkout.
+- La supresión del aviso genérico de WooCommerce se amplió con matching más tolerante para capturar la variante productiva observada: `Hay algunos problemas con los artículos de tu carrito... vuelve a la página del carrito... antes de pagar`.
+- Hallazgo productivo confirmado en log: el bloqueo visible de checkout provenía también de una regla externa de pedido mínimo (`Para poder hacer un pedido, el total del carro de compra debe ser de al menos $50,00.`). En carritos `DC-only` el plugin ahora trata ese notice como bloqueador ajeno al flujo de recargas y lo suprime.
+- Configuración nueva en `Credenciales`: `Checkout DC-only: Store Credit` para ocultar el bloque visual de créditos/descuentos de Advanced Coupons (`Apply store credit discounts`) solo cuando el carrito contiene exclusivamente recargas DingConnect.

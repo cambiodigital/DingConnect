@@ -17,6 +17,7 @@ class DC_Recargas_API {
             'validate_only' => 1,
             'allow_real_recharge' => 0,
             'woo_allowed_gateways' => [],
+            'hide_acfw_store_credit_dc_only' => 1,
             'submitted_retry_max_attempts' => 4,
             'submitted_retry_backoff_minutes' => '10,20,40,80',
             'submitted_max_window_hours' => 12,
