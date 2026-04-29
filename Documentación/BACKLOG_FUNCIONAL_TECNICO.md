@@ -302,6 +302,8 @@ Avance implementado (27-04-2026) - Control de recarga manual desde admin:
 - El contrato REST `GET /wp-json/dingconnect/v1/products` para `source=saved` ahora respeta metadatos ricos del bundle (`is_range`, mínimos/máximos, `SettingDefinitions`, `LookupBillsRequired`, `ValidationRegex`, `LogoUrl`, `payment_types`, etc.) cuando la opción está activada.
 - Se corrigió la moneda de precio público en `source=saved`: `ReceiveCurrencyIso` ahora prioriza `public_price_currency` del bundle guardado.
 
+## Optimizaciones de Rendimiento (Bolt)
+- **Cache de Promociones (29/04/2024):** Se añadió caché mediante `get_transient` y `set_transient` (10 minutos) a las llamadas `get_promotions` y `get_promotion_descriptions` en `class-dc-api.php` para reducir peticiones HTTP redundantes hacia el API de DingConnect.
 Corrección aplicada de compatibilidad WooCommerce (28-04-2026):
 
 - Se eliminó una sobrescritura incompatible de `get_content_type()` en el email personalizado `WC_DC_Email_Recarga_Confirmacion`, que podía provocar fatal error al cargar la jerarquía `WC_Email` y tumbar `wp-admin` tras subir el plugin.
