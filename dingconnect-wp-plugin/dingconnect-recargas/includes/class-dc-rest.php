@@ -495,6 +495,7 @@ class DC_Recargas_REST {
         }
 
         $params = $request->get_json_params();
+        $country_iso = strtoupper(sanitize_text_field((string) ($params['country_iso'] ?? '')));
 
         $payload = [
             'DistributorRef' => sanitize_text_field($params['distributor_ref'] ?? $this->api->new_ref()),
@@ -512,6 +513,11 @@ class DC_Recargas_REST {
                 'ok' => false,
                 'message' => 'Datos incompletos para procesar la recarga.',
             ], 400);
+        }
+
+        $amount_validation = $this->validate_send_value_against_bundle($payload['SkuCode'], $country_iso, (float) $payload['SendValue']);
+        if (is_wp_error($amount_validation)) {
+            return $this->wp_error_to_rest_response($amount_validation);
         }
 
         $response = $this->api->send_transfer($payload);
@@ -567,6 +573,8 @@ class DC_Recargas_REST {
         $sku_code = sanitize_text_field($params['sku_code'] ?? '');
         $send_value = (float) ($params['send_value'] ?? 0);
         $send_currency_iso = strtoupper(sanitize_text_field($params['send_currency_iso'] ?? 'EUR'));
+        $public_price = (float) ($params['public_price'] ?? $send_value);
+        $public_price_currency = strtoupper(sanitize_text_field($params['public_price_currency'] ?? $send_currency_iso));
         $provider_name = sanitize_text_field($params['provider_name'] ?? '');
         $bundle_label = sanitize_text_field($params['bundle_label'] ?? '');
         $product_type = sanitize_text_field((string) ($params['product_type'] ?? ''));
@@ -584,6 +592,11 @@ class DC_Recargas_REST {
             ], 400);
         }
 
+        $amount_validation = $this->validate_send_value_against_bundle($sku_code, $country_iso, $send_value);
+        if (is_wp_error($amount_validation)) {
+            return $this->wp_error_to_rest_response($amount_validation);
+        }
+
         // Delegate to WooCommerce class via filter
         $result = apply_filters('dc_recargas_add_to_cart', null, [
             'account_number' => $account_number,
@@ -591,6 +604,8 @@ class DC_Recargas_REST {
             'sku_code' => $sku_code,
             'send_value' => $send_value,
             'send_currency_iso' => $send_currency_iso,
+            'public_price' => $public_price,
+            'public_price_currency' => $public_price_currency,
             'provider_name' => $provider_name,
             'bundle_label' => $bundle_label,
             'product_type' => $product_type,
@@ -660,6 +675,108 @@ class DC_Recargas_REST {
         }
 
         return $normalized;
+    }
+
+    private function validate_send_value_against_bundle($sku_code, $country_iso, $send_value) {
+        $sku_code = sanitize_text_field((string) $sku_code);
+        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        $send_value = (float) $send_value;
+
+        if ('' === $sku_code || $send_value <= 0) {
+            return true;
+        }
+
+        $bundle = $this->find_bundle_for_amount_validation($sku_code, $country_iso);
+        if (empty($bundle)) {
+            return true;
+        }
+
+        $options = $this->api->get_options();
+        $manual_amount_mode = sanitize_key((string) ($options['manual_amount_mode'] ?? 'range_products'));
+        $allow_manual_amount = ($manual_amount_mode === 'range_products');
+
+        $bundle_send_value = (float) ($bundle['send_value'] ?? 0);
+        $min_send_value = isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : $bundle_send_value;
+        $max_send_value = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $bundle_send_value;
+        $stored_is_range = !empty($bundle['is_range']);
+        $calculated_is_range = abs($max_send_value - $min_send_value) > 0.00001;
+        $is_range = $allow_manual_amount && ($stored_is_range || $calculated_is_range);
+
+        if ($is_range) {
+            if ($send_value < ($min_send_value - 0.00001) || $send_value > ($max_send_value + 0.00001)) {
+                return new WP_Error(
+                    'dc_amount_out_of_range',
+                    sprintf(
+                        'El importe enviado está fuera del rango permitido para este producto. Permitido: %.2f a %.2f.',
+                        $min_send_value,
+                        $max_send_value
+                    ),
+                    [
+                        'status' => 400,
+                        'code' => 'amount_out_of_range',
+                        'min_send_value' => $min_send_value,
+                        'max_send_value' => $max_send_value,
+                        'sku_code' => $sku_code,
+                        'country_iso' => $country_iso,
+                    ]
+                );
+            }
+
+            return true;
+        }
+
+        if ($bundle_send_value > 0 && abs($send_value - $bundle_send_value) > 0.00001) {
+            return new WP_Error(
+                'dc_amount_fixed_only',
+                sprintf('Este producto usa monto fijo. Importe permitido: %.2f.', $bundle_send_value),
+                [
+                    'status' => 400,
+                    'code' => 'amount_fixed_only',
+                    'fixed_send_value' => $bundle_send_value,
+                    'sku_code' => $sku_code,
+                    'country_iso' => $country_iso,
+                ]
+            );
+        }
+
+        return true;
+    }
+
+    private function find_bundle_for_amount_validation($sku_code, $country_iso = '') {
+        $bundles = get_option('dc_recargas_bundles', []);
+        if (!is_array($bundles) || empty($bundles)) {
+            return null;
+        }
+
+        $sku_code = strtoupper(sanitize_text_field((string) $sku_code));
+        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        $first_sku_match = null;
+
+        foreach ($bundles as $bundle) {
+            if (!is_array($bundle)) {
+                continue;
+            }
+
+            $bundle_sku = strtoupper(sanitize_text_field((string) ($bundle['sku_code'] ?? '')));
+            if ('' === $bundle_sku || $bundle_sku !== $sku_code) {
+                continue;
+            }
+
+            if (null === $first_sku_match) {
+                $first_sku_match = $bundle;
+            }
+
+            if ('' === $country_iso) {
+                continue;
+            }
+
+            $bundle_country = strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? '')));
+            if ($bundle_country === $country_iso) {
+                return $bundle;
+            }
+        }
+
+        return $first_sku_match;
     }
 
     private function wp_error_to_rest_response($error) {
@@ -852,7 +969,9 @@ class DC_Recargas_REST {
                 'SendCurrencyIso' => $send_currency,
                 'ReceiveValue' => $public_price,
                 'ReceiveCurrencyIso' => $public_currency,
-                'ReceiveValueExcludingTax' => isset($bundle['receive_value_excluding_tax']) ? (float) $bundle['receive_value_excluding_tax'] : $public_price,
+                // Para bundles guardados usamos el precio comercial como referencia canónica
+                // de frontend y evitamos arrastrar valores heredados en otra escala/moneda.
+                'ReceiveValueExcludingTax' => $public_price,
                 'MinimumSendValue' => $minimum_send_value,
                 'MaximumSendValue' => $maximum_send_value,
                 'MinimumReceiveValue' => $minimum_receive_value,

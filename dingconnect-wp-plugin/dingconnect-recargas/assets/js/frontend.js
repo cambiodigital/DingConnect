@@ -297,10 +297,34 @@
             };
         }
 
+        var amount = Number((bundle && bundle.ReceiveValue) || 0);
+        var excludingTax = Number((bundle && bundle.ReceiveValueExcludingTax) || 0);
+
+        // En bundles guardados (precio comercial), evitar mostrar valores fiscales heredados
+        // que vienen en otra escala/moneda y no son consistentes con el precio al público.
+        if (state.dataSource === 'saved') {
+            excludingTax = amount;
+        }
+
         return {
-            amount: Number((bundle && bundle.ReceiveValue) || 0),
+            amount: amount,
             currency: String((bundle && bundle.ReceiveCurrencyIso) || ''),
-            excludingTax: Number((bundle && bundle.ReceiveValueExcludingTax) || 0),
+            excludingTax: excludingTax,
+        };
+    }
+
+    function getDisplayPrice(bundle) {
+        var receive = getCurrentReceiveValue(bundle);
+        if (state.dataSource === 'saved' && Number(receive.amount || 0) > 0) {
+            return {
+                amount: Number(receive.amount || 0),
+                currency: String(receive.currency || ''),
+            };
+        }
+
+        return {
+            amount: Number(getCurrentSendValue(bundle) || 0),
+            currency: String((bundle && bundle.SendCurrencyIso) || ''),
         };
     }
 
@@ -1058,7 +1082,8 @@
         var parts = [];
         var title = String(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
         var provider = getProviderLabel(bundle);
-        var amount = formatMoney(bundle.SendValue || 0, bundle.SendCurrencyIso || 'USD');
+        var displayPrice = getDisplayPrice(bundle);
+        var amount = formatMoney(displayPrice.amount || 0, displayPrice.currency || 'USD');
 
         if (isFeaturedBundle(bundle)) {
             parts.push('⭐ Destacado');
@@ -1383,7 +1408,8 @@
         var providerLabel = getProviderLabel(bundle);
         var benefit = String(bundle.Description || bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
         var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
-        var amount = formatMoney(getCurrentSendValue(bundle), bundle.SendCurrencyIso || 'USD');
+        var displayPrice = getDisplayPrice(bundle);
+        var amount = formatMoney(displayPrice.amount || 0, displayPrice.currency || 'USD');
         var rangeHint = isRangeBundle(bundle)
             ? '<div class="dc-package-range-hint">Rango: ' + escapeHtml(formatMoney(bundle.MinimumSendValue || 0, bundle.SendCurrencyIso || '')) + ' a ' + escapeHtml(formatMoney(bundle.MaximumSendValue || 0, bundle.SendCurrencyIso || '')) + '</div>'
             : '';
@@ -1405,7 +1431,7 @@
             +     rangeHint
             +   '</div>'
             +   '<div class="dc-package-price-block">'
-            +     '<span class="dc-package-price-label">Monto</span>'
+            +     '<span class="dc-package-price-label">Precio al público</span>'
             +     '<strong>' + escapeHtml(amount) + '</strong>'
             +   '</div>'
             +   '<div class="dc-package-iso-chip">' + escapeHtml(countryIso || 'N/A') + '</div>'
@@ -1429,7 +1455,8 @@
         var phone = phoneEl.value || '';
         var currentSendValue = getCurrentSendValue(bundle);
         var currentReceive = getCurrentReceiveValue(bundle);
-        var price = formatMoney(currentSendValue || 0, bundle.SendCurrencyIso || 'USD');
+        var displayPrice = getDisplayPrice(bundle);
+        var price = formatMoney(displayPrice.amount || 0, displayPrice.currency || 'USD');
         var featuredClass = isFeaturedBundle(bundle) ? ' is-featured' : '';
         var featuredBadge = isFeaturedBundle(bundle)
             ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
@@ -1612,12 +1639,15 @@
 
     /* ===== WooCommerce: add to cart ===== */
     async function addToCart(selected) {
+        var displayPrice = getDisplayPrice(selected);
         var payload = {
             account_number: state.fullPhone,
             country_iso: state.country.iso,
             sku_code: selected.SkuCode,
             send_value: Number(getCurrentSendValue(selected) || 0),
             send_currency_iso: selected.SendCurrencyIso || 'EUR',
+            public_price: Number(displayPrice.amount || 0),
+            public_price_currency: String(displayPrice.currency || selected.SendCurrencyIso || 'EUR'),
             provider_name: getProviderLabel(selected),
             bundle_label: selected.DefaultDisplayText || selected.SkuCode,
             product_type: String(selected.ProductType || ''),
@@ -1657,6 +1687,7 @@
     async function processDirectTransfer(selected) {
         var payload = {
             account_number: state.fullPhone,
+            country_iso: state.country && state.country.iso ? state.country.iso : '',
             sku_code: selected.SkuCode,
             send_value: Number(getCurrentSendValue(selected) || 0),
             send_currency_iso: selected.SendCurrencyIso || 'USD',

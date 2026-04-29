@@ -24,6 +24,8 @@ class DC_Recargas_Admin {
         add_action('wp_ajax_dc_create_bundle_from_catalog', [$this, 'ajax_create_bundle_from_catalog']);
         add_action('wp_ajax_dc_get_transfer_logs', [$this, 'ajax_get_transfer_logs']);
         add_action('admin_post_dc_clear_logs', [$this, 'handle_clear_logs']);
+        add_action('admin_post_dc_retry_recarga_item', [$this, 'handle_retry_recarga_item']);
+        add_action('admin_post_dc_retry_recarga_bulk', [$this, 'handle_retry_recarga_bulk']);
         add_action('wp_ajax_dc_fetch_api_products', [$this, 'ajax_fetch_api_products']);
         add_action('admin_post_dc_add_landing_shortcode', [$this, 'handle_add_landing_shortcode']);
         add_action('admin_post_dc_clone_landing_shortcode', [$this, 'handle_clone_landing_shortcode']);
@@ -842,6 +844,7 @@ class DC_Recargas_Admin {
             'is_active' => empty($_POST['is_active']) ? 0 : 1,
         ];
         $bundle = array_merge($bundle, $this->extract_rich_bundle_fields_from_request($_POST, false));
+        $bundle = $this->normalize_bundle_range_fields($bundle);
 
         if (empty($bundle['country_iso']) || empty($bundle['label']) || empty($bundle['sku_code'])) {
             wp_safe_redirect(add_query_arg([
@@ -907,6 +910,7 @@ class DC_Recargas_Admin {
             'is_active' => empty($_POST['is_active']) ? 0 : 1,
         ];
         $bundle = array_merge($existing_bundle, $bundle, $this->extract_rich_bundle_fields_from_request($_POST, true));
+        $bundle = $this->normalize_bundle_range_fields($bundle);
 
         if (empty($bundle['country_iso']) || empty($bundle['label']) || empty($bundle['sku_code'])) {
             wp_safe_redirect(add_query_arg([
@@ -1490,6 +1494,61 @@ class DC_Recargas_Admin {
         return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
     }
 
+    private function normalize_bundle_range_fields($bundle) {
+        if (!is_array($bundle)) {
+            return [];
+        }
+
+        $send_value = (float) ($bundle['send_value'] ?? 0);
+        $public_price = (float) ($bundle['public_price'] ?? $send_value);
+
+        $minimum_send_value = isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : $send_value;
+        $maximum_send_value = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $send_value;
+
+        if ($minimum_send_value <= 0) {
+            $minimum_send_value = $send_value;
+        }
+        if ($maximum_send_value <= 0) {
+            $maximum_send_value = $minimum_send_value;
+        }
+        if ($maximum_send_value < $minimum_send_value) {
+            $tmp = $maximum_send_value;
+            $maximum_send_value = $minimum_send_value;
+            $minimum_send_value = $tmp;
+        }
+
+        $minimum_receive_value = isset($bundle['minimum_receive_value']) ? (float) $bundle['minimum_receive_value'] : $public_price;
+        $maximum_receive_value = isset($bundle['maximum_receive_value']) ? (float) $bundle['maximum_receive_value'] : $public_price;
+
+        if ($minimum_receive_value <= 0) {
+            $minimum_receive_value = $public_price;
+        }
+        if ($maximum_receive_value <= 0) {
+            $maximum_receive_value = $minimum_receive_value;
+        }
+        if ($maximum_receive_value < $minimum_receive_value) {
+            $tmp = $maximum_receive_value;
+            $maximum_receive_value = $minimum_receive_value;
+            $minimum_receive_value = $tmp;
+        }
+
+        $is_range = !empty($bundle['is_range']) && abs($maximum_send_value - $minimum_send_value) > 0.00001;
+        if (!$is_range) {
+            $minimum_send_value = $send_value;
+            $maximum_send_value = $send_value;
+            $minimum_receive_value = $public_price;
+            $maximum_receive_value = $public_price;
+        }
+
+        $bundle['minimum_send_value'] = $minimum_send_value;
+        $bundle['maximum_send_value'] = $maximum_send_value;
+        $bundle['minimum_receive_value'] = $minimum_receive_value;
+        $bundle['maximum_receive_value'] = $maximum_receive_value;
+        $bundle['is_range'] = $is_range ? 1 : 0;
+
+        return $bundle;
+    }
+
     private function sanitize_text_list_input($value) {
         if (is_string($value)) {
             $decoded = json_decode($value, true);
@@ -1711,6 +1770,10 @@ class DC_Recargas_Admin {
 
         if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error'], true)) {
             $active_tab = 'tab_landings';
+        }
+
+        if (in_array($msg, ['retry_item_done', 'retry_item_error', 'retry_bulk_done', 'retry_bulk_empty'], true)) {
+            $active_tab = 'tab_logs';
         }
 
         if (in_array($msg, ['ticket_saved', 'ticket_deleted', 'ticket_error', 'ticket_not_found'], true) && $requested_tab !== '') {
@@ -3592,6 +3655,17 @@ class DC_Recargas_Admin {
                         <p class="description">Filtro operativo derivado del catálogo: saldo/top-up, datos y combos. Se habilita después de consultar la API.</p>
                     </td>
                 </tr>
+                <tr>
+                    <th scope="row"><label for="dc_api_range_mode">Modo de monto</label></th>
+                    <td>
+                        <select id="dc_api_range_mode" class="regular-text" disabled>
+                            <option value="all">Todos</option>
+                            <option value="range">Solo rango (monto variable)</option>
+                            <option value="fixed">Solo fijo</option>
+                        </select>
+                        <p class="description">Filtra rápidamente productos donde el cliente final puede ingresar importe (rango) o solo montos fijos.</p>
+                    </td>
+                </tr>
             </table>
 
             <section class="dc-api-results-section" aria-labelledby="dc_api_results_title">
@@ -3632,11 +3706,13 @@ class DC_Recargas_Admin {
                 var apiCountryWarningEl = document.getElementById('dc_api_country_warning');
                 var apiFetchBtn  = document.getElementById('dc_api_fetch_btn');
                 var apiFilterEl  = document.getElementById('dc_api_package_group');
+                var apiRangeFilterEl = document.getElementById('dc_api_range_mode');
                 var apiResultsEl = document.getElementById('dc_api_results');
                 var apiHelpEl    = document.getElementById('dc_api_help');
                 var apiLoadManualBtn = document.getElementById('dc_api_load_manual_btn');
                 var manualModalEl = document.getElementById('dc-manual-modal');
                 var manualModalCloseEls = document.querySelectorAll('[data-dc-manual-close]');
+                var manualRangeControlsBound = false;
                 var apiSelected  = null;
                 var apiSelectedRowEl = null;
                 var apiItems = [];
@@ -3666,6 +3742,7 @@ class DC_Recargas_Admin {
                     var payload = {
                         country_iso: apiCountryEl ? String(apiCountryEl.value || '') : '',
                         package_group: apiFilterEl ? String(apiFilterEl.value || 'all') : 'all',
+                        range_mode: apiRangeFilterEl ? String(apiRangeFilterEl.value || 'all') : 'all',
                         search_term: apiSearchEl ? String(apiSearchEl.value || '') : '',
                         items: apiItems,
                         group_counts: apiGroupCounts,
@@ -3697,6 +3774,13 @@ class DC_Recargas_Admin {
                         var storedGroup = String(stored.package_group || 'all');
                         if (apiFilterEl.querySelector('option[value="' + storedGroup + '"]')) {
                             apiFilterEl.value = storedGroup;
+                        }
+                    }
+
+                    if (apiRangeFilterEl) {
+                        var storedRange = String(stored.range_mode || 'all');
+                        if (apiRangeFilterEl.querySelector('option[value="' + storedRange + '"]')) {
+                            apiRangeFilterEl.value = storedRange;
                         }
                     }
 
@@ -3770,6 +3854,7 @@ class DC_Recargas_Admin {
 
                 function getFilteredApiItems() {
                     var selectedGroup = apiFilterEl ? String(apiFilterEl.value || 'all') : 'all';
+                    var selectedRangeMode = apiRangeFilterEl ? String(apiRangeFilterEl.value || 'all') : 'all';
                     var searchTerm = apiSearchEl ? apiSearchEl.value.trim().toLowerCase() : '';
 
                     var items = apiItems.slice();
@@ -3777,6 +3862,13 @@ class DC_Recargas_Admin {
                     if (selectedGroup !== 'all') {
                         items = items.filter(function (item) {
                             return String(item.package_group || 'other') === selectedGroup;
+                        });
+                    }
+
+                    if (selectedRangeMode !== 'all') {
+                        items = items.filter(function (item) {
+                            var isRange = !!item.is_range;
+                            return selectedRangeMode === 'range' ? isRange : !isRange;
                         });
                     }
 
@@ -3887,6 +3979,9 @@ class DC_Recargas_Admin {
                     var maximumSendValueEl = document.getElementById('dc_maximum_send_value');
                     var minimumReceiveValueEl = document.getElementById('dc_minimum_receive_value');
                     var maximumReceiveValueEl = document.getElementById('dc_maximum_receive_value');
+                    var isRangeToggleEl = document.getElementById('dc_is_range_toggle');
+                    var rangeMinVisibleEl = document.getElementById('dc_range_min_send_visible');
+                    var rangeMaxVisibleEl = document.getElementById('dc_range_max_send_visible');
                     var customerFeeEl = document.getElementById('dc_customer_fee');
                     var distributorFeeEl = document.getElementById('dc_distributor_fee');
                     var taxRateEl = document.getElementById('dc_tax_rate');
@@ -3944,6 +4039,9 @@ class DC_Recargas_Admin {
                     if (additionalInformationEl) additionalInformationEl.value = item.additional_information || '';
                     if (isPromotionEl) isPromotionEl.value = item.is_promotion ? '1' : '0';
                     if (isRangeEl) isRangeEl.value = item.is_range ? '1' : '0';
+                    if (isRangeToggleEl) isRangeToggleEl.checked = !!item.is_range;
+                    if (rangeMinVisibleEl) rangeMinVisibleEl.value = item.minimum_send_value != null ? item.minimum_send_value : (item.send_value != null ? item.send_value : '');
+                    if (rangeMaxVisibleEl) rangeMaxVisibleEl.value = item.maximum_send_value != null ? item.maximum_send_value : (item.send_value != null ? item.send_value : '');
                     if (benefitsEl) benefitsEl.value = JSON.stringify(item.benefits || []);
                     if (redemptionMechanismEl) redemptionMechanismEl.value = item.redemption_mechanism || '';
                     if (processingModeEl) processingModeEl.value = item.processing_mode || '';
@@ -3969,6 +4067,9 @@ class DC_Recargas_Admin {
                     if (!manualModalEl) {
                         return false;
                     }
+
+                    bindManualRangeControls();
+                    syncManualRangeFields();
 
                     manualModalEl.hidden = false;
                     document.body.classList.add('modal-open');
@@ -4006,6 +4107,11 @@ class DC_Recargas_Admin {
                     if (apiSearchEl) {
                         apiSearchEl.value = '';
                         apiSearchEl.disabled = true;
+                    }
+
+                    if (apiRangeFilterEl) {
+                        apiRangeFilterEl.value = 'all';
+                        apiRangeFilterEl.disabled = true;
                     }
 
                     if (message) {
@@ -4098,7 +4204,8 @@ class DC_Recargas_Admin {
                                 }
 
                                 var tdType = document.createElement('td');
-                                tdType.textContent = apiGroupLabels[item.package_group] || item.package_group || 'Otros';
+                                var typeLabel = apiGroupLabels[item.package_group] || item.package_group || 'Otros';
+                                tdType.textContent = typeLabel + (item.is_range ? ' · Rango' : ' · Fijo');
 
                                 var tdOperator = document.createElement('td');
                                 tdOperator.textContent = item.operator || '-';
@@ -4152,6 +4259,9 @@ class DC_Recargas_Admin {
                     if (apiSearchEl) {
                         apiSearchEl.disabled = apiItems.length === 0;
                     }
+                    if (apiRangeFilterEl) {
+                        apiRangeFilterEl.disabled = apiItems.length === 0;
+                    }
                 }
 
                 if (apiFetchBtn) {
@@ -4194,6 +4304,13 @@ class DC_Recargas_Admin {
 
                 if (apiFilterEl) {
                     apiFilterEl.addEventListener('change', function () {
+                        renderApiResults(getFilteredApiItems());
+                        saveStoredApiState();
+                    });
+                }
+
+                if (apiRangeFilterEl) {
+                    apiRangeFilterEl.addEventListener('change', function () {
                         renderApiResults(getFilteredApiItems());
                         saveStoredApiState();
                     });
@@ -4277,6 +4394,85 @@ class DC_Recargas_Admin {
                 });
 
                 restoreStoredApiState();
+
+                function syncManualRangeFields() {
+                    var sendValueEl = document.getElementById('dc_send_value');
+                    var hiddenIsRangeEl = document.getElementById('dc_is_range');
+                    var hiddenMinEl = document.getElementById('dc_minimum_send_value');
+                    var hiddenMaxEl = document.getElementById('dc_maximum_send_value');
+                    var visibleRangeToggleEl = document.getElementById('dc_is_range_toggle');
+                    var visibleMinEl = document.getElementById('dc_range_min_send_visible');
+                    var visibleMaxEl = document.getElementById('dc_range_max_send_visible');
+
+                    if (!sendValueEl || !hiddenIsRangeEl || !hiddenMinEl || !hiddenMaxEl || !visibleRangeToggleEl || !visibleMinEl || !visibleMaxEl) {
+                        return true;
+                    }
+
+                    var sendValue = Number(sendValueEl.value || 0);
+                    var minValue = Number(visibleMinEl.value || 0);
+                    var maxValue = Number(visibleMaxEl.value || 0);
+                    var wantsRange = !!visibleRangeToggleEl.checked;
+
+                    if (!isFinite(sendValue) || sendValue <= 0) {
+                        return false;
+                    }
+
+                    if (!wantsRange) {
+                        minValue = sendValue;
+                        maxValue = sendValue;
+                    } else {
+                        if (!isFinite(minValue) || minValue <= 0) {
+                            minValue = sendValue;
+                        }
+                        if (!isFinite(maxValue) || maxValue <= 0) {
+                            maxValue = minValue;
+                        }
+                        if (maxValue < minValue) {
+                            var tmp = maxValue;
+                            maxValue = minValue;
+                            minValue = tmp;
+                        }
+                    }
+
+                    visibleMinEl.value = String(minValue);
+                    visibleMaxEl.value = String(maxValue);
+                    hiddenMinEl.value = String(minValue);
+                    hiddenMaxEl.value = String(maxValue);
+                    hiddenIsRangeEl.value = (wantsRange && Math.abs(maxValue - minValue) > 0.00001) ? '1' : '0';
+
+                    return true;
+                }
+
+                function bindManualRangeControls() {
+                    if (manualRangeControlsBound) {
+                        return;
+                    }
+
+                    var manualFormEl = document.querySelector('#dc-manual-modal form');
+                    var sendValueEl = document.getElementById('dc_send_value');
+                    var rangeToggleEl = document.getElementById('dc_is_range_toggle');
+                    var rangeMinEl = document.getElementById('dc_range_min_send_visible');
+                    var rangeMaxEl = document.getElementById('dc_range_max_send_visible');
+
+                    if (!manualFormEl || !sendValueEl || !rangeToggleEl || !rangeMinEl || !rangeMaxEl) {
+                        return;
+                    }
+
+                    [sendValueEl, rangeToggleEl, rangeMinEl, rangeMaxEl].forEach(function (el) {
+                        el.addEventListener('input', syncManualRangeFields);
+                        el.addEventListener('change', syncManualRangeFields);
+                    });
+
+                    manualFormEl.addEventListener('submit', function (event) {
+                        var ok = syncManualRangeFields();
+                        if (!ok) {
+                            event.preventDefault();
+                            alert('Indica un coste DIN válido y, si es rango, límites válidos de monto.');
+                        }
+                    });
+
+                    manualRangeControlsBound = true;
+                }
             })();
             </script>
 
@@ -4353,6 +4549,24 @@ class DC_Recargas_Admin {
                     <tr>
                         <th scope="row"><label for="dc_send_currency_iso">Moneda coste</label></th>
                         <td><input type="text" id="dc_send_currency_iso" name="send_currency_iso" class="small-text dc-combo-input" value="USD" list="dc_dl_send_currency"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Producto de rango</th>
+                        <td>
+                            <label>
+                                <input type="checkbox" id="dc_is_range_toggle" checked>
+                                Permitir monto variable para cliente final
+                            </label>
+                            <p class="description">Si se activa, el frontend permitirá que el cliente introduzca importe dentro del rango definido.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_range_min_send_visible">Monto mínimo (coste DIN)</label></th>
+                        <td><input type="number" step="0.01" min="0" id="dc_range_min_send_visible" class="small-text" value="0"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_range_max_send_visible">Monto máximo (coste DIN)</label></th>
+                        <td><input type="number" step="0.01" min="0" id="dc_range_max_send_visible" class="small-text" value="0"></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="dc_public_price">Precio al Público</label></th>
@@ -4628,10 +4842,14 @@ class DC_Recargas_Admin {
                         <?php if (empty($submitted_rows)): ?>
                             <p class="description" style="margin:0 0 12px;">No hay recargas pendientes en este momento.</p>
                         <?php else: ?>
+                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dc-submitted-bulk-form" onsubmit="return confirm('¿Ejecutar reintento para las recargas seleccionadas?');">
+                                <input type="hidden" name="action" value="dc_retry_recarga_bulk">
+                                <?php wp_nonce_field('dc_retry_recarga_bulk'); ?>
                             <div class="dc-submitted-table-wrap" role="region" aria-label="Monitor de recargas pendientes">
                                 <table class="widefat striped">
                                     <thead>
                                         <tr>
+                                            <th class="check-column"><input type="checkbox" id="dc-submitted-select-all" aria-label="Seleccionar todas"></th>
                                             <th>Orden</th>
                                             <th>Teléfono</th>
                                             <th>Proveedor / SKU</th>
@@ -4639,11 +4857,15 @@ class DC_Recargas_Admin {
                                             <th>Intentos</th>
                                             <th>En estado</th>
                                             <th>Próximo reintento</th>
+                                            <th>Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <?php foreach ($submitted_rows as $row): ?>
                                             <tr>
+                                                <td class="check-column">
+                                                    <input type="checkbox" class="dc-submitted-item" name="monitor_items[]" value="<?php echo esc_attr((string) $row['order_id'] . ':' . (string) $row['item_id']); ?>" aria-label="Seleccionar recarga de orden <?php echo esc_attr((string) $row['order_id']); ?>">
+                                                </td>
                                                 <td><a href="<?php echo esc_url((string) $row['order_url']); ?>">#<?php echo esc_html((string) $row['order_id']); ?></a></td>
                                                 <td><?php echo esc_html((string) $row['phone']); ?></td>
                                                 <td>
@@ -4654,11 +4876,27 @@ class DC_Recargas_Admin {
                                                 <td><?php echo esc_html((string) $row['transfer_attempts']); ?> / <?php echo esc_html((string) $row['submitted_attempts']); ?></td>
                                                 <td><?php echo esc_html((string) $row['age_minutes']); ?> min</td>
                                                 <td><?php echo esc_html((string) ($row['next_retry_at'] !== '' ? $row['next_retry_at'] : 'N/A')); ?></td>
+                                                <td>
+                                                    <div class="dc-submitted-actions">
+                                                        <a href="<?php echo esc_url((string) $row['order_url']); ?>" class="button button-secondary">Ver pedido</a>
+                                                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('¿Reintentar esta recarga ahora?');">
+                                                            <input type="hidden" name="action" value="dc_retry_recarga_item">
+                                                            <input type="hidden" name="order_id" value="<?php echo esc_attr((string) $row['order_id']); ?>">
+                                                            <input type="hidden" name="item_id" value="<?php echo esc_attr((string) $row['item_id']); ?>">
+                                                            <?php wp_nonce_field('dc_retry_recarga_item'); ?>
+                                                            <button type="submit" class="button button-primary">Reintentar</button>
+                                                        </form>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
                             </div>
+                            <div class="dc-submitted-bulk-actions">
+                                <button type="submit" class="button button-primary">Reintentar seleccionadas</button>
+                            </div>
+                            </form>
                         <?php endif; ?>
                     </div>
 
@@ -4732,6 +4970,23 @@ class DC_Recargas_Admin {
                         .dc-submitted-table-wrap {
                             overflow-x: auto;
                             margin-top: 10px;
+                        }
+
+                        .dc-submitted-actions {
+                            display: flex;
+                            gap: 8px;
+                            align-items: center;
+                            flex-wrap: wrap;
+                        }
+
+                        .dc-submitted-actions form {
+                            margin: 0;
+                        }
+
+                        .dc-submitted-bulk-actions {
+                            margin-top: 10px;
+                            display: flex;
+                            justify-content: flex-end;
                         }
 
                         .dc-logs-stat {
@@ -6993,6 +7248,15 @@ class DC_Recargas_Admin {
                         closeAllCombos(null);
                     }
                 });
+
+                var submittedSelectAllEl = document.getElementById('dc-submitted-select-all');
+                if (submittedSelectAllEl) {
+                    submittedSelectAllEl.addEventListener('change', function () {
+                        document.querySelectorAll('.dc-submitted-item').forEach(function (itemEl) {
+                            itemEl.checked = submittedSelectAllEl.checked;
+                        });
+                    });
+                }
             })();
 
         </script>
@@ -7019,6 +7283,10 @@ class DC_Recargas_Admin {
             'ticket_deleted' => ['success', 'Soporte eliminado correctamente.'],
             'ticket_error' => ['error', 'El soporte debe incluir al menos un título.'],
             'ticket_not_found' => ['error', 'No se encontró el soporte solicitado.'],
+            'retry_item_done' => ['success', 'Reintento manual ejecutado correctamente. Revisa las notas del pedido para el resultado detallado.'],
+            'retry_item_error' => ['error', 'No se pudo ejecutar el reintento manual para ese registro.'],
+            'retry_bulk_done' => ['success', sprintf('Reintentos masivos ejecutados: %d. Omitidos: %d.', $count, isset($_GET['dc_skipped']) ? (int) $_GET['dc_skipped'] : 0)],
+            'retry_bulk_empty' => ['error', 'Selecciona al menos una recarga para reintentar.'],
             'bundle_updated' => ['success', 'Producto actualizado correctamente.'],
             'bundle_error' => ['error', 'Completa País ISO, Nombre y SKU para añadir un producto.'],
             'bundle_duplicate' => ['error', 'Ya existe otro producto con el mismo país y SKU.'],
@@ -7295,7 +7563,7 @@ class DC_Recargas_Admin {
                 continue;
             }
 
-            foreach ($order->get_items() as $item) {
+            foreach ($order->get_items() as $order_item_id => $item) {
                 if (!$item instanceof WC_Order_Item_Product || $item->get_meta('_dc_recarga') !== 'yes') {
                     continue;
                 }
@@ -7311,6 +7579,7 @@ class DC_Recargas_Admin {
 
                 $rows[] = [
                     'order_id' => (int) $order->get_id(),
+                    'item_id' => (int) $order_item_id,
                     'order_url' => admin_url('post.php?post=' . (int) $order->get_id() . '&action=edit'),
                     'phone' => $this->mask_phone_for_admin((string) $item->get_meta('_dc_account_number')),
                     'sku_code' => (string) $item->get_meta('_dc_sku_code'),
@@ -7504,6 +7773,125 @@ class DC_Recargas_Admin {
         wp_redirect(add_query_arg([
             'page'   => 'dingconnect-recargas',
             'dc_tab' => 'tab_logs',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_retry_recarga_item(): void {
+        check_admin_referer('dc_retry_recarga_item');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Sin permiso.', 'dingconnect-recargas'), 403);
+        }
+
+        if (!class_exists('WooCommerce') || !function_exists('wc_get_order')) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_tab' => 'tab_logs',
+                'dc_msg' => 'retry_item_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $order_id = (int) ($_POST['order_id'] ?? 0);
+        $item_id = (int) ($_POST['item_id'] ?? 0);
+        $order = call_user_func('wc_get_order', $order_id);
+        $item = $order instanceof WC_Order ? call_user_func([$order, 'get_item'], $item_id) : null;
+
+        if (!($order instanceof WC_Order) || !($item instanceof WC_Order_Item_Product) || $item->get_meta('_dc_recarga') !== 'yes') {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_tab' => 'tab_logs',
+                'dc_msg' => 'retry_item_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $order->add_order_note(sprintf(
+            'DingConnect: reintento manual solicitado desde panel Registros para item #%d.',
+            $item_id
+        ));
+        $order->save();
+
+        do_action('dc_recargas_retry_transfer', $order_id, $item_id);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_tab' => 'tab_logs',
+            'dc_msg' => 'retry_item_done',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_retry_recarga_bulk(): void {
+        check_admin_referer('dc_retry_recarga_bulk');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('Sin permiso.', 'dingconnect-recargas'), 403);
+        }
+
+        if (!class_exists('WooCommerce') || !function_exists('wc_get_order')) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_tab' => 'tab_logs',
+                'dc_msg' => 'retry_item_error',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $selected = wp_unslash($_POST['monitor_items'] ?? []);
+        if (!is_array($selected) || empty($selected)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_tab' => 'tab_logs',
+                'dc_msg' => 'retry_bulk_empty',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $triggered = 0;
+        $skipped = 0;
+        $seen = [];
+
+        foreach ($selected as $raw) {
+            $raw = sanitize_text_field((string) $raw);
+            if ($raw === '' || isset($seen[$raw])) {
+                continue;
+            }
+            $seen[$raw] = true;
+
+            $parts = explode(':', $raw, 2);
+            $order_id = isset($parts[0]) ? (int) $parts[0] : 0;
+            $item_id = isset($parts[1]) ? (int) $parts[1] : 0;
+
+            if ($order_id < 1 || $item_id < 1) {
+                $skipped++;
+                continue;
+            }
+
+            $order = call_user_func('wc_get_order', $order_id);
+            $item = $order instanceof WC_Order ? call_user_func([$order, 'get_item'], $item_id) : null;
+            if (!($order instanceof WC_Order) || !($item instanceof WC_Order_Item_Product) || $item->get_meta('_dc_recarga') !== 'yes') {
+                $skipped++;
+                continue;
+            }
+
+            $order->add_order_note(sprintf(
+                'DingConnect: reintento manual solicitado desde panel Registros (lote) para item #%d.',
+                $item_id
+            ));
+            $order->save();
+
+            do_action('dc_recargas_retry_transfer', $order_id, $item_id);
+            $triggered++;
+        }
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_tab' => 'tab_logs',
+            'dc_msg' => 'retry_bulk_done',
+            'dc_count' => $triggered,
+            'dc_skipped' => $skipped,
         ], admin_url('admin.php')));
         exit;
     }
