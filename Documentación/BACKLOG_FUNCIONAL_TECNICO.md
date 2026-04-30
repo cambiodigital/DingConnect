@@ -363,6 +363,9 @@ Corrección aplicada de checkout inválido por rehidratación de carrito (29-04-
 - Hallazgo productivo confirmado en log: el bloqueo visible de checkout provenía también de una regla externa de pedido mínimo (`Para poder hacer un pedido, el total del carro de compra debe ser de al menos $50,00.`). En carritos `DC-only` el plugin ahora trata ese notice como bloqueador ajeno al flujo de recargas y lo suprime.
 - Configuración nueva en `Credenciales`: `Checkout DC-only: Store Credit` para ocultar el bloque visual de créditos/descuentos de Advanced Coupons (`Apply store credit discounts`) solo cuando el carrito contiene exclusivamente recargas DingConnect.
 - Corrección aplicada en validación de montos fijos de checkout (30-04-2026): `POST /add-to-cart` ahora valida `send_value` contra el bundle exacto seleccionado por `bundle_id` (cuando existe), evitando cruces por `sku_code + country_iso` con otros bundles del mismo SKU pero distinto precio comercial.
+- Refuerzo de cumplimiento por pasarela en despacho real (30-04-2026): se añadió guardia final en `attempt_transfer_for_item` para bloquear cualquier `SendTransfer` cuando el método de pago de la orden no está permitido en `woo_allowed_gateways`, marcando el item como `blocked_gateway`, cancelando reintentos y dejando auditoría en notas de pedido.
+- Endurecimiento de estados terminales no pagados (30-04-2026): al pasar la orden a `failed`, `cancelled` o `refunded`, se limpian reintentos programados de recargas pendientes y se marca `cancelled_before_dispatch` cuando aplica, evitando ejecuciones tardías fuera de política.
+- Feedback ampliado para cliente post-compra (30-04-2026): la pantalla de thank-you y el correo de WooCommerce incluyen aviso accionable cuando hay recargas pendientes o con error, indicando no repetir compra inmediata y canal de soporte con número de pedido.
 
 ## Remediación SendValue fuera de rango (30-04-2026)
 

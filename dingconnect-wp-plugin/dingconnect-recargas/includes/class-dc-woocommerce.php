@@ -79,6 +79,9 @@ class DC_Recargas_WooCommerce {
         add_action('woocommerce_payment_complete', [$this, 'process_recarga_on_payment']);
         add_action('woocommerce_order_status_processing', [$this, 'process_recarga_on_payment']);
         add_action('woocommerce_order_status_completed', [$this, 'process_recarga_on_payment']);
+        add_action('woocommerce_order_status_failed', [$this, 'handle_order_terminal_failure']);
+        add_action('woocommerce_order_status_cancelled', [$this, 'handle_order_terminal_failure']);
+        add_action('woocommerce_order_status_refunded', [$this, 'handle_order_terminal_failure']);
         add_action('dc_recargas_retry_transfer', [$this, 'process_retry_transfer'], 10, 2);
 
         // Restrict checkout payment gateways for recarga carts
@@ -1438,6 +1441,48 @@ class DC_Recargas_WooCommerce {
         $order->save();
     }
 
+    public function handle_order_terminal_failure($order_id) {
+        $order = wc_get_order((int) $order_id);
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+
+        $updated = false;
+        foreach ($order->get_items() as $item) {
+            if (!($item instanceof WC_Order_Item_Product)) {
+                continue;
+            }
+
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            $status = strtolower((string) $item->get_meta('_dc_transfer_status'));
+            if ($this->is_successful_transfer_status($status)) {
+                continue;
+            }
+
+            $item_id = (int) call_user_func([$item, 'get_id']);
+            wp_clear_scheduled_hook('dc_recargas_retry_transfer', [(int) $order->get_id(), $item_id]);
+            call_user_func([$item, 'delete_meta_data'], '_dc_next_retry_at');
+
+            if ($this->is_pending_transfer_status($status) || in_array($status, ['pending_retry', 'not_started', ''], true)) {
+                call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'cancelled_before_dispatch');
+                call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code', 'order_terminal_state');
+                call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_context', 'order_terminal_state');
+                call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', 'Despacho cancelado: el pedido cambió a un estado terminal no pagado.');
+            }
+
+            call_user_func([$item, 'save']);
+            $updated = true;
+        }
+
+        if ($updated) {
+            $order->add_order_note('DingConnect: reintentos cancelados para recargas pendientes por cambio de estado del pedido a failed/cancelled/refunded.');
+            $order->save();
+        }
+    }
+
     public function register_manual_reconcile_action($actions) {
         $actions['dc_recargas_manual_reconcile'] = __('Reintentar recargas DingConnect', 'dingconnect-recargas');
         return $actions;
@@ -1578,11 +1623,15 @@ class DC_Recargas_WooCommerce {
         }
 
         $has_pending = $this->order_has_pending_recargas($order);
+        $has_errors = $this->order_has_error_recargas($order);
 
         echo '<section class="woocommerce-order-details" style="margin-top:22px;">';
         echo '<h2>Resumen final de tu compra DingConnect</h2>';
         if ($has_pending) {
             echo '<p style="margin:0 0 14px;color:#7c2d12;">Tu pedido contiene operaciones pendientes en DingConnect. No repitas la compra mientras el estado siga Submitted o Pending; el sistema seguira conciliando segun la politica configurada.</p>';
+        }
+        if ($has_errors) {
+            echo '<p style="margin:0 0 14px;color:#991b1b;">Una o más recargas no pudieron confirmarse. No repitas la compra de inmediato: revisa tu correo y, si el problema persiste, contacta soporte indicando tu número de pedido.</p>';
         }
         echo '<ul class="woocommerce-order-overview woocommerce-thankyou-order-details order_details">';
         foreach ($voucher_rows as $row) {
@@ -1608,6 +1657,19 @@ class DC_Recargas_WooCommerce {
             'label' => __('Resumen de recarga', 'dingconnect-recargas'),
             'value' => implode(' | ', $voucher_rows),
         ];
+
+        $summary = $this->build_recarga_status_summary($order);
+        if (($summary['error'] ?? 0) > 0) {
+            $fields['dc_recargas_next_steps'] = [
+                'label' => __('Siguientes pasos', 'dingconnect-recargas'),
+                'value' => 'Detectamos recargas no confirmadas. No repitas la compra de inmediato; responde a este correo o contacta soporte con tu número de pedido.',
+            ];
+        } elseif (($summary['pending'] ?? 0) > 0) {
+            $fields['dc_recargas_next_steps'] = [
+                'label' => __('Siguientes pasos', 'dingconnect-recargas'),
+                'value' => 'Tu pedido tiene recargas en validación. No repitas la compra mientras estén en estado pendiente; continuaremos la conciliación automáticamente.',
+            ];
+        }
 
         return $fields;
     }
@@ -1698,6 +1760,11 @@ class DC_Recargas_WooCommerce {
         $settings = json_decode((string) $item->get_meta('_dc_settings'), true);
         if (!is_array($settings)) {
             $settings = [];
+        }
+
+        if (!$this->is_order_payment_method_allowed_for_recargas($order)) {
+            $this->mark_item_as_blocked_gateway($order, $item);
+            return ['success' => false, 'pending_retry' => false, 'message' => 'gateway_not_allowed'];
         }
 
         $lock_key = 'dc_transfer_lock_' . md5($order->get_id() . '_' . $item->get_id());
@@ -2508,6 +2575,11 @@ class DC_Recargas_WooCommerce {
         return false;
     }
 
+    private function order_has_error_recargas($order) {
+        $summary = $this->build_recarga_status_summary($order);
+        return ((int) ($summary['error'] ?? 0)) > 0;
+    }
+
     private function collect_order_voucher_rows($order) {
         $rows = [];
 
@@ -2570,5 +2642,59 @@ class DC_Recargas_WooCommerce {
             $raw = '+' . ltrim($raw, '+');
         }
         return $raw;
+    }
+
+    private function get_allowed_gateway_ids_for_recargas() {
+        $options = $this->api->get_options();
+        $payment_mode = sanitize_key((string) ($options['payment_mode'] ?? 'direct'));
+        if ($payment_mode !== 'woocommerce') {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+    }
+
+    private function is_order_payment_method_allowed_for_recargas($order) {
+        if (!($order instanceof WC_Order)) {
+            return false;
+        }
+
+        $allowed = $this->get_allowed_gateway_ids_for_recargas();
+        if (empty($allowed)) {
+            return true;
+        }
+
+        $payment_method = sanitize_key((string) call_user_func([$order, 'get_payment_method']));
+        if ($payment_method === '') {
+            return false;
+        }
+
+        return in_array($payment_method, $allowed, true);
+    }
+
+    private function mark_item_as_blocked_gateway($order, $item) {
+        if (!($order instanceof WC_Order) || !($item instanceof WC_Order_Item_Product)) {
+            return;
+        }
+
+        $payment_method = sanitize_key((string) call_user_func([$order, 'get_payment_method']));
+        $payment_title = sanitize_text_field((string) call_user_func([$order, 'get_payment_method_title']));
+
+        call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'blocked_gateway');
+        call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code', 'blocked_gateway');
+        call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_context', 'payment_method_policy');
+        call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', 'Despacho bloqueado por política de pasarelas: método de pago no permitido para recargas DingConnect.');
+        call_user_func([$item, 'delete_meta_data'], '_dc_next_retry_at');
+        call_user_func([$item, 'save']);
+
+        $item_id = (int) call_user_func([$item, 'get_id']);
+        wp_clear_scheduled_hook('dc_recargas_retry_transfer', [(int) $order->get_id(), $item_id]);
+
+        $order->add_order_note(sprintf(
+            'DingConnect: despacho bloqueado para item #%d por pasarela no permitida (id=%s, titulo=%s).',
+            $item_id,
+            $payment_method !== '' ? $payment_method : '-',
+            $payment_title !== '' ? $payment_title : '-'
+        ));
     }
 }
