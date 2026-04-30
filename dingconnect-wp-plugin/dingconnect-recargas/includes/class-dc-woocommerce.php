@@ -1506,7 +1506,10 @@ class DC_Recargas_WooCommerce {
             '_dc_transfer_ref'    => 'Ref. DingConnect',
             '_dc_distributor_ref' => 'Ref. Distribuidor',
             '_dc_transfer_status' => 'Estado transferencia',
-            '_dc_transfer_error'  => 'Error',
+            '_dc_transfer_http_status' => 'HTTP status',
+            '_dc_transfer_error_code'  => 'Código error Ding',
+            '_dc_transfer_error_context' => 'Contexto error',
+            '_dc_transfer_error'  => 'Mensaje error',
         ];
 
         echo '<div class="dc-order-meta" style="margin-top:8px;padding:8px;background:#f8fafc;border-radius:6px;font-size:12px;">';
@@ -1526,9 +1529,38 @@ class DC_Recargas_WooCommerce {
             }
 
             if ($value) {
-                $css = ($meta_key === '_dc_transfer_error') ? 'color:#991b1b;' : '';
+                $is_error_field = in_array($meta_key, ['_dc_transfer_error', '_dc_transfer_error_code', '_dc_transfer_http_status', '_dc_transfer_error_context'], true);
+                $css = $is_error_field ? 'color:#991b1b;' : '';
                 echo '<div style="' . $css . '"><span style="color:#64748b;">' . esc_html($label) . ':</span> ' . esc_html($value) . '</div>';
             }
+        }
+
+        // Fase 3: Aviso administrativo de posible drift de catálogo
+        $error_code_meta     = strtolower((string) $item->get_meta('_dc_transfer_error_code'));
+        $val_fingerprint_raw = (string) $item->get_meta('_dc_validation_fingerprint');
+        $val_fp              = $val_fingerprint_raw !== '' ? json_decode($val_fingerprint_raw, true) : [];
+        $local_invalid       = is_array($val_fp) && isset($val_fp['result']) && $val_fp['result'] === 'invalid';
+        $is_drift_error      = in_array($error_code_meta, ['parameteroutofrange', 'sendvalue', 'amount_out_of_range', 'amount_fixed_only'], true);
+
+        if ($local_invalid || $is_drift_error) {
+            $drift_send  = is_array($val_fp) && isset($val_fp['send_value']) ? sprintf('%.2f', (float) $val_fp['send_value']) : '-';
+            $drift_min   = is_array($val_fp) && isset($val_fp['min'])        ? sprintf('%.2f', (float) $val_fp['min'])        : null;
+            $drift_max   = is_array($val_fp) && isset($val_fp['max'])        ? sprintf('%.2f', (float) $val_fp['max'])        : null;
+            $drift_fixed = is_array($val_fp) && isset($val_fp['fixed'])      ? sprintf('%.2f', (float) $val_fp['fixed'])      : null;
+            $drift_mode  = is_array($val_fp) && isset($val_fp['mode'])       ? (string) $val_fp['mode']                       : '-';
+
+            echo '<div style="margin-top:8px;padding:8px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;font-size:12px;">';
+            echo '<strong style="color:#dc2626;">&#9888; Posible drift de catálogo detectado</strong>';
+            echo '<div style="margin-top:4px;color:#7f1d1d;">El monto enviado no coincide con los rangos del bundle guardado localmente. Esto puede indicar que el catálogo DingConnect cambió sin refrescar los bundles en el plugin.</div>';
+            echo '<div><span style="color:#64748b;">Modo:</span> ' . esc_html($drift_mode) . '</div>';
+            echo '<div><span style="color:#64748b;">Valor enviado:</span> ' . esc_html($drift_send) . '</div>';
+            if ($drift_min !== null && $drift_max !== null) {
+                echo '<div><span style="color:#64748b;">Rango permitido:</span> ' . esc_html($drift_min) . ' &ndash; ' . esc_html($drift_max) . '</div>';
+            } elseif ($drift_fixed !== null) {
+                echo '<div><span style="color:#64748b;">Monto fijo esperado:</span> ' . esc_html($drift_fixed) . '</div>';
+            }
+            echo '<div style="margin-top:4px;"><strong>Acción:</strong> Verifica y refresca los bundles del plugin, luego usa "Reintentar recargas DingConnect" en las acciones del pedido.</div>';
+            echo '</div>';
         }
 
         echo '</div>';
@@ -1584,6 +1616,59 @@ class DC_Recargas_WooCommerce {
      * Helpers
      * ------------------------------------------------------------- */
 
+    /**
+     * Valida el monto del item contra el bundle guardado ANTES de llamar al proveedor.
+     * Construye y persiste una huella de validación en el item para trazabilidad.
+     *
+    * @param mixed $item
+     * @return true|WP_Error  true si el monto es válido; WP_Error con detalles si está fuera de rango.
+     */
+    private function validate_send_value_from_item($item) {
+        $sku_code    = (string) $item->get_meta('_dc_sku_code');
+        $country_iso = strtoupper((string) $item->get_meta('_dc_country_iso'));
+        $send_value  = (float)  $item->get_meta('_dc_send_value');
+        $bundle_id   = (string) $item->get_meta('_dc_bundle_id');
+
+        // Construir huella de validación desde los datos del bundle guardado localmente
+        $bundle = $this->api->find_bundle_for_amount_validation($sku_code, $country_iso, $bundle_id);
+        $fingerprint = [
+            'validated_at' => current_time('mysql'),
+            'send_value'   => $send_value,
+            'sku_code'     => strtoupper($sku_code),
+            'mode'         => 'unknown',
+        ];
+
+        if (!empty($bundle)) {
+            $options          = $this->api->get_options();
+            $allow_manual     = (sanitize_key((string) ($options['manual_amount_mode'] ?? 'range_products')) === 'range_products');
+            $sv               = (float) ($bundle['send_value'] ?? 0);
+            $min              = isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : $sv;
+            $max              = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $sv;
+            $bundle_allow     = array_key_exists('allow_manual_amount', $bundle) ? !empty($bundle['allow_manual_amount']) : true;
+            $is_range         = $allow_manual && $bundle_allow && (!empty($bundle['is_range']) || abs($max - $min) > 0.00001);
+            $fingerprint['mode'] = $is_range ? 'range' : 'fixed';
+            if ($is_range) {
+                $fingerprint['min'] = $min;
+                $fingerprint['max'] = $max;
+            } else {
+                $fingerprint['fixed'] = $sv;
+            }
+        }
+
+        $result = $this->api->validate_send_value_against_bundle($sku_code, $country_iso, $send_value, $bundle_id);
+
+        $fingerprint['result'] = is_wp_error($result) ? 'invalid' : 'valid';
+        if (is_wp_error($result)) {
+            $err_data = $result->get_error_data();
+            $fingerprint['error_code'] = (string) ($err_data['code'] ?? 'validation_failed');
+        }
+        if (is_object($item) && method_exists($item, 'update_meta_data')) {
+            $item->update_meta_data('_dc_validation_fingerprint', wp_json_encode($fingerprint));
+        }
+
+        return $result;
+    }
+
     private function is_item_already_successful($item) {
         $status = strtolower((string) $item->get_meta('_dc_transfer_status'));
         return $this->is_successful_transfer_status($status);
@@ -1638,6 +1723,34 @@ class DC_Recargas_WooCommerce {
             $sku_code
         ));
 
+        // Fase 1: Validación local de monto ANTES de contactar al proveedor.
+        // Evita cargos por montos fuera de rango y retroalimentación inmediata al operador.
+        $pre_validation = $this->validate_send_value_from_item($item);
+        if (is_wp_error($pre_validation)) {
+            $val_data    = $pre_validation->get_error_data();
+            $val_code    = (string) ($val_data['code'] ?? 'amount_validation_failed');
+            $item->update_meta_data('_dc_transfer_status', 'failed_permanent');
+            $item->update_meta_data('_dc_transfer_error', $pre_validation->get_error_message());
+            $item->update_meta_data('_dc_transfer_error_code', $val_code);
+            $item->update_meta_data('_dc_transfer_http_status', '400');
+            $item->update_meta_data('_dc_transfer_error_context', 'local_validation');
+            $item->delete_meta_data('_dc_next_retry_at');
+            $item->save();
+
+            $order->add_order_note(sprintf(
+                'Recarga BLOQUEADA localmente para %s (SKU: %s), intento %d — Monto inválido, no se contactó al proveedor. %s | Valor: %.2f | Código: %s [sin reintento automático]',
+                $account_number,
+                $sku_code,
+                $attempt,
+                $pre_validation->get_error_message(),
+                $send_value,
+                $val_code
+            ));
+
+            delete_transient($lock_key);
+            return ['success' => false, 'pending_retry' => false, 'message' => $pre_validation->get_error_message()];
+        }
+
         $distributor_ref = $this->api->new_ref();
         $payload = [
             'DistributorRef' => $distributor_ref,
@@ -1659,6 +1772,19 @@ class DC_Recargas_WooCommerce {
             $item->update_meta_data('_dc_transfer_error', $response->get_error_message());
             $item->update_meta_data('_dc_distributor_ref', $distributor_ref);
 
+            // Fase 1: Enriquecer metadatos con información diagnóstica del error del proveedor
+            $error_data          = $response->get_error_data();
+            $http_status_code    = isset($error_data['status']) ? (int) $error_data['status'] : 0;
+            $ding_error_code     = sanitize_text_field((string) ($error_data['ding_error_code'] ?? ''));
+            $ding_error_context  = sanitize_text_field((string) ($error_data['ding_error_context'] ?? ''));
+            $error_transfer_ref  = sanitize_text_field((string) ($error_data['transfer_ref'] ?? ''));
+            $item->update_meta_data('_dc_transfer_http_status',    $http_status_code > 0 ? (string) $http_status_code : '');
+            $item->update_meta_data('_dc_transfer_error_code',     $ding_error_code);
+            $item->update_meta_data('_dc_transfer_error_context',  $ding_error_context);
+            if ($error_transfer_ref !== '') {
+                $item->update_meta_data('_dc_transfer_ref', $error_transfer_ref);
+            }
+
             $retry_budget = $this->get_retry_attempt_limit();
             $can_schedule_retry = !$manual && !$is_non_retryable && $attempt <= $retry_budget;
 
@@ -1675,11 +1801,16 @@ class DC_Recargas_WooCommerce {
 
             $item->save();
             $order->add_order_note(sprintf(
-                'Recarga FALLIDA para %s (SKU: %s), intento %d: %s%s',
+                'Recarga FALLIDA para %s (SKU: %s), intento %d: %s | HTTP=%s | Code=%s | Context=%s | DistRef=%s | TransRef=%s%s',
                 $account_number,
                 $sku_code,
                 $attempt,
                 $response->get_error_message(),
+                $http_status_code > 0 ? (string) $http_status_code : '-',
+                $ding_error_code !== '' ? $ding_error_code : '-',
+                $ding_error_context !== '' ? $ding_error_context : '-',
+                $distributor_ref,
+                $error_transfer_ref !== '' ? $error_transfer_ref : '-',
                 $is_non_retryable ? ' [sin reintento automático]' : ''
             ));
 

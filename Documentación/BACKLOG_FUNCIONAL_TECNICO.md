@@ -363,3 +363,26 @@ Corrección aplicada de checkout inválido por rehidratación de carrito (29-04-
 - Hallazgo productivo confirmado en log: el bloqueo visible de checkout provenía también de una regla externa de pedido mínimo (`Para poder hacer un pedido, el total del carro de compra debe ser de al menos $50,00.`). En carritos `DC-only` el plugin ahora trata ese notice como bloqueador ajeno al flujo de recargas y lo suprime.
 - Configuración nueva en `Credenciales`: `Checkout DC-only: Store Credit` para ocultar el bloque visual de créditos/descuentos de Advanced Coupons (`Apply store credit discounts`) solo cuando el carrito contiene exclusivamente recargas DingConnect.
 - Corrección aplicada en validación de montos fijos de checkout (30-04-2026): `POST /add-to-cart` ahora valida `send_value` contra el bundle exacto seleccionado por `bundle_id` (cuando existe), evitando cruces por `sku_code + country_iso` con otros bundles del mismo SKU pero distinto precio comercial.
+
+## Remediación SendValue fuera de rango (30-04-2026)
+
+**Incidente raíz**: recargas en producción podían cobrar al cliente pero fallar en DingConnect con `ParameterOutOfRange` (código de negocio: monto enviado fuera del rango del SKU). Dado que ese código no estaba en la lista de errores no reintentables, el cron de reintentos ejecutaba el mismo intento fallido en bucle hasta agotar la ventana máxima, generando ruido operativo y escalado de soporte en pedidos sin solución automática posible.
+
+**Causa técnica**: drift de catálogo — el rango o monto fijo del bundle guardado en el plugin quedó desactualizado respecto al catálogo DingConnect real. Al ejecutar `SendTransfer` con un monto que ya no era válido, la API devolvía `ParameterOutOfRange` o `SendValue` pero el plugin los trataba como errores transitorios y continuaba reintentando.
+
+**Fases aplicadas**:
+
+1. **Fase 1 — Hotfix no-reintentar**: `ParameterOutOfRange` y `SendValue` añadidos al valor por defecto de `submitted_non_retryable_codes` en `class-dc-api.php`. Esto corta el bucle de reintentos inmediatamente en instalaciones nuevas o tras reset de configuración.
+
+2. **Fase 2 — Validación local pre-envío**: nuevo método `validate_send_value_from_item()` en `class-dc-woocommerce.php` que valida el monto del ítem contra el bundle guardado (rango o fijo) ANTES de llamar a `SendTransfer`. Si el monto es inválido: marca el ítem como `failed_permanent`, cancela reintentos futuros, guarda contexto diagnóstico en metadatos y añade nota de orden detallada. Se elimina toda latencia en detectar la inviabilidad.
+
+3. **Fase 3 — Diagnóstico enriquecido**: la respuesta de errores WP_Error de la API ahora persiste `_dc_transfer_http_status`, `_dc_transfer_error_code` y `_dc_transfer_error_context` en los metadatos del ítem de orden. Las notas de pedido incluyen estos campos para triaje rápido. El panel de detalle de pedido en admin muestra los tres campos nuevos con estilo rojo diferenciado, y aparece un aviso visual de drift de catálogo (fondo rojo, borde izquierdo) cuando el código de error o la huella de validación local indican desajuste de rango.
+
+4. **Fase 4 — Documentación operativa**: este registro en backlog y nuevo apartado en `GUIA_TECNICA_DING_CONNECT.md` con protocolo de refresco y remediación ante drift.
+
+**Archivos modificados**:
+- `includes/class-dc-api.php` — defaults de códigos no reintentables, mensajes amigables para `ParameterOutOfRange`/`SendValue`, métodos públicos `validate_send_value_against_bundle()` y `find_bundle_for_amount_validation()`.
+- `includes/class-dc-rest.php` — delegación de las funciones de validación a la API.
+- `includes/class-dc-woocommerce.php` — pre-validación local, metadatos diagnósticos enriquecidos, huella de validación (`_dc_validation_fingerprint`), aviso administrativo de drift en panel de pedido.
+
+**Protocolo operativo ante drift**: si un pedido muestra el aviso de drift, el operador debe: (1) refrescar bundles desde `Catálogo > Buscar en API`, (2) actualizar mínimos/máximos en el bundle afectado, (3) usar "Reintentar recargas DingConnect" en el pedido para lanzar un intento con el monto corregido manualmente.

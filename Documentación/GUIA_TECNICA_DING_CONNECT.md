@@ -490,6 +490,48 @@ Brechas pendientes para go-live:
 
 1. Ejecutar matriz runtime 6.1-6.7 en staging con pedido real de WooCommerce.
 2. Capturar evidencia por gateway (al menos Stripe, PayPal y una alternativa equivalente disponible).
+
+## 20. Protocolo operativo: drift de catálogo y refresco de rangos de bundle (30-04-2026)
+
+### ¿Qué es el drift de catálogo?
+
+DingConnect puede actualizar en cualquier momento el rango de montos permitido (`MinimumAmount`/`MaximumAmount`) o los montos fijos (`FixedAmounts`) de cualquier SKU. Si el plugin no refresca los bundles guardados después de esos cambios, enviará `SendTransfer` con un monto que ya no es válido y obtendrá el código de error `ParameterOutOfRange` o `SendValue` de la API.
+
+### Señales de alerta
+
+- Pedido muestra el aviso rojo **"Posible drift de catálogo detectado"** en el panel de detalle del ítem de orden (admin).
+- El campo `Código error Ding` del ítem contiene `ParameterOutOfRange` o `SendValue`.
+- El ítem tiene estado `failed_permanent` sin que hubiera un problema de balance o número inválido.
+- Log de error de DingConnect confirma que el `SendValue` enviado está fuera del rango actual del proveedor.
+
+### Cómo detectar el bundle desactualizado
+
+1. Anotar el `SKU` del ítem afectado (campo `_dc_sku_code` en los metadatos del pedido).
+2. En el admin del plugin, ir a `Catálogo > Buscar en API`, buscar por país y localizar el SKU.
+3. Comparar la columna `Coste` de la tabla `Paquetes encontrados` (valor live de la API) con el valor guardado en `Productos guardados`.
+4. Si los valores difieren, el bundle tiene drift confirmado.
+
+### Procedimiento de remediación
+
+1. **Refrescar el bundle**: en `Productos guardados`, abrir el bundle afectado con clic en la fila para editar y actualizar `Coste DING`, `Monto mínimo`, `Monto máximo` (o `Monto fijo`) con los valores reales obtenidos de `Buscar en API`.
+2. **Verificar la landing**: si el bundle pertenece a una landing (`Landings > Shortcodes dinámicos`), confirmar que el monto configurado en la landing sigue dentro del nuevo rango.
+3. **Reintentar el pedido afectado**: en el pedido de WooCommerce, usar la acción `Reintentar recargas DingConnect` para lanzar un nuevo intento con los datos de bundle ya actualizados. El sistema ignorará el estado `failed_permanent` previo y ejecutará una nueva transferencia.
+4. **Confirmar resultado**: verificar en las notas del pedido que el nuevo intento reporta `Transferencia exitosa` o un estado `Submitted` que requiera reconciliación.
+
+### Prevención
+
+- Revisar periódicamente los rangos de bundles activos usando `Catálogo > Buscar en API`.
+- Antes de activar una campaña con precio fijo, confirmar contra la API que el monto fijo del bundle coincide con el valor live del proveedor.
+- La política de códigos no reintentables (`ParameterOutOfRange`, `SendValue`) ya está configurada por defecto para cortar loops de cron ante errores de rango. No eliminar esos códigos de la lista salvo con justificación explícita.
+
+### Metadatos diagnósticos disponibles en el pedido (admin)
+
+| Campo | Significado |
+|-------|-------------|
+| `_dc_transfer_http_status` | Código HTTP de la respuesta de DingConnect |
+| `_dc_transfer_error_code` | Código de negocio del error (`ParameterOutOfRange`, `InsufficientBalance`, etc.) |
+| `_dc_transfer_error_context` | Contexto de la falla (`api_call`, `local_validation`) |
+| `_dc_validation_fingerprint` | JSON con la validación local pre-envío: modo (rango/fijo), valor enviado, límites del bundle en el momento del intento y resultado (`valid`/`invalid`) |
 3. Validar visual y fallback progresivo en al menos un tema externo de landing.
 4. Confirmar trazabilidad completa en notas de pedido, logs internos y contenido de voucher/email.
 

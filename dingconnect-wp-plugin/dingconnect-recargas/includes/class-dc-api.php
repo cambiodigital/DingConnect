@@ -22,7 +22,7 @@ class DC_Recargas_API {
             'submitted_retry_backoff_minutes' => '10,20,40,80',
             'submitted_max_window_hours' => 12,
             'submitted_escalation_email' => '',
-            'submitted_non_retryable_codes' => 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed',
+            'submitted_non_retryable_codes' => 'InsufficientBalance,AccountNumberInvalid,RechargeNotAllowed,ParameterOutOfRange,SendValue',
             'catalog_csv_path' => '',
             'catalog_csv_url' => '',
             'catalog_csv_uploaded_at' => '',
@@ -416,6 +416,129 @@ class DC_Recargas_API {
         return 'WP-' . gmdate('YmdHis') . '-' . strtoupper(wp_generate_password(6, false, false));
     }
 
+    /**
+     * Valida que el send_value esté dentro del rango/monto fijo del bundle guardado.
+     * Devuelve true si es válido o no hay bundle de referencia; WP_Error si está fuera de rango.
+     * Usado tanto en REST (add-to-cart) como en WooCommerce (pre-SendTransfer).
+     */
+    public function validate_send_value_against_bundle($sku_code, $country_iso, $send_value, $bundle_id = '') {
+        $sku_code   = sanitize_text_field((string) $sku_code);
+        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        $bundle_id  = sanitize_text_field((string) $bundle_id);
+        $send_value = (float) $send_value;
+
+        if ('' === $sku_code || $send_value <= 0) {
+            return true;
+        }
+
+        $bundle = $this->find_bundle_for_amount_validation($sku_code, $country_iso, $bundle_id);
+        if (empty($bundle)) {
+            return true;
+        }
+
+        $options = $this->get_options();
+        $manual_amount_mode   = sanitize_key((string) ($options['manual_amount_mode'] ?? 'range_products'));
+        $allow_manual_amount  = ($manual_amount_mode === 'range_products');
+
+        $bundle_send_value   = (float) ($bundle['send_value'] ?? 0);
+        $min_send_value      = isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : $bundle_send_value;
+        $max_send_value      = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $bundle_send_value;
+        $stored_is_range     = !empty($bundle['is_range']);
+        $calculated_is_range = abs($max_send_value - $min_send_value) > 0.00001;
+        $bundle_allow_manual = array_key_exists('allow_manual_amount', $bundle)
+            ? !empty($bundle['allow_manual_amount'])
+            : true;
+        $is_range = $allow_manual_amount && $bundle_allow_manual && ($stored_is_range || $calculated_is_range);
+
+        if ($is_range) {
+            if ($send_value < ($min_send_value - 0.00001) || $send_value > ($max_send_value + 0.00001)) {
+                return new WP_Error(
+                    'dc_amount_out_of_range',
+                    sprintf(
+                        'El importe enviado está fuera del rango permitido para este producto. Permitido: %.2f a %.2f.',
+                        $min_send_value,
+                        $max_send_value
+                    ),
+                    [
+                        'status'         => 400,
+                        'code'           => 'amount_out_of_range',
+                        'min_send_value' => $min_send_value,
+                        'max_send_value' => $max_send_value,
+                        'sku_code'       => $sku_code,
+                        'country_iso'    => $country_iso,
+                    ]
+                );
+            }
+            return true;
+        }
+
+        if ($bundle_send_value > 0 && abs($send_value - $bundle_send_value) > 0.00001) {
+            return new WP_Error(
+                'dc_amount_fixed_only',
+                sprintf('Este producto usa monto fijo. Importe permitido: %.2f.', $bundle_send_value),
+                [
+                    'status'            => 400,
+                    'code'              => 'amount_fixed_only',
+                    'fixed_send_value'  => $bundle_send_value,
+                    'sku_code'          => $sku_code,
+                    'country_iso'       => $country_iso,
+                ]
+            );
+        }
+
+        return true;
+    }
+
+    /**
+     * Busca el bundle de referencia para validar el monto, priorizando bundle_id,
+     * luego sku_code+country_iso, luego solo sku_code.
+     */
+    public function find_bundle_for_amount_validation($sku_code, $country_iso = '', $bundle_id = '') {
+        $bundles = get_option('dc_recargas_bundles', []);
+        if (!is_array($bundles) || empty($bundles)) {
+            return null;
+        }
+
+        $sku_code    = strtoupper(sanitize_text_field((string) $sku_code));
+        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        $bundle_id   = sanitize_text_field((string) $bundle_id);
+
+        if ('' !== $bundle_id) {
+            foreach ($bundles as $bundle) {
+                if (!is_array($bundle)) {
+                    continue;
+                }
+                $candidate_id = sanitize_text_field((string) ($bundle['id'] ?? ($bundle['bundle_id'] ?? '')));
+                if ($candidate_id === $bundle_id) {
+                    return $bundle;
+                }
+            }
+        }
+
+        $first_sku_match = null;
+        foreach ($bundles as $bundle) {
+            if (!is_array($bundle)) {
+                continue;
+            }
+            $bundle_sku = strtoupper(sanitize_text_field((string) ($bundle['sku_code'] ?? '')));
+            if ('' === $bundle_sku || $bundle_sku !== $sku_code) {
+                continue;
+            }
+            if (null === $first_sku_match) {
+                $first_sku_match = $bundle;
+            }
+            if ('' === $country_iso) {
+                continue;
+            }
+            $bundle_country = strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? '')));
+            if ($bundle_country === $country_iso) {
+                return $bundle;
+            }
+        }
+
+        return $first_sku_match;
+    }
+
     public static function register_transfer_log_cpt() {
         register_post_type('dc_transfer_log', [
             'labels' => [
@@ -539,6 +662,12 @@ class DC_Recargas_API {
                         break;
                     case 'RechargeNotAllowed':
                         $friendly_message = 'La recarga no está permitida para esta cuenta o producto.';
+                        break;
+                    case 'ParameterOutOfRange':
+                        $friendly_message = 'El importe enviado está fuera del rango permitido para este SKU (ParameterOutOfRange). Verifica los rangos del catálogo y refresca los bundles del plugin.';
+                        break;
+                    case 'SendValue':
+                        $friendly_message = 'El valor de envío es inválido para este SKU (SendValue). Refresca los bundles y verifica el monto configurado.';
                         break;
                     case 'ProviderError':
                         if ('ProviderUnknownError' === $error_context) {
