@@ -524,7 +524,12 @@ class DC_Recargas_REST {
             ], 400);
         }
 
-        $amount_validation = $this->validate_send_value_against_bundle($payload['SkuCode'], $country_iso, (float) $payload['SendValue']);
+        $amount_validation = $this->validate_send_value_against_bundle(
+            $payload['SkuCode'],
+            $country_iso,
+            (float) $payload['SendValue'],
+            sanitize_text_field((string) ($params['bundle_id'] ?? ''))
+        );
         if (is_wp_error($amount_validation)) {
             return $this->wp_error_to_rest_response($amount_validation);
         }
@@ -603,7 +608,7 @@ class DC_Recargas_REST {
             ], 400);
         }
 
-        $amount_validation = $this->validate_send_value_against_bundle($sku_code, $country_iso, $send_value);
+        $amount_validation = $this->validate_send_value_against_bundle($sku_code, $country_iso, $send_value, $bundle_id);
         if (is_wp_error($amount_validation)) {
             return $this->wp_error_to_rest_response($amount_validation);
         }
@@ -716,16 +721,17 @@ class DC_Recargas_REST {
         return $normalized;
     }
 
-    private function validate_send_value_against_bundle($sku_code, $country_iso, $send_value) {
+    private function validate_send_value_against_bundle($sku_code, $country_iso, $send_value, $bundle_id = '') {
         $sku_code = sanitize_text_field((string) $sku_code);
         $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        $bundle_id = sanitize_text_field((string) $bundle_id);
         $send_value = (float) $send_value;
 
         if ('' === $sku_code || $send_value <= 0) {
             return true;
         }
 
-        $bundle = $this->find_bundle_for_amount_validation($sku_code, $country_iso);
+        $bundle = $this->find_bundle_for_amount_validation($sku_code, $country_iso, $bundle_id);
         if (empty($bundle)) {
             return true;
         }
@@ -784,7 +790,7 @@ class DC_Recargas_REST {
         return true;
     }
 
-    private function find_bundle_for_amount_validation($sku_code, $country_iso = '') {
+    private function find_bundle_for_amount_validation($sku_code, $country_iso = '', $bundle_id = '') {
         $bundles = get_option('dc_recargas_bundles', []);
         if (!is_array($bundles) || empty($bundles)) {
             return null;
@@ -792,6 +798,22 @@ class DC_Recargas_REST {
 
         $sku_code = strtoupper(sanitize_text_field((string) $sku_code));
         $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        $bundle_id = sanitize_text_field((string) $bundle_id);
+
+        // En landings/checkout, bundle_id identifica exactamente el producto comercial elegido.
+        if ('' !== $bundle_id) {
+            foreach ($bundles as $bundle) {
+                if (!is_array($bundle)) {
+                    continue;
+                }
+
+                $candidate_bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ($bundle['bundle_id'] ?? '')));
+                if ($candidate_bundle_id === $bundle_id) {
+                    return $bundle;
+                }
+            }
+        }
+
         $first_sku_match = null;
 
         foreach ($bundles as $bundle) {

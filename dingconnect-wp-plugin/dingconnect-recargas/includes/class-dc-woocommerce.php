@@ -673,8 +673,8 @@ class DC_Recargas_WooCommerce {
         $benefit_text = trim((string) ($cart_item['dc_bundle_benefit'] ?? ''));
         $bundle_label = trim((string) ($cart_item['dc_bundle_label'] ?? ''));
 
-        $item_data[] = ['key' => 'País',     'value' => strtoupper($cart_item['dc_country_iso'] ?? '')];
-        $item_data[] = ['key' => 'Teléfono', 'value' => $cart_item['dc_account_number'] ?? ''];
+        $item_data[] = ['key' => 'País', 'value' => strtoupper($cart_item['dc_country_iso'] ?? '')];
+        $item_data[] = ['key' => 'Número beneficiario', 'value' => $cart_item['dc_account_number'] ?? ''];
         $item_data[] = ['key' => 'Operador', 'value' => $cart_item['dc_provider_name'] ?? ''];
 
         if ($benefit_text !== '') {
@@ -718,11 +718,25 @@ class DC_Recargas_WooCommerce {
         if (!empty($cart_item['dc_recarga'])) {
             $label    = $cart_item['dc_bundle_label'] ?? 'Recarga';
             $benefit  = trim((string) ($cart_item['dc_bundle_benefit'] ?? ''));
+            $beneficiary = trim((string) ($cart_item['dc_account_number'] ?? ''));
+            $display_name = '';
             if ($benefit !== '') {
-                return esc_html($benefit);
+                $display_name = $benefit;
+            } else {
+                $provider = $cart_item['dc_provider_name'] ?? '';
+                $display_name = $provider ? $provider . ' - ' . $label : $label;
             }
-            $provider = $cart_item['dc_provider_name'] ?? '';
-            return esc_html($provider ? $provider . ' - ' . $label : $label);
+
+            if ($beneficiary === '') {
+                return esc_html($display_name);
+            }
+
+            return sprintf(
+                '%s<br><small><strong>%s</strong> %s</small>',
+                esc_html($display_name),
+                esc_html__('Número beneficiario:', 'dingconnect-recargas'),
+                esc_html($beneficiary)
+            );
         }
         return $name;
     }
@@ -768,7 +782,10 @@ class DC_Recargas_WooCommerce {
         }
 
         $benefit_text = $this->extract_bundle_benefit_for_checkout($matched_bundle);
-        if ($benefit_text !== '' && empty($cart_item['dc_bundle_benefit'])) {
+        $current_benefit = trim((string) ($cart_item['dc_bundle_benefit'] ?? ''));
+        $current_label = trim((string) ($cart_item['dc_bundle_label'] ?? ''));
+        $current_sku = trim((string) ($cart_item['dc_sku_code'] ?? ''));
+        if ($benefit_text !== '' && ($current_benefit === '' || strcasecmp($current_benefit, $current_label) === 0 || strcasecmp($current_benefit, $current_sku) === 0)) {
             $cart_item['dc_bundle_benefit'] = $benefit_text;
             $updated = true;
         }
@@ -777,8 +794,10 @@ class DC_Recargas_WooCommerce {
     }
 
     private function find_saved_bundle_for_cart_item(array $cart_item) {
-        $options = $this->api->get_options();
-        $bundles = (array) ($options['bundles'] ?? []);
+        $bundles = get_option('dc_recargas_bundles', []);
+        if (!is_array($bundles)) {
+            $bundles = [];
+        }
         if (empty($bundles)) {
             return null;
         }

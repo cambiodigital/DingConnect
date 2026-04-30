@@ -3748,10 +3748,10 @@ class DC_Recargas_Admin {
                                     $bundle_operator  = sanitize_text_field((string) ($bundle['provider_name'] ?? ''));
                                     $bundle_fam_label = $lnd_family_labels_edit[$bundle_family] ?? ucfirst($bundle_family);
                                 ?>
-                                    <tr class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" data-search-index="<?php echo esc_attr(strtolower(trim($bundle_label . ' ' . $bundle_sku . ' ' . $bundle_operator . ' ' . $bundle_country . ' ' . $bundle_fam_label))); ?>">
+                                    <tr class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" data-search-index="<?php echo esc_attr(strtolower(trim($bundle_label . ' ' . $bundle_sku . ' ' . $bundle_operator . ' ' . $bundle_country . ' ' . $bundle_fam_label))); ?>" data-edit-bundle="<?php echo esc_attr(wp_json_encode($bundle)); ?>">
                                         <td><button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button></td>
                                         <td class="dc-saved-col-logo"><?php if (!empty($bundle['logo_url'])) : ?><img src="<?php echo esc_url($bundle['logo_url']); ?>" alt="<?php echo esc_attr($bundle_operator); ?>" width="28" height="28"><?php endif; ?></td>
-                                        <td class="dc-landing-bundle-product">
+                                        <td class="dc-landing-bundle-product dc-landing-bundle-open-editor" role="button" tabindex="0" title="Abrir editor del producto">
                                             <strong><?php echo esc_html($bundle_label); ?></strong>
                                             <small>SKU: <?php echo esc_html($bundle_sku); ?></small>
                                             <small>Operador: <?php echo esc_html($bundle_operator !== '' ? $bundle_operator : 'N/D'); ?></small>
@@ -6914,6 +6914,52 @@ class DC_Recargas_Admin {
                         syncSelectedState();
                         syncToggleButtons();
                         applyRowFilters();
+                    });
+
+                    function openBundleEditorFromRow(rowEl) {
+                        if (!rowEl) {
+                            return;
+                        }
+
+                        var rawBundle = rowEl.getAttribute('data-edit-bundle') || '';
+                        if (!rawBundle) {
+                            return;
+                        }
+
+                        try {
+                            closeLandingEditModal();
+                            openEditModal(JSON.parse(rawBundle));
+                        } catch (e) {
+                            window.alert('No se pudo abrir el editor del producto seleccionado.');
+                        }
+                    }
+
+                    checklistEl.addEventListener('click', function (event) {
+                        var triggerEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundle-open-editor') : null;
+                        if (!triggerEl) {
+                            return;
+                        }
+
+                        if (event.target && event.target.closest && event.target.closest('a,button,input,select,textarea,label')) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        openBundleEditorFromRow(triggerEl.closest('.dc-landing-bundles-checklist__item'));
+                    });
+
+                    checklistEl.addEventListener('keydown', function (event) {
+                        if (event.key !== 'Enter' && event.key !== ' ') {
+                            return;
+                        }
+
+                        var triggerEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundle-open-editor') : null;
+                        if (!triggerEl) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        openBundleEditorFromRow(triggerEl.closest('.dc-landing-bundles-checklist__item'));
                     });
 
                     checklistEl.addEventListener('mousedown', function (event) {
