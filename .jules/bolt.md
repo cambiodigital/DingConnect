@@ -1,5 +1,5 @@
 # Bolt's Journal
 
-## 2024-04-29 - [Cache Unoptimized API Calls]
-**Learning:** Checking caching on API calls is a key optimization technique. In `class-dc-api.php`, some frequently called methods like `get_promotions` were bypassing caching, leading to unnecessary HTTP requests.
-**Action:** Always check if get_transient / set_transient is used for API requests that don't need real-time data, and implement it consistently across all data-fetching methods.
+## 2026-04-14 - Aggregate Post Meta Counts with Custom SQL
+**Learning:** Using multiple `WP_Query` instances to count posts grouped by a meta value causes an N+1 query problem, generating many small queries and high object initialization overhead in WordPress.
+**Action:** Replace multiple `WP_Query` loops with a single custom `$wpdb` SQL query using `GROUP BY` and an `IN` clause to retrieve all required aggregate counts efficiently in one round trip.
