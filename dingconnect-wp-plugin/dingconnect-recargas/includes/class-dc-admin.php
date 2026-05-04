@@ -7880,24 +7880,25 @@ class DC_Recargas_Admin {
         $raw = wp_count_posts('dc_transfer_log');
         $counts['total'] = (int) ($raw->publish ?? 0);
 
-        // Aggregate by status meta. Running three small queries is fast enough
-        // for the number of log entries expected in this plugin.
-        foreach (['TransferSuccessful' => 'success', 'error' => 'error', 'validate' => 'validate'] as $status => $key) {
-            $q = new WP_Query([
-                'post_type'      => 'dc_transfer_log',
-                'post_status'    => 'publish',
-                'posts_per_page' => -1,
-                'fields'         => 'ids',
-                'no_found_rows'  => false,
-                'meta_query'     => [
-                    [
-                        'key'     => '_dc_status',
-                        'value'   => $status,
-                        'compare' => '=',
-                    ],
-                ],
-            ]);
-            $counts[$key] = (int) $q->found_posts;
+        global $wpdb;
+        $results = $wpdb->get_results("
+            SELECT pm.meta_value as status, COUNT(p.ID) as count
+            FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm ON p.ID = pm.post_id
+            WHERE p.post_type = 'dc_transfer_log'
+              AND p.post_status = 'publish'
+              AND pm.meta_key = '_dc_status'
+              AND pm.meta_value IN ('TransferSuccessful', 'error', 'validate')
+            GROUP BY pm.meta_value
+        ");
+
+        $status_map = ['TransferSuccessful' => 'success', 'error' => 'error', 'validate' => 'validate'];
+        if ($results) {
+            foreach ($results as $row) {
+                if (isset($status_map[$row->status])) {
+                    $counts[$status_map[$row->status]] = (int) $row->count;
+                }
+            }
         }
 
         return $counts;

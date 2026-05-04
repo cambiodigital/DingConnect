@@ -389,3 +389,8 @@ Corrección aplicada de checkout inválido por rehidratación de carrito (29-04-
 - `includes/class-dc-woocommerce.php` — pre-validación local, metadatos diagnósticos enriquecidos, huella de validación (`_dc_validation_fingerprint`), aviso administrativo de drift en panel de pedido.
 
 **Protocolo operativo ante drift**: si un pedido muestra el aviso de drift, el operador debe: (1) refrescar bundles desde `Catálogo > Buscar en API`, (2) actualizar mínimos/máximos en el bundle afectado, (3) usar "Reintentar recargas DingConnect" en el pedido para lanzar un intento con el monto corregido manualmente.
+
+
+### ⚡ Bolt Performance Optimization: Aggregate Post Meta Counts
+- **Issue**: `get_transfer_log_stats()` in `class-dc-admin.php` used 3 distinct `WP_Query` calls inside a loop to count posts by `_dc_status` meta value, causing N+1 query issue and high object initialization overhead.
+- **Resolution**: Replaced the 3 `WP_Query` calls with a single custom `$wpdb` SQL query using `GROUP BY` and an `IN` clause. This single query efficiently retrieves all necessary counts in one round trip, reducing database hits and PHP object allocations.
