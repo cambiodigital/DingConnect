@@ -404,12 +404,6 @@ class DC_Recargas_WooCommerce {
             return;
         }
 
-        // Heartbeat log: confirms the checkout validator runs for DC carts in production.
-        error_log('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
-            'issues_count' => count($issues),
-            'has_dc_only_cart' => $this->cart_has_only_recargas(),
-        ]));
-
         if (empty($issues)) {
             $this->relax_generic_dc_cart_notice_if_needed();
             return;
@@ -425,11 +419,6 @@ class DC_Recargas_WooCommerce {
                 }
             }
         }
-
-        error_log('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
-            'issues' => $issues,
-            'error_notices' => array_values(array_unique($error_notices)),
-        ]));
 
         $this->relax_generic_dc_cart_notice_if_needed();
     }
@@ -473,7 +462,6 @@ class DC_Recargas_WooCommerce {
 
         if ($updated && method_exists($cart, 'set_session')) {
             $cart->set_session();
-            error_log('[DingConnect][cart_loaded_from_session] normalizacion aplicada a items de recarga');
         }
     }
 
@@ -496,9 +484,6 @@ class DC_Recargas_WooCommerce {
 
         if (function_exists('session_status') && session_status() === PHP_SESSION_NONE) {
             @session_start();
-            if (function_exists('session_status') && session_status() === PHP_SESSION_ACTIVE) {
-                error_log('[DingConnect][checkout_env] php_session_iniciada_temprano_para_compatibilidad_checkout');
-            }
         }
     }
 
@@ -511,12 +496,7 @@ class DC_Recargas_WooCommerce {
         $is_suppressible_checkout_notice = $this->is_suppressible_dc_only_checkout_notice($clean);
 
         if ($is_suppressible_checkout_notice) {
-            error_log('[DingConnect][checkout_cart_validation] generic_error_suppressed_at_source');
             return '';
-        }
-
-        if ($clean !== '') {
-            error_log('[DingConnect][checkout_cart_validation] notice_no_suprimido: ' . $clean);
         }
 
         return $message;
@@ -558,8 +538,6 @@ class DC_Recargas_WooCommerce {
                 wc_add_notice($message, 'error');
             }
         }
-
-        error_log('[DingConnect][checkout_cart_validation] notice_generico_carrito_removido para carrito DC-only: ' . (string) $removed);
     }
 
     private function is_suppressible_dc_only_checkout_notice($message) {
@@ -1024,11 +1002,8 @@ class DC_Recargas_WooCommerce {
         }, ARRAY_FILTER_USE_BOTH);
 
         if (empty($filtered)) {
-            error_log('[DingConnect][checkout_gateways] allowed_gateways configuradas sin coincidencias disponibles; se usa fallback a gateways activos de WooCommerce');
             return $gateways;
         }
-
-        error_log('[DingConnect][checkout_gateways] gateways aplicadas para recarga: ' . implode(',', array_keys($filtered)));
         return $filtered;
     }
 
@@ -1071,7 +1046,6 @@ class DC_Recargas_WooCommerce {
         }
 
         if ($removed) {
-            error_log('[DingConnect][checkout_gateways] clase gateway Tropipay excluida en checkout DC-only por configuracion de pasarelas permitidas');
             return $filtered;
         }
 
