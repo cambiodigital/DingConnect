@@ -404,8 +404,8 @@ class DC_Recargas_WooCommerce {
             return;
         }
 
-        // Heartbeat log: confirms the checkout validator runs for DC carts in production.
-        error_log('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
+        // Heartbeat log: useful only while debugging checkout compatibility.
+        $this->log_diagnostic('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
             'issues_count' => count($issues),
             'has_dc_only_cart' => $this->cart_has_only_recargas(),
         ]));
@@ -426,10 +426,10 @@ class DC_Recargas_WooCommerce {
             }
         }
 
-        error_log('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
+        $this->log_diagnostic('[DingConnect][checkout_cart_validation] ' . wp_json_encode([
             'issues' => $issues,
             'error_notices' => array_values(array_unique($error_notices)),
-        ]));
+        ]), true);
 
         $this->relax_generic_dc_cart_notice_if_needed();
     }
@@ -464,16 +464,16 @@ class DC_Recargas_WooCommerce {
                 WC()->cart->cart_contents[$cart_item_key]['quantity'] = 1;
             }
 
-            $updated = true;
-        }
+            if ($this->hydrate_recarga_cart_item_data(WC()->cart->cart_contents[$cart_item_key])) {
+                $updated = true;
+            }
 
-        if ($this->hydrate_recarga_cart_item_data(WC()->cart->cart_contents[$cart_item_key])) {
             $updated = true;
         }
 
         if ($updated && method_exists($cart, 'set_session')) {
             $cart->set_session();
-            error_log('[DingConnect][cart_loaded_from_session] normalizacion aplicada a items de recarga');
+            $this->log_diagnostic('[DingConnect][cart_loaded_from_session] normalizacion aplicada a items de recarga');
         }
     }
 
@@ -497,7 +497,7 @@ class DC_Recargas_WooCommerce {
         if (function_exists('session_status') && session_status() === PHP_SESSION_NONE) {
             @session_start();
             if (function_exists('session_status') && session_status() === PHP_SESSION_ACTIVE) {
-                error_log('[DingConnect][checkout_env] php_session_iniciada_temprano_para_compatibilidad_checkout');
+                $this->log_diagnostic('[DingConnect][checkout_env] php_session_iniciada_temprano_para_compatibilidad_checkout');
             }
         }
     }
@@ -511,12 +511,12 @@ class DC_Recargas_WooCommerce {
         $is_suppressible_checkout_notice = $this->is_suppressible_dc_only_checkout_notice($clean);
 
         if ($is_suppressible_checkout_notice) {
-            error_log('[DingConnect][checkout_cart_validation] generic_error_suppressed_at_source');
+            $this->log_diagnostic('[DingConnect][checkout_cart_validation] generic_error_suppressed_at_source');
             return '';
         }
 
         if ($clean !== '') {
-            error_log('[DingConnect][checkout_cart_validation] notice_no_suprimido: ' . $clean);
+            $this->log_diagnostic('[DingConnect][checkout_cart_validation] notice_no_suprimido: ' . $clean);
         }
 
         return $message;
@@ -559,7 +559,7 @@ class DC_Recargas_WooCommerce {
             }
         }
 
-        error_log('[DingConnect][checkout_cart_validation] notice_generico_carrito_removido para carrito DC-only: ' . (string) $removed);
+        $this->log_diagnostic('[DingConnect][checkout_cart_validation] notice_generico_carrito_removido para carrito DC-only: ' . (string) $removed);
     }
 
     private function is_suppressible_dc_only_checkout_notice($message) {
@@ -1024,11 +1024,18 @@ class DC_Recargas_WooCommerce {
         }, ARRAY_FILTER_USE_BOTH);
 
         if (empty($filtered)) {
-            error_log('[DingConnect][checkout_gateways] allowed_gateways configuradas sin coincidencias disponibles; se usa fallback a gateways activos de WooCommerce');
-            return $gateways;
+            $available_ids = array_map('sanitize_key', array_keys($gateways));
+            $this->log_diagnostic('[DingConnect][checkout_gateways] bloqueo: allowed_gateways sin coincidencias disponibles. allowed=' . implode(',', $allowed) . ' available=' . implode(',', $available_ids), true);
+            if (function_exists('wc_add_notice')) {
+                $notice = __('No hay pasarelas habilitadas para completar recargas DingConnect. Contacta soporte antes de pagar.', 'dingconnect-recargas');
+                if (!function_exists('wc_has_notice') || !wc_has_notice($notice, 'error')) {
+                    wc_add_notice($notice, 'error');
+                }
+            }
+            return [];
         }
 
-        error_log('[DingConnect][checkout_gateways] gateways aplicadas para recarga: ' . implode(',', array_keys($filtered)));
+        $this->log_diagnostic('[DingConnect][checkout_gateways] gateways aplicadas para recarga: ' . implode(',', array_keys($filtered)));
         return $filtered;
     }
 
@@ -1071,7 +1078,7 @@ class DC_Recargas_WooCommerce {
         }
 
         if ($removed) {
-            error_log('[DingConnect][checkout_gateways] clase gateway Tropipay excluida en checkout DC-only por configuracion de pasarelas permitidas');
+            $this->log_diagnostic('[DingConnect][checkout_gateways] clase gateway Tropipay excluida en checkout DC-only por configuracion de pasarelas permitidas');
             return $filtered;
         }
 
@@ -1764,6 +1771,7 @@ class DC_Recargas_WooCommerce {
 
         if (!$this->is_order_payment_method_allowed_for_recargas($order)) {
             $this->mark_item_as_blocked_gateway($order, $item);
+            $this->log_blocked_gateway_transfer($order, $item, $account_number, $sku_code, $send_value, $send_currency_iso);
             return ['success' => false, 'pending_retry' => false, 'message' => 'gateway_not_allowed'];
         }
 
@@ -2679,6 +2687,7 @@ class DC_Recargas_WooCommerce {
 
         $payment_method = sanitize_key((string) call_user_func([$order, 'get_payment_method']));
         $payment_title = sanitize_text_field((string) call_user_func([$order, 'get_payment_method_title']));
+        $allowed = $this->get_allowed_gateway_ids_for_recargas();
 
         call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'blocked_gateway');
         call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code', 'blocked_gateway');
@@ -2691,10 +2700,47 @@ class DC_Recargas_WooCommerce {
         wp_clear_scheduled_hook('dc_recargas_retry_transfer', [(int) $order->get_id(), $item_id]);
 
         $order->add_order_note(sprintf(
-            'DingConnect: despacho bloqueado para item #%d por pasarela no permitida (id=%s, titulo=%s).',
+            'DingConnect: despacho bloqueado para item #%d por pasarela no permitida (id=%s, titulo=%s, permitidas=%s).',
             $item_id,
             $payment_method !== '' ? $payment_method : '-',
-            $payment_title !== '' ? $payment_title : '-'
+            $payment_title !== '' ? $payment_title : '-',
+            !empty($allowed) ? implode(',', $allowed) : 'todas'
         ));
+    }
+
+    private function log_blocked_gateway_transfer($order, $item, $account_number, $sku_code, $send_value, $send_currency_iso) {
+        if (!($order instanceof WC_Order) || !($item instanceof WC_Order_Item_Product)) {
+            return;
+        }
+
+        $payment_method = sanitize_key((string) call_user_func([$order, 'get_payment_method']));
+        $payment_title = sanitize_text_field((string) call_user_func([$order, 'get_payment_method_title']));
+        $allowed = $this->get_allowed_gateway_ids_for_recargas();
+        $distributor_ref = sprintf('WC-%d-ITEM-%d-BLOCKED-GATEWAY', (int) $order->get_id(), (int) $item->get_id());
+
+        $response = new WP_Error(
+            'blocked_gateway',
+            'Despacho bloqueado por politica de pasarelas: metodo de pago no permitido para recargas DingConnect.',
+            [
+                'status' => 403,
+                'ding_error_code' => 'blocked_gateway',
+                'ding_error_context' => 'payment_method_policy',
+                'order_id' => (int) $order->get_id(),
+                'item_id' => (int) $item->get_id(),
+                'payment_method' => $payment_method,
+                'payment_title' => $payment_title,
+                'allowed_gateways' => $allowed,
+            ]
+        );
+
+        $this->api->log_transfer($account_number, $sku_code, $send_value, $send_currency_iso, $distributor_ref, $response);
+    }
+
+    private function log_diagnostic($message, $force = false) {
+        if (!$force && (!defined('WP_DEBUG') || !WP_DEBUG)) {
+            return;
+        }
+
+        error_log((string) $message);
     }
 }

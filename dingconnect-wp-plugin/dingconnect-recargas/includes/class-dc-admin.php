@@ -1640,6 +1640,14 @@ class DC_Recargas_Admin {
             $wc_gateways = WC_Payment_Gateways::instance()->payment_gateways();
         }
         $selected_woo_gateways = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+        $available_woo_gateway_ids = [];
+        foreach ($wc_gateways as $gateway_id => $gateway) {
+            $clean_gateway_id = sanitize_key((string) $gateway_id);
+            if ($clean_gateway_id !== '') {
+                $available_woo_gateway_ids[] = $clean_gateway_id;
+            }
+        }
+        $unmatched_selected_woo_gateways = array_values(array_diff($selected_woo_gateways, $available_woo_gateway_ids));
         $hide_acfw_store_credit_dc_only = !empty($options['hide_acfw_store_credit_dc_only']);
         $landing_shortcodes = get_option('dc_recargas_landing_shortcodes', []);
         if (!is_array($landing_shortcodes)) {
@@ -3392,7 +3400,18 @@ class DC_Recargas_Admin {
                                 <p class="description">
                                     Esta restricción aplica solo a carritos con recargas y solo en modo WooCommerce.<br>
                                     Si no seleccionas ninguna pasarela, se permitirán todas las pasarelas activas del checkout.
+                                    <br>Si seleccionas una lista, el ID mostrado entre parentesis debe coincidir con el metodo de pago guardado en el pedido; si no coincide, el checkout se bloqueara antes de cobrar.
                                 </p>
+                                <?php if (!empty($unmatched_selected_woo_gateways)): ?>
+                                    <div class="notice notice-warning inline" style="margin:10px 0 0;">
+                                        <p>
+                                            <strong>Revisa esta configuracion:</strong>
+                                            hay pasarelas guardadas que no aparecen disponibles ahora:
+                                            <code><?php echo esc_html(implode(', ', $unmatched_selected_woo_gateways)); ?></code>.
+                                            Si todas las seleccionadas quedan sin coincidencia, el checkout de recargas se bloqueara antes del pago.
+                                        </p>
+                                    </div>
+                                <?php endif; ?>
                             <?php endif; ?>
                         </td>
                     </tr>

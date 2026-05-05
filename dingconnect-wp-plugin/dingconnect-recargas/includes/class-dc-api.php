@@ -560,9 +560,18 @@ class DC_Recargas_API {
     public function log_transfer($account_number, $sku_code, $send_value, $currency, $distributor_ref, $response) {
         $status = 'unknown';
         $transfer_ref = '';
+        $raw_response = $response;
 
         if (is_wp_error($response)) {
-            $status = 'error';
+            $status = sanitize_text_field($response->get_error_code());
+            if ($status === '') {
+                $status = 'error';
+            }
+            $raw_response = [
+                'error_code' => $response->get_error_code(),
+                'error_message' => $response->get_error_message(),
+                'error_data' => $response->get_error_data(),
+            ];
         } elseif (is_array($response)) {
             $items = $response['Items'] ?? $response['Result'] ?? [];
             if (!empty($items[0]['Status'])) {
@@ -590,7 +599,7 @@ class DC_Recargas_API {
             update_post_meta($post_id, '_dc_distributor_ref', $distributor_ref);
             update_post_meta($post_id, '_dc_transfer_ref', $transfer_ref);
             update_post_meta($post_id, '_dc_status', $status);
-            update_post_meta($post_id, '_dc_raw_response', wp_json_encode($response));
+            update_post_meta($post_id, '_dc_raw_response', wp_json_encode($raw_response));
         }
 
         return $post_id;
