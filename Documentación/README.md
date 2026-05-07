@@ -8,6 +8,16 @@ Esta carpeta concentra el contexto técnico y funcional del proyecto para facili
 2. Leer `BACKLOG_FUNCIONAL_TECNICO.md` para priorización de próximos pasos.
 3. Usar los documentos de referencia según la tarea (API, guía técnica, hallazgos).
 
+## Índice rápido (por intención)
+
+- Arquitectura, decisiones y mapa de archivos: `CONTEXTO_IA.md`.
+- Prioridades y próximos cambios: `BACKLOG_FUNCIONAL_TECNICO.md`.
+- API DingConnect (visión unificada, flujos, UAT, sign-off): `GUIA_TECNICA_DING_CONNECT.md`.
+- API DingConnect (detalle extendido por endpoint / modelo): `API_DING_CONNECT_V1.md` y `BASE_CONOCIMIENTO_API_DINGCONNECT_COMPLETA.md`.
+- Webhook / Deferred SendTransfer (landings, propuesta técnica): `ANALISIS_WEBHOOK_LANDINGS_RENE_CUBAKILOS.md`.
+- SKUs verificados y hallazgos operativos: `HALLAZGOS_2026-04-14_DING_SKUS.md`.
+- Matriz de pruebas por proveedor real (GO/NO-GO): `MATRIZ_PRUEBAS_MANUALES_PROVEEDOR_REAL.md`.
+
 ## Índice de documentos
 
 ### Contexto operativo
@@ -42,7 +52,9 @@ En abril de 2026, el plugin ya contempla:
 - Integración opcional con WooCommerce para carrito y checkout.
 - Logs internos de transferencias y controles básicos de rate limiting.
 
-## Fuentes oficiales
+## Fuentes oficiales (verificado 2026-05-07)
+
+### DingConnect
 
 - API Guide: <https://www.dingconnect.com/Api/Description>
 - Methods: <https://www.dingconnect.com/Api>
@@ -50,6 +62,21 @@ En abril de 2026, el plugin ya contempla:
 - Integration sign-off checklist: <https://dingconnect.zendesk.com/hc/en-us/articles/18016429030289-What-are-the-steps-to-get-a-sign-off-from-Ding-Integration-team>
 - Flow diagram: <https://dingconnect.zendesk.com/hc/en-us/articles/43096787096209-DingConnect-API-flows>
 - UAT Setup: <https://dingconnect.zendesk.com/hc/en-us/articles/43707127986961-UAT-API-credentials-for-DingConnect-API-users>
+
+### WordPress (plugins)
+
+- Plugin Handbook (índice): <https://developer.wordpress.org/plugins/>
+- REST API (Routes & Endpoints): <https://developer.wordpress.org/plugins/rest-api/routes-endpoints/>
+- register_rest_route() (referencia): <https://developer.wordpress.org/reference/functions/register_rest_route/>
+- HTTP API (wp_remote_* / caching / transients): <https://developer.wordpress.org/plugins/http-api/>
+- wp_remote_request() (referencia): <https://developer.wordpress.org/reference/functions/wp_remote_request/>
+
+### WooCommerce
+
+- Code Reference (índice): <https://woocommerce.github.io/code-reference/>
+- WC_Cart (add_to_cart, sesiones de carrito): <https://woocommerce.github.io/code-reference/classes/WC-Cart.html>
+- WC_Order (payment/status/is_paid): <https://woocommerce.github.io/code-reference/classes/WC-Order.html>
+- WC_Email (compatibilidad de herencia y firmas): <https://woocommerce.github.io/code-reference/classes/WC-Email.html>
 
 ## Alcance funcional de la API
 

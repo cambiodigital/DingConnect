@@ -190,8 +190,9 @@ Para nuevas funcionalidades, tomar como referencia en este orden:
 
 ## Lista de lectura rápida para cualquier IA antes de trabajar
 
-1. `Documentación/CONTEXTO_IA.md`
-2. `Documentación/BACKLOG_FUNCIONAL_TECNICO.md`
-3. `Documentación/GUIA_TECNICA_DING_CONNECT.md`
-4. `dingconnect-wp-plugin/dingconnect-recargas/includes/class-dc-rest.php`
-5. `dingconnect-wp-plugin/dingconnect-recargas/includes/class-dc-api.php`
+1. `Documentación/README.md`
+2. `Documentación/CONTEXTO_IA.md`
+3. `Documentación/BACKLOG_FUNCIONAL_TECNICO.md`
+4. `Documentación/GUIA_TECNICA_DING_CONNECT.md`
+5. `dingconnect-wp-plugin/dingconnect-recargas/includes/class-dc-rest.php`
+6. `dingconnect-wp-plugin/dingconnect-recargas/includes/class-dc-api.php`

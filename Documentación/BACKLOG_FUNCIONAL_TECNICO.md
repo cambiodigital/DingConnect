@@ -229,6 +229,13 @@ Una iniciativa se considera lista cuando cumple:
 149. Refuerzo visual en columna `Producto` de `Tu pedido`: el nombre del item DingConnect en checkout ahora incluye en segunda línea `Número beneficiario: <account_number>` (formato corto con etiqueta en negrita) para que el dato clave sea visible sin depender del bloque de metadatos.
 150. Mejora UX en `Shortcodes dinámicos` (admin): dentro del modal `Editar shortcode dinámico`, hacer click sobre el bloque `Producto` de cualquier bundle ahora abre el modal propio de `Editar producto` para ajustar datos del bundle sin buscarlo manualmente en `Productos guardados`.
 
+## Avances implementados (07-05-2026)
+
+1. Webhook backend (Deferred SendTransfer): nuevo endpoint `POST /wp-json/dingconnect/v1/webhook` con verificación RS256 usando JWKS por `kid`, validación de timestamp y modo compatibilidad de “signed payload” para cubrir inconsistencias hasta contrastar con el primer webhook real; deshabilitado por defecto vía `webhook_enabled`.
+2. Hardening balanceado de trazabilidad operativa en WooCommerce/REST: se añadieron eventos de auditoría (`cart_added`, `cart_add_failed`, `payment_status_changed`, `payment_not_effective`, `dispatch_started`, `dispatch_result`, `dispatch_failed_local_validation`, `retry_scheduled`, `gateway_blocked`, `transfer_blocked_payment_mode`) persistidos en `Transfer Logs`, junto con metadatos de orden/item/pasarela cuando aplica.
+3. Panel `Registros` reforzado para operación diaria: estadísticas ahora incluyen `Pendientes`, filtros contemplan ese estado y la tabla de logs muestra columna `Evento` para identificar en qué etapa ocurrió cada movimiento.
+4. Versionado de release técnico por trazabilidad: cabecera del plugin actualizada a `2.6.95` en `dingconnect-recargas.php`.
+
 ## Backlog actualizado por impacto
 
 1. Prioridad P2 - Administración de bundles más completa.

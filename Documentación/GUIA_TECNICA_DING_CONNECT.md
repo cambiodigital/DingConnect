@@ -20,6 +20,7 @@ La API permite operar con una sola integración sobre varias líneas de negocio:
 - Integration sign-off checklist: <https://dingconnect.zendesk.com/hc/en-us/articles/18016429030289-What-are-the-steps-to-get-a-sign-off-from-Ding-Integration-team>
 - Flow diagram: <https://dingconnect.zendesk.com/hc/en-us/articles/43096787096209-DingConnect-API-flows>
 - UAT Setup: <https://dingconnect.zendesk.com/hc/en-us/articles/43707127986961-UAT-API-credentials-for-DingConnect-API-users>
+- Webhook keys (JWKS para verificación de firma): <https://idp.ding.com/.well-known/webhook-keys>
 
 ## 3. Base técnica de la API
 
@@ -136,11 +137,14 @@ Nota operativa WooCommerce (abril 2026):
 - El plugin permite definir en admin (`Credenciales > Pasarelas permitidas`) qué métodos de pago WooCommerce quedan habilitados para carritos con recargas DingConnect.
 - Si no se selecciona ninguna pasarela en esa lista, checkout conserva todas las pasarelas activas de WooCommerce.
 - Hardening de bypass REST: cuando `payment_mode=woocommerce`, el endpoint `POST /wp-json/dingconnect/v1/transfer` responde `403` y obliga a usar `POST /wp-json/dingconnect/v1/add-to-cart` + checkout.
+- Trazabilidad ampliada en backend: cuando se intenta bypass en ese modo (`transfer` directo), el sistema registra evento operativo `transfer_blocked_payment_mode` en `Transfer Logs` con contexto de cuenta/SKU/monto para auditoría.
 - Hardening de cumplimiento en despacho: antes de ejecutar `SendTransfer`, el backend valida que `order->payment_method` esté dentro de `woo_allowed_gateways`; si no coincide, marca el item como `blocked_gateway`, limpia reintentos pendientes y registra nota de orden y entrada en `Transfer Logs` para operación/soporte.
+- Trazabilidad de movimientos end-to-end: el flujo WooCommerce ya persiste eventos por etapa (`cart_added`, `payment_status_changed`, `dispatch_started`, `dispatch_result`, `retry_scheduled`, `gateway_blocked`, entre otros) como `dc_transfer_log`, permitiendo reconstruir cronológicamente qué ocurrió por ítem.
 - Hardening de estados terminales: cuando un pedido cambia a `failed`, `cancelled` o `refunded`, el backend cancela reintentos pendientes y marca `cancelled_before_dispatch` en recargas que no llegaron a despacharse.
 - Política de estado de pedido post-pago: una vez pagada la orden, el estado WooCommerce se sincroniza por resultado agregado de recargas DingConnect: `completed` cuando todos los ítems están en estado exitoso, `processing` cuando hay ítems pendientes (`submitted/pending/processing/pending_retry`) y `on-hold` cuando existe al menos un ítem con error definitivo o escalado de soporte.
 - Trazabilidad extendida en la orden: cada evento operativo relevante (inicio de proceso post-pago, intento por ítem, lock anti-duplicado, reconciliación vía `ListTransferRecords`, reintento programado, decisión de política y transición de estado) se registra en notas del pedido para auditoría de soporte.
 - Operación manual desde admin (`Registros`): el monitor de pendientes soporta acciones de reintento por ítem (fila individual) y en lote (selección múltiple). Ambas rutas disparan el mismo mecanismo backend de reintento por ítem (`dc_recargas_retry_transfer`) y dejan nota explícita en el pedido para trazabilidad operativa.
+- Observabilidad en panel `Registros`: la tabla de logs incluye columna `Evento` y el resumen agrega tarjeta de `Pendientes`, para distinguir estados de despacho/transacción frente a eventos de control del flujo (carrito, pago, bloqueo de pasarela, reintentos).
 - Feedback al cliente: la pantalla de thank-you y el email de WooCommerce incorporan mensajes de "siguientes pasos" cuando hay recargas pendientes o con error, para evitar compras duplicadas y orientar contacto de soporte.
 
 ### Nota operativa Wizard v2 (abril 2026)

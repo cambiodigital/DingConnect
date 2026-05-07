@@ -9,6 +9,8 @@ if (class_exists('DC_Recargas_API')) {
 }
 
 class DC_Recargas_API {
+    private $woocommerce_instance = null;
+
     public function get_options() {
         $defaults = [
             'api_base' => 'https://www.dingconnect.com/api/V1',
@@ -27,9 +29,20 @@ class DC_Recargas_API {
             'catalog_csv_url' => '',
             'catalog_csv_uploaded_at' => '',
             'catalog_csv_original_name' => '',
+            'webhook_enabled' => 0,
+            'webhook_timestamp_tolerance_seconds' => 300,
+            'webhook_signature_compat_mode' => 1,
         ];
 
         return wp_parse_args(get_option('dc_recargas_options', []), $defaults);
+    }
+
+    public function set_woocommerce($woocommerce_instance) {
+        $this->woocommerce_instance = $woocommerce_instance;
+    }
+
+    public function get_woocommerce() {
+        return $this->woocommerce_instance;
     }
 
     public function is_configured() {
@@ -563,31 +576,82 @@ class DC_Recargas_API {
         $raw_response = $response;
 
         if (is_wp_error($response)) {
-            $status = sanitize_text_field($response->get_error_code());
+            $error_data = $response->get_error_data();
+            $status = sanitize_text_field((string) ($error_data['ding_error_code'] ?? $response->get_error_code()));
             if ($status === '') {
                 $status = 'error';
             }
             $raw_response = [
                 'error_code' => $response->get_error_code(),
                 'error_message' => $response->get_error_message(),
-                'error_data' => $response->get_error_data(),
+                'error_data' => $error_data,
             ];
         } elseif (is_array($response)) {
             $items = $response['Items'] ?? $response['Result'] ?? [];
             if (!empty($items[0]['Status'])) {
-                $status = sanitize_text_field($items[0]['Status']);
+                $status = sanitize_text_field((string) $items[0]['Status']);
             }
-            $transfer_ref = sanitize_text_field($response['TransferRef'] ?? '');
+            $transfer_ref = sanitize_text_field((string) ($response['TransferRef'] ?? ''));
         }
+
+        return $this->create_log_entry([
+            'account_number' => $account_number,
+            'sku_code' => $sku_code,
+            'send_value' => $send_value,
+            'currency' => $currency,
+            'distributor_ref' => $distributor_ref,
+            'transfer_ref' => $transfer_ref,
+            'status' => $status,
+            'event_type' => 'transfer_dispatch',
+            'raw_response' => $raw_response,
+        ]);
+    }
+
+    public function log_operational_event($event_type, $context = []) {
+        $context = is_array($context) ? $context : [];
+        $status = sanitize_text_field((string) ($context['status'] ?? $event_type));
+        if ($status === '') {
+            $status = sanitize_text_field((string) $event_type);
+        }
+
+        return $this->create_log_entry([
+            'account_number' => (string) ($context['account_number'] ?? ''),
+            'sku_code' => (string) ($context['sku_code'] ?? ''),
+            'send_value' => (float) ($context['send_value'] ?? 0),
+            'currency' => (string) ($context['currency'] ?? ''),
+            'distributor_ref' => (string) ($context['distributor_ref'] ?? ''),
+            'transfer_ref' => (string) ($context['transfer_ref'] ?? ''),
+            'status' => $status,
+            'event_type' => sanitize_key((string) $event_type),
+            'raw_response' => $context['raw_response'] ?? $context,
+            'order_id' => isset($context['order_id']) ? (int) $context['order_id'] : 0,
+            'item_id' => isset($context['item_id']) ? (int) $context['item_id'] : 0,
+            'payment_method' => (string) ($context['payment_method'] ?? ''),
+        ]);
+    }
+
+    private function create_log_entry($entry) {
+        $entry = is_array($entry) ? $entry : [];
+        $account_number = sanitize_text_field((string) ($entry['account_number'] ?? ''));
+        $sku_code = sanitize_text_field((string) ($entry['sku_code'] ?? ''));
+        $send_value = (float) ($entry['send_value'] ?? 0);
+        $currency = sanitize_text_field((string) ($entry['currency'] ?? ''));
+        $distributor_ref = sanitize_text_field((string) ($entry['distributor_ref'] ?? ''));
+        $transfer_ref = sanitize_text_field((string) ($entry['transfer_ref'] ?? ''));
+        $status = $this->normalize_log_status((string) ($entry['status'] ?? 'unknown'));
+        $event_type = sanitize_key((string) ($entry['event_type'] ?? 'general'));
+        $raw_response = $entry['raw_response'] ?? [];
 
         // Mask phone for privacy: +573001234567 -> +5730***4567
         $masked = strlen($account_number) > 7
             ? substr($account_number, 0, 4) . '***' . substr($account_number, -4)
             : $account_number;
 
+        $title_account = $masked !== '' ? $masked : 'N/A';
+        $title_sku = $sku_code !== '' ? $sku_code : 'event';
         $post_id = wp_insert_post([
             'post_type' => 'dc_transfer_log',
-            'post_title' => $masked . ' — ' . $sku_code . ' — ' . $status,
+            'post_title' => $title_account . ' — ' . $title_sku . ' — ' . $status,
             'post_status' => 'publish',
         ]);
 
@@ -599,10 +663,47 @@ class DC_Recargas_API {
             update_post_meta($post_id, '_dc_distributor_ref', $distributor_ref);
             update_post_meta($post_id, '_dc_transfer_ref', $transfer_ref);
             update_post_meta($post_id, '_dc_status', $status);
+            update_post_meta($post_id, '_dc_event_type', $event_type);
             update_post_meta($post_id, '_dc_raw_response', wp_json_encode($raw_response));
+
+            $order_id = isset($entry['order_id']) ? (int) $entry['order_id'] : 0;
+            $item_id = isset($entry['item_id']) ? (int) $entry['item_id'] : 0;
+            $payment_method = sanitize_text_field((string) ($entry['payment_method'] ?? ''));
+            if ($order_id > 0) {
+                update_post_meta($post_id, '_dc_order_id', $order_id);
+            }
+            if ($item_id > 0) {
+                update_post_meta($post_id, '_dc_order_item_id', $item_id);
+            }
+            if ($payment_method !== '') {
+                update_post_meta($post_id, '_dc_payment_method', $payment_method);
+            }
         }
 
         return $post_id;
+    }
+
+    private function normalize_log_status($status) {
+        $raw = sanitize_text_field((string) $status);
+        if ($raw === '') {
+            return 'unknown';
+        }
+
+        $normalized = strtolower($raw);
+        if (in_array($normalized, ['error', 'dc_http_error', 'providererror', 'blocked_gateway', 'failed_permanent'], true)) {
+            return 'error';
+        }
+        if (strpos($normalized, 'validate') !== false) {
+            return 'validate';
+        }
+        if (in_array($normalized, ['transfersuccessful', 'completed', 'success', 'ok', 'approved'], true)) {
+            return 'TransferSuccessful';
+        }
+        if (in_array($normalized, ['submitted', 'pending', 'processing', 'queued', 'inprogress', 'pending_retry', 'escalado_soporte'], true)) {
+            return 'pending';
+        }
+
+        return $raw;
     }
 
     private function request($method, $path, $query = [], $body = null) {
@@ -743,5 +844,362 @@ class DC_Recargas_API {
         }
 
         return $normalized;
+    }
+
+    public function extract_transfer_snapshot($payload, $fallback_distributor_ref = '') {
+        $payload = is_array($payload) ? $payload : [];
+        $record = is_array($payload['TransferRecord'] ?? null) ? $payload['TransferRecord'] : $payload;
+        $transfer_id = is_array($record['TransferId'] ?? null) ? $record['TransferId'] : [];
+        $items_data = $payload['Items'] ?? $payload['Result'] ?? [];
+        $first_item = is_array($items_data[0] ?? null) ? $items_data[0] : [];
+        $price = is_array($record['Price'] ?? null) ? $record['Price'] : [];
+
+        $processing_state = sanitize_text_field((string) ($record['ProcessingState'] ?? $first_item['ProcessingState'] ?? ''));
+        $status_label = sanitize_text_field((string) ($first_item['Status'] ?? ''));
+        if ($status_label === '') {
+            $status_label = $processing_state !== '' ? $processing_state : 'Completed';
+        }
+
+        return [
+            'transfer_ref' => sanitize_text_field((string) ($transfer_id['TransferRef'] ?? $payload['TransferRef'] ?? $first_item['TransferRef'] ?? '')),
+            'distributor_ref' => sanitize_text_field((string) ($transfer_id['DistributorRef'] ?? $payload['DistributorRef'] ?? $first_item['DistributorRef'] ?? $fallback_distributor_ref)),
+            'status' => strtolower($status_label),
+            'status_label' => $status_label,
+            'processing_state' => $processing_state !== '' ? $processing_state : $status_label,
+            'receive_value' => isset($price['ReceiveValue']) ? (float) $price['ReceiveValue'] : (isset($payload['ReceiveValue']) ? (float) $payload['ReceiveValue'] : 0.0),
+            'receive_currency' => sanitize_text_field((string) ($price['ReceiveCurrencyIso'] ?? $payload['ReceiveCurrencyIso'] ?? '')),
+            'receipt_text' => sanitize_text_field((string) ($record['ReceiptText'] ?? $payload['ReceiptText'] ?? '')),
+            'receipt_params' => is_array($record['ReceiptParams'] ?? null) ? $record['ReceiptParams'] : (is_array($payload['ReceiptParams'] ?? null) ? $payload['ReceiptParams'] : []),
+        ];
+    }
+
+    public function apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value) {
+        if (!is_array($snapshot)) {
+            $snapshot = [];
+        }
+
+        if (!empty($snapshot['transfer_ref'])) {
+            $item->update_meta_data('_dc_transfer_ref', $snapshot['transfer_ref']);
+        }
+
+        if (!empty($snapshot['distributor_ref'])) {
+            $item->update_meta_data('_dc_distributor_ref', $snapshot['distributor_ref']);
+        }
+
+        if (!empty($snapshot['status'])) {
+            $item->update_meta_data('_dc_transfer_status', $snapshot['status']);
+        }
+
+        if ($this->is_pending_transfer_status($snapshot['status'] ?? '')) {
+            if ((string) $item->get_meta('_dc_submitted_since') === '') {
+                $item->update_meta_data('_dc_submitted_since', current_time('mysql'));
+            }
+        }
+
+        if (!empty($snapshot['processing_state'])) {
+            $item->update_meta_data('_dc_processing_state', $snapshot['processing_state']);
+        }
+
+        if (!empty($snapshot['receipt_text'])) {
+            $item->update_meta_data('_dc_receipt_text', $snapshot['receipt_text']);
+        }
+
+        if (!empty($snapshot['receipt_params'])) {
+            $item->update_meta_data('_dc_receipt_params', wp_json_encode($snapshot['receipt_params']));
+        }
+
+        if ($this->is_successful_transfer_status($snapshot['status'] ?? '')) {
+            $item->delete_meta_data('_dc_transfer_error');
+            $item->delete_meta_data('_dc_next_retry_at');
+            $item->delete_meta_data('_dc_retry_attempts');
+            $item->delete_meta_data('_dc_transfer_http_status');
+            $item->delete_meta_data('_dc_transfer_error_code');
+            $item->delete_meta_data('_dc_transfer_error_context');
+        }
+
+        $item->update_meta_data('_dc_account_number', $account_number);
+        $item->update_meta_data('_dc_send_value', $send_value);
+    }
+
+    public function is_successful_transfer_status($status) {
+        return in_array(strtolower((string) $status), ['success', 'completed', 'ok', 'approved'], true);
+    }
+
+    public function is_pending_transfer_status($status) {
+        return in_array(strtolower((string) $status), ['submitted', 'pending', 'processing', 'queued', 'inprogress'], true);
+    }
+
+    public function verify_webhook_signature($raw_body, $signature_header, $timestamp_header, $algorithm_header, $kid_header) {
+        $raw_body = (string) $raw_body;
+        $signature_header = trim((string) $signature_header);
+        $timestamp_header = trim((string) $timestamp_header);
+        $algorithm_header = strtoupper(trim((string) $algorithm_header));
+        $kid_header = trim((string) $kid_header);
+
+        if ($signature_header === '' || $timestamp_header === '' || $kid_header === '') {
+            return [
+                'ok' => false,
+                'message' => 'Faltan headers de firma requeridos.',
+            ];
+        }
+
+        if ($algorithm_header !== '' && $algorithm_header !== 'RS256') {
+            return [
+                'ok' => false,
+                'message' => 'Algoritmo de firma no soportado.',
+            ];
+        }
+
+        $timestamp = is_numeric($timestamp_header) ? (int) $timestamp_header : 0;
+        if ($timestamp <= 0) {
+            return [
+                'ok' => false,
+                'message' => 'Timestamp inválido.',
+            ];
+        }
+
+        $options = $this->get_options();
+        $tolerance = max(0, (int) ($options['webhook_timestamp_tolerance_seconds'] ?? 300));
+        if ($tolerance > 0 && abs(time() - $timestamp) > $tolerance) {
+            return [
+                'ok' => false,
+                'message' => 'Timestamp fuera de tolerancia.',
+            ];
+        }
+
+        $public_key_pem = $this->get_webhook_public_key_pem_by_kid($kid_header);
+        if (is_wp_error($public_key_pem)) {
+            return [
+                'ok' => false,
+                'message' => $public_key_pem->get_error_message(),
+            ];
+        }
+
+        $signature_bytes = base64_decode($signature_header, true);
+        if ($signature_bytes === false) {
+            $signature_bytes = $this->base64url_decode($signature_header);
+        }
+        if ($signature_bytes === false || $signature_bytes === '') {
+            return [
+                'ok' => false,
+                'message' => 'Firma inválida (base64).',
+            ];
+        }
+
+        $compat_mode = !empty($options['webhook_signature_compat_mode']);
+        $candidates = $compat_mode
+            ? [
+                $raw_body . '.' . $timestamp_header,
+                $timestamp_header . '.' . $raw_body,
+                $raw_body . $timestamp_header,
+                $timestamp_header . $raw_body,
+            ]
+            : [
+                $raw_body . '.' . $timestamp_header,
+            ];
+
+        $verified_variant = '';
+        foreach ($candidates as $candidate) {
+            $result = openssl_verify($candidate, $signature_bytes, $public_key_pem, OPENSSL_ALGO_SHA256);
+            if ($result === 1) {
+                $verified_variant = $candidate === ($raw_body . '.' . $timestamp_header)
+                    ? 'raw_body.timestamp'
+                    : ($candidate === ($timestamp_header . '.' . $raw_body) ? 'timestamp.raw_body' : 'other');
+                break;
+            }
+        }
+
+        if ($verified_variant === '') {
+            return [
+                'ok' => false,
+                'message' => 'Firma no válida.',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'kid' => $kid_header,
+            'timestamp' => $timestamp,
+            'variant' => $verified_variant,
+        ];
+    }
+
+    private function get_webhook_public_key_pem_by_kid($kid) {
+        $kid = trim((string) $kid);
+        if ($kid === '') {
+            return new WP_Error('dc_webhook_kid_missing', 'Key-Id vacío.');
+        }
+
+        $cache_key = 'dc_webhook_pem_' . md5($kid);
+        $cached = get_transient($cache_key);
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $jwks = $this->fetch_webhook_jwks();
+        if (is_wp_error($jwks)) {
+            return $jwks;
+        }
+
+        foreach ((array) ($jwks['keys'] ?? []) as $jwk) {
+            if (!is_array($jwk)) {
+                continue;
+            }
+            if ((string) ($jwk['kid'] ?? '') !== $kid) {
+                continue;
+            }
+
+            $pem = $this->jwk_rsa_to_pem($jwk);
+            if (is_wp_error($pem)) {
+                return $pem;
+            }
+
+            set_transient($cache_key, $pem, 6 * HOUR_IN_SECONDS);
+            return $pem;
+        }
+
+        return new WP_Error('dc_webhook_kid_not_found', 'No se encontró la clave pública para kid.');
+    }
+
+    private function fetch_webhook_jwks() {
+        $cache_key = 'dc_webhook_jwks';
+        $cached = get_transient($cache_key);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $response = wp_remote_get('https://idp.ding.com/.well-known/webhook-keys', [
+            'timeout' => 15,
+            'headers' => [
+                'Accept' => 'application/json',
+            ],
+        ]);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $status = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+
+        if ($status < 200 || $status >= 300 || !is_array($data)) {
+            return new WP_Error('dc_webhook_jwks_http_error', 'No se pudieron recuperar las claves públicas del webhook.', [
+                'status' => $status,
+            ]);
+        }
+
+        set_transient($cache_key, $data, HOUR_IN_SECONDS);
+        return $data;
+    }
+
+    private function jwk_rsa_to_pem($jwk) {
+        $jwk = is_array($jwk) ? $jwk : [];
+        if (($jwk['kty'] ?? '') !== 'RSA' || empty($jwk['n']) || empty($jwk['e'])) {
+            return new WP_Error('dc_webhook_jwk_invalid', 'JWK inválida para RSA.');
+        }
+
+        $n = $this->base64url_decode((string) $jwk['n']);
+        $e = $this->base64url_decode((string) $jwk['e']);
+        if ($n === false || $e === false) {
+            return new WP_Error('dc_webhook_jwk_decode', 'No se pudo decodificar la JWK.');
+        }
+
+        $rsa_public_key = $this->asn1_sequence(
+            $this->asn1_integer($n) . $this->asn1_integer($e)
+        );
+
+        $algorithm_identifier = $this->asn1_sequence(
+            $this->asn1_oid('1.2.840.113549.1.1.1') . $this->asn1_null()
+        );
+
+        $subject_public_key_info = $this->asn1_sequence(
+            $algorithm_identifier . $this->asn1_bit_string($rsa_public_key)
+        );
+
+        $pem = "-----BEGIN PUBLIC KEY-----\n"
+            . chunk_split(base64_encode($subject_public_key_info), 64, "\n")
+            . "-----END PUBLIC KEY-----\n";
+
+        $key = openssl_pkey_get_public($pem);
+        if ($key === false) {
+            return new WP_Error('dc_webhook_pem_invalid', 'La clave pública generada no es válida para OpenSSL.');
+        }
+
+        return $pem;
+    }
+
+    private function base64url_decode($data) {
+        $data = (string) $data;
+        if ($data === '') {
+            return false;
+        }
+        $remainder = strlen($data) % 4;
+        if ($remainder) {
+            $data .= str_repeat('=', 4 - $remainder);
+        }
+        return base64_decode(strtr($data, '-_', '+/'), true);
+    }
+
+    private function asn1_length($length) {
+        $length = (int) $length;
+        if ($length <= 0x7F) {
+            return chr($length);
+        }
+        $temp = ltrim(pack('N', $length), "\x00");
+        return chr(0x80 | strlen($temp)) . $temp;
+    }
+
+    private function asn1_integer($bytes) {
+        $bytes = (string) $bytes;
+        if ($bytes === '') {
+            $bytes = "\x00";
+        }
+        if (ord($bytes[0]) > 0x7F) {
+            $bytes = "\x00" . $bytes;
+        }
+        return "\x02" . $this->asn1_length(strlen($bytes)) . $bytes;
+    }
+
+    private function asn1_sequence($data) {
+        return "\x30" . $this->asn1_length(strlen($data)) . $data;
+    }
+
+    private function asn1_null() {
+        return "\x05\x00";
+    }
+
+    private function asn1_bit_string($data) {
+        return "\x03" . $this->asn1_length(strlen($data) + 1) . "\x00" . $data;
+    }
+
+    private function asn1_oid($oid) {
+        $parts = array_map('intval', explode('.', (string) $oid));
+        if (count($parts) < 2) {
+            return '';
+        }
+        $first = (40 * $parts[0]) + $parts[1];
+        $encoded = chr($first);
+        for ($i = 2; $i < count($parts); $i++) {
+            $encoded .= $this->asn1_base128_int($parts[$i]);
+        }
+        return "\x06" . $this->asn1_length(strlen($encoded)) . $encoded;
+    }
+
+    private function asn1_base128_int($value) {
+        $value = (int) $value;
+        if ($value === 0) {
+            return "\x00";
+        }
+        $result = '';
+        while ($value > 0) {
+            $result = chr($value & 0x7F) . $result;
+            $value >>= 7;
+        }
+        $len = strlen($result);
+        for ($i = 0; $i < $len - 1; $i++) {
+            $result[$i] = chr(ord($result[$i]) | 0x80);
+        }
+        return $result;
     }
 }

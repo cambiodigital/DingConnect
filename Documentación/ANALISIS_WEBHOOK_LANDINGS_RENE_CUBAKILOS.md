@@ -79,8 +79,11 @@ Regla: una landing no define credenciales ni lógica transaccional; solo preset 
 
 Para operaciones con respuesta diferida:
 
-1. Registrar endpoint backend-only para callback.
-2. Validar autenticidad (firma/token/IP permitida según contrato DingConnect disponible).
+1. Registrar endpoint backend-only para callback (plugin: `POST /wp-json/dingconnect/v1/webhook`, controlado por `webhook_enabled`).
+2. Validar autenticidad según DingConnect (firma RSA RS256):
+   - Headers esperados: `X-Ding-Webhook-Signature`, `X-Ding-Webhook-Timestamp`, `X-Ding-Webhook-Algorithm`, `X-Ding-Webhook-Key-Id`.
+   - Recuperar claves públicas desde JWKS: `https://idp.ding.com/.well-known/webhook-keys` y elegir la key por `kid`.
+   - Verificar timestamp (tolerancia corta, recomendado 5 min) y firma RS256 sobre el “signed payload”. Nota: en el ejemplo oficial aparece `raw_request_body + "." + timestamp`, pero hay indicios de inconsistencia en el texto; al recibir el primer webhook real, contrastar contra el payload firmado efectivo (sin re-serializar el body) y ajustar si Ding confirma otro orden/concatenación.
 3. Correlacionar por `DistributorRef` y/o `TransferRef`.
 4. Actualizar estado interno idempotente en logs/pedidos.
 5. Disparar notificación final al comprador (voucher/email) según tipo de producto.

@@ -123,6 +123,12 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
         ]);
 
+        register_rest_route('dingconnect/v1', '/webhook', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'webhook'],
+            'permission_callback' => '__return_true',
+        ]);
+
     }
 
     public function status() {
@@ -497,6 +503,14 @@ class DC_Recargas_REST {
         $options = $this->api->get_options();
         $payment_mode = sanitize_text_field((string) ($options['payment_mode'] ?? 'direct'));
         if ($payment_mode === 'woocommerce') {
+            $this->api->log_operational_event('transfer_blocked_payment_mode', [
+                'status' => 'error',
+                'account_number' => $this->sanitize_phone($request->get_param('account_number') ?? ''),
+                'sku_code' => sanitize_text_field((string) ($request->get_param('sku_code') ?? '')),
+                'send_value' => (float) ($request->get_param('send_value') ?? 0),
+                'currency' => strtoupper(sanitize_text_field((string) ($request->get_param('send_currency_iso') ?? ''))),
+                'raw_response' => ['reason' => 'payment_mode_woocommerce'],
+            ]);
             return new WP_REST_Response([
                 'ok' => false,
                 'message' => 'Transferencia directa deshabilitada en modo WooCommerce. Usa add-to-cart y completa el pago en checkout.',
@@ -672,6 +686,78 @@ class DC_Recargas_REST {
             'ok' => true,
             'redirect' => wc_get_checkout_url(),
             'message' => 'Recarga añadida al carrito.',
+        ]);
+    }
+
+    public function webhook(WP_REST_Request $request) {
+        $options = $this->api->get_options();
+        if (empty($options['webhook_enabled'])) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => 'No encontrado.',
+            ], 404);
+        }
+
+        $signature = (string) $request->get_header('x-ding-webhook-signature');
+        $timestamp = (string) $request->get_header('x-ding-webhook-timestamp');
+        $algorithm = (string) $request->get_header('x-ding-webhook-algorithm');
+        $kid = (string) $request->get_header('x-ding-webhook-key-id');
+        $raw_body = (string) $request->get_body();
+
+        $verification = $this->api->verify_webhook_signature($raw_body, $signature, $timestamp, $algorithm, $kid);
+        if (empty($verification['ok'])) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => (string) ($verification['message'] ?? 'Firma inválida.'),
+            ], 401);
+        }
+
+        $seen_key = 'dc_webhook_seen_' . md5((string) ($verification['kid'] ?? '') . '|' . (string) ($verification['timestamp'] ?? '') . '|' . $signature);
+        if (get_transient($seen_key)) {
+            return rest_ensure_response([
+                'ok' => true,
+                'duplicate' => true,
+                'variant' => (string) ($verification['variant'] ?? ''),
+            ]);
+        }
+
+        $payload = json_decode($raw_body, true);
+        if (!is_array($payload)) {
+            $payload = [];
+        }
+
+        $result = [
+            'matched' => 0,
+            'processed' => 0,
+            'updated' => 0,
+            'emailed' => 0,
+        ];
+
+        try {
+            $woocommerce = $this->api->get_woocommerce();
+            if ($woocommerce && method_exists($woocommerce, 'handle_dingconnect_webhook')) {
+                $result = (array) $woocommerce->handle_dingconnect_webhook($payload, [
+                    'variant' => (string) ($verification['variant'] ?? ''),
+                    'kid' => (string) ($verification['kid'] ?? ''),
+                    'timestamp' => (int) ($verification['timestamp'] ?? 0),
+                ]);
+            } else {
+                $this->api->log_transfer('unknown', 'webhook', 0, '', 'webhook-' . md5($raw_body), $payload);
+            }
+        } catch (Throwable $e) {
+            return new WP_REST_Response([
+                'ok' => false,
+                'message' => 'Error interno al procesar webhook.',
+            ], 500);
+        }
+
+        set_transient($seen_key, 1, DAY_IN_SECONDS);
+
+        return rest_ensure_response([
+            'ok' => true,
+            'variant' => (string) ($verification['variant'] ?? ''),
+            'kid' => (string) ($verification['kid'] ?? ''),
+            'result' => $result,
         ]);
     }
 

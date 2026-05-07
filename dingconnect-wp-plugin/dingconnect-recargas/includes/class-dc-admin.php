@@ -774,6 +774,15 @@ class DC_Recargas_Admin {
 
         $submitted_escalation_email = sanitize_email((string) ($input['submitted_escalation_email'] ?? ''));
         $hide_acfw_store_credit_dc_only = !empty($input['hide_acfw_store_credit_dc_only']) ? 1 : 0;
+        $webhook_enabled = !empty($input['webhook_enabled']) ? 1 : 0;
+        $webhook_timestamp_tolerance_seconds = (int) ($input['webhook_timestamp_tolerance_seconds'] ?? 300);
+        if ($webhook_timestamp_tolerance_seconds < 0) {
+            $webhook_timestamp_tolerance_seconds = 0;
+        }
+        if ($webhook_timestamp_tolerance_seconds > 86400) {
+            $webhook_timestamp_tolerance_seconds = 86400;
+        }
+        $webhook_signature_compat_mode = !empty($input['webhook_signature_compat_mode']) ? 1 : 0;
 
         // Convert recharge mode select to validate_only and allow_real_recharge flags
         $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
@@ -816,6 +825,9 @@ class DC_Recargas_Admin {
             'submitted_max_window_hours' => $submitted_max_window_hours,
             'submitted_escalation_email' => $submitted_escalation_email,
             'submitted_non_retryable_codes' => $submitted_non_retryable_codes,
+            'webhook_enabled' => $webhook_enabled,
+            'webhook_timestamp_tolerance_seconds' => $webhook_timestamp_tolerance_seconds,
+            'webhook_signature_compat_mode' => $webhook_signature_compat_mode,
         ];
 
         return $sanitized;
@@ -3466,6 +3478,33 @@ class DC_Recargas_Admin {
                         </td>
                     </tr>
                     <tr>
+                        <th scope="row">Webhook DingConnect</th>
+                        <td>
+                            <label style="display:block;margin-bottom:6px;">
+                                <input type="checkbox" name="dc_recargas_options[webhook_enabled]" value="1" <?php checked(!empty($options['webhook_enabled'])); ?>>
+                                Habilitar recepción de webhook (Deferred SendTransfer)
+                            </label>
+                            <p class="description">Endpoint del plugin: <code>POST /wp-json/dingconnect/v1/webhook</code>. Mantener deshabilitado hasta configurar en Ding y validar con el primer webhook real.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_webhook_timestamp_tolerance_seconds">Webhook: tolerancia timestamp (segundos)</label></th>
+                        <td>
+                            <input type="number" id="dc_webhook_timestamp_tolerance_seconds" name="dc_recargas_options[webhook_timestamp_tolerance_seconds]" min="0" max="86400" value="<?php echo esc_attr((string) ($options['webhook_timestamp_tolerance_seconds'] ?? 300)); ?>" class="small-text">
+                            <p class="description">Ventana anti-replay. Recomendado: <code>300</code> (5 min). Usa <code>0</code> para desactivar la validación por tolerancia.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Webhook: compatibilidad firma</th>
+                        <td>
+                            <label style="display:block;margin-bottom:6px;">
+                                <input type="checkbox" name="dc_recargas_options[webhook_signature_compat_mode]" value="1" <?php checked(!empty($options['webhook_signature_compat_mode'])); ?>>
+                                Aceptar variantes de “signed payload” hasta confirmar el formato real
+                            </label>
+                            <p class="description">Por defecto verifica <code>raw_body + '.' + timestamp</code>, y en modo compat también prueba variantes alternativas para cubrir inconsistencias de documentación.</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="dc_submitted_retry_max_attempts">Política Submitted: intentos máximos</label></th>
                         <td>
                             <input type="number" id="dc_submitted_retry_max_attempts" name="dc_recargas_options[submitted_retry_max_attempts]" min="1" max="8" value="<?php echo esc_attr((string) ($options['submitted_retry_max_attempts'] ?? 4)); ?>" class="small-text">
@@ -5143,6 +5182,10 @@ class DC_Recargas_Admin {
                             <strong><?php echo (int) $log_stats['validate']; ?></strong>
                             <span>Simulados</span>
                         </div>
+                        <div class="dc-logs-stat dc-logs-stat--pending">
+                            <strong><?php echo (int) $log_stats['pending']; ?></strong>
+                            <span>Pendientes</span>
+                        </div>
                     </div>
 
                     <div class="dc-logs-toolbar">
@@ -5150,6 +5193,7 @@ class DC_Recargas_Admin {
                         <select id="dc-logs-status">
                             <option value="">Todos los estados</option>
                             <option value="TransferSuccessful">Exitosos</option>
+                            <option value="pending">Pendientes</option>
                             <option value="validate">Simulados (validate)</option>
                             <option value="error">Errores</option>
                             <option value="unknown">Desconocido</option>
@@ -5244,6 +5288,8 @@ class DC_Recargas_Admin {
                         .dc-logs-stat--error strong { color: #dc2626; }
                         .dc-logs-stat--validate { border-color: #fde68a; background: #fffbeb; }
                         .dc-logs-stat--validate strong { color: #b45309; }
+                        .dc-logs-stat--pending { border-color: #bfdbfe; background: #eff6ff; }
+                        .dc-logs-stat--pending strong { color: #1d4ed8; }
 
                         .dc-logs-toolbar {
                             display: flex;
@@ -5303,6 +5349,7 @@ class DC_Recargas_Admin {
                         .dc-log-badge--success { background: #dcfce7; color: #15803d; }
                         .dc-log-badge--error { background: #fee2e2; color: #dc2626; }
                         .dc-log-badge--validate { background: #fef9c3; color: #b45309; }
+                        .dc-log-badge--pending { background: #dbeafe; color: #1d4ed8; }
                         .dc-log-badge--unknown { background: #f1f5f9; color: #64748b; }
 
                         .dc-logs-expand-btn {
@@ -5448,6 +5495,7 @@ class DC_Recargas_Admin {
                             if (!status) return 'dc-log-badge--unknown';
                             var s = status.toLowerCase();
                             if (s === 'transfersuccessful') return 'dc-log-badge--success';
+                            if (s === 'pending') return 'dc-log-badge--pending';
                             if (s === 'error') return 'dc-log-badge--error';
                             if (s.indexOf('validate') !== -1) return 'dc-log-badge--validate';
                             return 'dc-log-badge--unknown';
@@ -5629,6 +5677,7 @@ class DC_Recargas_Admin {
 
                             var html = '<table><thead><tr>'
                                 + '<th>Fecha</th>'
+                                + '<th>Evento</th>'
                                 + '<th>Teléfono</th>'
                                 + '<th>SKU</th>'
                                 + '<th>Monto</th>'
@@ -5645,6 +5694,7 @@ class DC_Recargas_Admin {
                                 var summary = buildLogResponseSummary(log);
                                 html += '<tr>'
                                     + '<td>' + esc(log.date) + '</td>'
+                                    + '<td>' + esc(log.event_type || 'general') + '</td>'
                                     + '<td>' + esc(log.account_number) + '</td>'
                                     + '<td>' + esc(log.sku_code) + '</td>'
                                     + '<td>' + esc(log.send_value) + ' ' + esc(log.currency) + '</td>'
@@ -7886,7 +7936,7 @@ class DC_Recargas_Admin {
     /**
      * Returns aggregate counts per status for the stats summary cards.
      *
-     * @return array{total:int, success:int, error:int, validate:int}
+     * @return array{total:int, success:int, error:int, validate:int, pending:int}
      */
     private function get_transfer_log_stats(): array {
         $counts = [
@@ -7894,6 +7944,7 @@ class DC_Recargas_Admin {
             'success'  => 0,
             'error'    => 0,
             'validate' => 0,
+            'pending'  => 0,
         ];
 
         $raw = wp_count_posts('dc_transfer_log');
@@ -7901,7 +7952,12 @@ class DC_Recargas_Admin {
 
         // Aggregate by status meta. Running three small queries is fast enough
         // for the number of log entries expected in this plugin.
-        foreach (['TransferSuccessful' => 'success', 'error' => 'error', 'validate' => 'validate'] as $status => $key) {
+        foreach ([
+            'TransferSuccessful' => 'success',
+            'error' => 'error',
+            'validate' => 'validate',
+            'pending' => 'pending',
+        ] as $status => $key) {
             $q = new WP_Query([
                 'post_type'      => 'dc_transfer_log',
                 'post_status'    => 'publish',
@@ -8011,6 +8067,7 @@ class DC_Recargas_Admin {
             $logs[] = [
                 'id'              => $post->ID,
                 'date'            => get_the_date('d/m/Y H:i:s', $post),
+                'event_type'      => (string) get_post_meta($post->ID, '_dc_event_type', true),
                 'account_number'  => (string) get_post_meta($post->ID, '_dc_account_number', true),
                 'sku_code'        => (string) get_post_meta($post->ID, '_dc_sku_code', true),
                 'send_value'      => (string) get_post_meta($post->ID, '_dc_send_value', true),
