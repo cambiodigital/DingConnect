@@ -248,6 +248,7 @@ Nota operativa WooCommerce (abril 2026):
 - Regla de precio visible al cliente en shortcode público: la UI de selección y confirmación debe mostrar `Precio al público` (valor comercial) y no el coste interno de proveedor (`SendValue`).
 - Regla de consistencia fiscal para bundles guardados: en `source=saved`, `ReceiveValueExcludingTax` se normaliza al precio comercial para evitar residuos heredados en otra escala/moneda que distorsionen el resumen al cliente.
 - Regla contractual de precio dual en WooCommerce: `public_price/public_price_currency` se usan para importe cobrado y visualización de cliente (checkout, thank-you y email), mientras `send_value/send_currency_iso` se reservan para operación `SendTransfer` y diagnóstico backend.
+- Regla de despacho en monto fijo (WooCommerce): antes de enviar a DingConnect, si el bundle es fijo el backend debe forzar `send_value` al coste técnico guardado en el bundle, aunque el checkout haya cobrado otro importe comercial; para auditoría se conserva `_dc_send_value_original` en el item del pedido.
 - Regla de compatibilidad con CURCY/Multi Currency: cuando el checkout usa precios dinámicos por carrito, el plugin debe convertir `public_price` desde `public_price_currency` a la moneda base de WooCommerce antes de llamar a `set_price()`. Si se inyecta el importe comercial directamente sin esa normalización, CURCY puede volver a convertirlo en el refresh de checkout y degradar importes como `1,00 EUR` a un valor convertido por tipo de cambio.
 - Regla de auditoría en pedido: cada item de recarga debe persistir ambos planos de precio (`_dc_public_*` y `_dc_send_*`) para facilitar conciliación comercial vs técnica sin mezclar semánticas.
 - Regla de copy en checkout WooCommerce: para recargas, el detalle mostrado al cliente debe priorizar `Beneficios` del producto (valor operativo editable en admin) y usar el nombre del paquete como apoyo cuando aplique.
@@ -464,6 +465,48 @@ El artículo de sign-off deja estos requisitos como base para que el equipo de i
 5. Implementar `ListTransferRecords` para timeout.
 6. Mostrar todos los campos de `GetProductDescriptions`.
 7. Mapear en la pantalla final todos los campos listados por Ding.
+
+## 12.1 Auditoría rápida de fuentes oficiales (07-05-2026)
+
+Fuentes contrastadas:
+
+- `https://www.dingconnect.com/Api/Description`
+- `https://www.dingconnect.com/Api`
+- `https://www.dingconnect.com/Api/Faq`
+
+Qué sí queda explícito en docs oficiales:
+
+1. `ValidateOnly=true` valida sintaxis/balance y no descuenta ni ejecuta recarga real.
+2. `EstimatePrices` es obligatorio para productos de rango y usa `BatchItemRef` por item.
+3. `ListTransferRecords` se recomienda para todos los casos de timeout y conciliación.
+4. El cliente debe esperar hasta 90 segundos antes de tratar `SendTransfer` como no resuelto.
+5. `Deferred SendTransfer` devuelve `Submitted` de inmediato y resultado final por webhook.
+6. Webhooks se verifican con firma `RS256`, `kid` y JWKS (`/.well-known/webhook-keys`).
+7. Campos de frontend exigidos por Ding: `SendValue`, `ReceiveValue`, `ReceiveValueExcludingTax`, `ReceiveCurrencyIso`, `DefaultDisplayText`, `ValidityPeriodISO`, markdown de descripción y `ReceiptText` cuando aplique.
+
+Brechas o ambigüedades detectadas en docs:
+
+1. Inconsistencia textual de estado final: en métodos aparece `Completed` y en ejemplos/webhook aparece `Complete`.
+2. No hay definición explícita sobre semántica de `TransferRef=0` en éxito/pendiente/validación.
+3. No se documenta una matriz formal por gateway de e-commerce (tema que afecta WooCommerce y queda del lado del integrador).
+
+Preguntas que sí conviene elevar a `partnersupport@ding.com`:
+
+1. ¿Cuál es el set canónico de estados terminales de transferencia (`Complete` vs `Completed` u otros) y cuál debe usarse como verdad para éxito?
+2. ¿Cómo interpretar exactamente `TransferRef=0` cuando `ProcessingState` aparenta éxito o queda en estado intermedio?
+3. ¿Cuál es la regla oficial para decidir “éxito final” cuando `SendTransfer` devuelve `Submitted` y el webhook/listado llega más tarde?
+4. ¿Cuál es la ventana recomendada de polling para `ListTransferRecords` (frecuencia y tiempo máximo) antes de escalar a soporte?
+5. En webhooks diferidos: ¿qué política exacta de reintentos entrega Ding (máximo intentos, intervalo, backoff) y cuándo consideran evento agotado?
+6. ¿Qué claves o campos recomiendan para idempotencia del lado integrador (`DistributorRef`, `TransferRef`, `X-Correlation-Id`) ante reintentos y callbacks duplicados?
+
+Preguntas que no hace falta elevar (ya están respondidas en docs):
+
+1. Diferencia `ValidateOnly true/false`.
+2. Necesidad de `EstimatePrices` para rangos.
+3. Necesidad de implementar `ListTransferRecords` para query/reconciliación.
+4. Tiempo de espera recomendado de 90s.
+5. Uso de `ReceiptText` para PIN/voucher y cuenta por defecto `0000000000`.
+6. Uso de `Settings`, `DistributorRef`, `BatchItemRef` y existencia de mapeo de campos frontend para sign-off.
 
 ## 13. Observaciones para este workspace
 
@@ -727,3 +770,4 @@ Mitigación aplicada en el plugin:
   - producto de rango: `min <= send_value <= max`
   - producto fijo: `send_value` debe coincidir con el valor configurado
 - Este guard rail evita bypass por manipulación de payload en cliente y mantiene consistencia con el precio/rango comercial definido en admin.
+- En despacho WooCommerce post-pago, si un item fijo llega con `send_value` alterado por flujo comercial o plugins de checkout, el backend normaliza automáticamente al monto fijo del bundle antes de `SendTransfer` y deja trazabilidad en nota de pedido + log operativo.

@@ -1817,6 +1817,92 @@ class DC_Recargas_WooCommerce {
         return $result;
     }
 
+    /**
+     * En productos de monto fijo, fuerza el send_value técnico del bundle antes del despacho.
+     * Esto evita que variaciones del checkout/metadatos terminen enviando a Ding un monto distinto.
+     *
+     * @param WC_Order              $order
+     * @param WC_Order_Item_Product $item
+     * @param float                 $send_value
+     * @param string                $send_currency_iso
+     * @return array{send_value: float, send_currency_iso: string, normalized: bool}
+     */
+    private function normalize_fixed_send_value_for_dispatch($order, $item, $send_value, $send_currency_iso) {
+        $send_value = (float) $send_value;
+        $send_currency_iso = (string) $send_currency_iso;
+
+        $sku_code = (string) $item->get_meta('_dc_sku_code');
+        $country_iso = strtoupper((string) $item->get_meta('_dc_country_iso'));
+        $bundle_id = (string) $item->get_meta('_dc_bundle_id');
+        $bundle = $this->api->find_bundle_for_amount_validation($sku_code, $country_iso, $bundle_id);
+
+        if (!is_array($bundle) || empty($bundle)) {
+            return [
+                'send_value' => $send_value,
+                'send_currency_iso' => $send_currency_iso,
+                'normalized' => false,
+            ];
+        }
+
+        $options = $this->api->get_options();
+        $allow_manual = (sanitize_key((string) ($options['manual_amount_mode'] ?? 'range_products')) === 'range_products');
+        $bundle_send_value = (float) ($bundle['send_value'] ?? 0);
+        $min_send_value = isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : $bundle_send_value;
+        $max_send_value = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : $bundle_send_value;
+        $bundle_allow_manual = array_key_exists('allow_manual_amount', $bundle) ? !empty($bundle['allow_manual_amount']) : true;
+        $is_range = $allow_manual && $bundle_allow_manual && (!empty($bundle['is_range']) || abs($max_send_value - $min_send_value) > 0.00001);
+
+        if ($is_range || $bundle_send_value <= 0 || abs($send_value - $bundle_send_value) <= 0.00001) {
+            return [
+                'send_value' => $send_value,
+                'send_currency_iso' => $send_currency_iso,
+                'normalized' => false,
+            ];
+        }
+
+        $normalized_currency = strtoupper(sanitize_text_field((string) ($bundle['send_currency_iso'] ?? $send_currency_iso)));
+        $original_send_value = (float) $send_value;
+
+        $existing_original = $item->get_meta('_dc_send_value_original');
+        if ((string) $existing_original === '') {
+            $item->update_meta_data('_dc_send_value_original', $original_send_value);
+        }
+        $item->update_meta_data('_dc_send_value', $bundle_send_value);
+        if ($normalized_currency !== '') {
+            $item->update_meta_data('_dc_send_currency_iso', $normalized_currency);
+        }
+        $item->save();
+
+        $order->add_order_note(sprintf(
+            'DingConnect: normalización de monto fijo aplicada en item #%d (SKU: %s). Monto pedido: %.2f -> Monto enviado a Ding: %.2f.',
+            (int) $item->get_id(),
+            $sku_code,
+            $original_send_value,
+            $bundle_send_value
+        ));
+
+        $this->api->log_operational_event('dispatch_send_value_normalized_fixed', [
+            'status' => 'normalized',
+            'order_id' => (int) $order->get_id(),
+            'item_id' => (int) $item->get_id(),
+            'account_number' => (string) $item->get_meta('_dc_account_number'),
+            'sku_code' => $sku_code,
+            'send_value' => $bundle_send_value,
+            'currency' => $normalized_currency,
+            'raw_response' => [
+                'original_send_value' => $original_send_value,
+                'bundle_fixed_send_value' => $bundle_send_value,
+                'bundle_id' => $bundle_id,
+            ],
+        ]);
+
+        return [
+            'send_value' => $bundle_send_value,
+            'send_currency_iso' => $normalized_currency !== '' ? $normalized_currency : $send_currency_iso,
+            'normalized' => true,
+        ];
+    }
+
     private function is_item_already_successful($item) {
         $status = strtolower((string) $item->get_meta('_dc_transfer_status'));
         return $this->is_successful_transfer_status($status);
@@ -1853,6 +1939,10 @@ class DC_Recargas_WooCommerce {
             $this->log_blocked_gateway_transfer($order, $item, $account_number, $sku_code, $send_value, $send_currency_iso);
             return ['success' => false, 'pending_retry' => false, 'message' => 'gateway_not_allowed'];
         }
+
+        $normalized_dispatch_amount = $this->normalize_fixed_send_value_for_dispatch($order, $item, $send_value, $send_currency_iso);
+        $send_value = (float) ($normalized_dispatch_amount['send_value'] ?? $send_value);
+        $send_currency_iso = (string) ($normalized_dispatch_amount['send_currency_iso'] ?? $send_currency_iso);
 
         $lock_key = 'dc_transfer_lock_' . md5($order->get_id() . '_' . $item->get_id());
         if (get_transient($lock_key)) {
