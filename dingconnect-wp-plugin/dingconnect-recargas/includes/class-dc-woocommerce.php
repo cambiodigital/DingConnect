@@ -77,9 +77,9 @@ class DC_Recargas_WooCommerce {
         // - payment_complete: Stripe, PayPal IPN and other gateways that call $order->payment_complete() directly
         // - status_processing: gateways that transition to "processing" after payment
         // - status_completed: gateways that go directly to "completed" (e.g., free/manual orders)
-        add_action('woocommerce_payment_complete', [$this, 'process_recarga_on_payment']);
-        add_action('woocommerce_order_status_processing', [$this, 'process_recarga_on_payment']);
-        add_action('woocommerce_order_status_completed', [$this, 'process_recarga_on_payment']);
+        add_action('woocommerce_payment_complete', [$this, 'handle_payment_complete']);
+        add_action('woocommerce_order_status_processing', [$this, 'handle_order_status_processing']);
+        add_action('woocommerce_order_status_completed', [$this, 'handle_order_status_completed']);
         add_action('woocommerce_order_status_failed', [$this, 'handle_order_terminal_failure']);
         add_action('woocommerce_order_status_cancelled', [$this, 'handle_order_terminal_failure']);
         add_action('woocommerce_order_status_refunded', [$this, 'handle_order_terminal_failure']);
@@ -1368,9 +1368,35 @@ class DC_Recargas_WooCommerce {
      * for real transfers to execute. Without it, send_transfer() forces
      * ValidateOnly=true regardless of what we pass here.
      */
-    public function process_recarga_on_payment($order_id) {
+    public function handle_payment_complete($order_id) {
+        $this->process_recarga_on_payment($order_id, 'payment_complete');
+    }
+
+    public function handle_order_status_processing($order_id) {
+        $this->process_recarga_on_payment($order_id, 'processing');
+    }
+
+    public function handle_order_status_completed($order_id) {
+        $this->process_recarga_on_payment($order_id, 'completed');
+    }
+
+    public function process_recarga_on_payment($order_id, $trigger_stage = 'payment_complete') {
         $order = wc_get_order($order_id);
         if (!$order) return;
+
+        if (!$this->should_process_order_for_trigger_stage($order, $trigger_stage)) {
+            $this->api->log_operational_event('payment_stage_skipped', [
+                'status' => 'pending',
+                'order_id' => (int) $order->get_id(),
+                'payment_method' => (string) $order->get_payment_method(),
+                'raw_response' => [
+                    'trigger_stage' => $trigger_stage,
+                    'selected_stage' => $this->get_dispatch_stage_for_order($order),
+                    'order_status' => $this->get_order_status_slug($order),
+                ],
+            ]);
+            return;
+        }
 
         if (!$order->is_paid()) {
             $order->add_order_note('DingConnect: se omitio despacho porque la orden aun no figura como pagada.');
@@ -1388,14 +1414,14 @@ class DC_Recargas_WooCommerce {
             'order_id' => (int) $order->get_id(),
             'payment_method' => (string) $order->get_payment_method(),
             'raw_response' => [
-                'hook' => 'post_pago',
+                'hook' => sanitize_key((string) $trigger_stage),
                 'order_status' => $this->get_order_status_slug($order),
             ],
         ]);
 
         $order->add_order_note(sprintf(
             'DingConnect: inicio de evaluacion post-pago (hook: %s, estado actual: %s).',
-            'post_pago',
+            sanitize_key((string) $trigger_stage),
             $this->get_order_status_slug($order)
         ));
 
@@ -1449,7 +1475,7 @@ class DC_Recargas_WooCommerce {
                 $order->add_order_note('Algunas recargas fallaron. Revisa los detalles de cada item o ejecuta reconciliacion manual.');
             }
 
-            $this->sync_order_status_with_recarga_outcome($order, 'post_pago');
+            $this->sync_order_status_with_recarga_outcome($order, sanitize_key((string) $trigger_stage));
             $order->save();
         }
     }
@@ -1924,6 +1950,40 @@ class DC_Recargas_WooCommerce {
             'BillRef' => $bill_ref,
         ];
 
+        if ($this->api->is_effective_validate_only($payload)) {
+            $item->update_meta_data('_dc_transfer_status', 'validate_only');
+            $item->update_meta_data('_dc_transfer_error', 'Despacho omitido: el plugin está configurado en modo ValidateOnly y no ejecuta recargas reales.');
+            $item->update_meta_data('_dc_transfer_error_code', 'validate_only_mode');
+            $item->update_meta_data('_dc_transfer_error_context', 'local_policy');
+            $item->update_meta_data('_dc_distributor_ref', $distributor_ref);
+            $item->delete_meta_data('_dc_next_retry_at');
+            $item->save();
+
+            $order->add_order_note(sprintf(
+                'Recarga OMITIDA para %s (SKU: %s), intento %d: modo ValidateOnly activo. No se envió recarga real a DingConnect.',
+                $account_number,
+                $sku_code,
+                $attempt
+            ));
+            $this->api->log_operational_event('dispatch_skipped_validate_only', [
+                'status' => 'validate',
+                'order_id' => (int) $order->get_id(),
+                'item_id' => (int) $item->get_id(),
+                'account_number' => $account_number,
+                'sku_code' => $sku_code,
+                'send_value' => $send_value,
+                'currency' => $send_currency_iso,
+                'distributor_ref' => $distributor_ref,
+                'raw_response' => [
+                    'attempt' => $attempt,
+                    'mode' => 'validate_only',
+                ],
+            ]);
+
+            delete_transient($lock_key);
+            return ['success' => false, 'pending_retry' => false, 'message' => 'validate_only_mode'];
+        }
+
         $response = $this->api->send_transfer($payload);
         $this->api->log_transfer($account_number, $sku_code, $send_value, $send_currency_iso, $distributor_ref, $response);
 
@@ -2009,8 +2069,18 @@ class DC_Recargas_WooCommerce {
         $transfer_ref = $snapshot['transfer_ref'];
         $receive_value = $snapshot['receive_value'];
         $receive_currency = $snapshot['receive_currency'];
-        $is_success = $this->is_successful_transfer_status($snapshot['status']);
-        $is_pending = $this->is_pending_transfer_status($snapshot['status']);
+        $is_status_success = $this->is_successful_transfer_status($snapshot['status']);
+        $has_confirmed_ref = $this->api->is_confirmed_transfer_reference($snapshot['transfer_ref']);
+        $is_success = $is_status_success && $has_confirmed_ref;
+        $is_pending = $this->is_pending_transfer_status($snapshot['status']) || ($is_status_success && !$has_confirmed_ref);
+
+        if ($is_status_success && !$has_confirmed_ref) {
+            $item->update_meta_data('_dc_transfer_status', 'pending_confirmation');
+            $item->update_meta_data('_dc_transfer_error', 'Estado exitoso sin referencia de transferencia confirmada. Se requiere conciliación por ListTransferRecords.');
+            $item->update_meta_data('_dc_transfer_error_code', 'missing_confirmed_transfer_ref');
+            $item->update_meta_data('_dc_transfer_error_context', 'post_dispatch_validation');
+            $item->save();
+        }
 
         if ($is_pending && !$manual) {
             $this->schedule_submitted_retry($order, $item, 'send_transfer_pending');
@@ -2124,7 +2194,18 @@ class DC_Recargas_WooCommerce {
         $send_value = (float) $item->get_meta('_dc_send_value');
         $this->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
 
-        $is_now_success = $this->is_successful_transfer_status($snapshot['status']);
+        $is_status_success = $this->is_successful_transfer_status($snapshot['status']);
+        $has_confirmed_ref = $this->api->is_confirmed_transfer_reference($snapshot['transfer_ref']);
+        $is_now_success = $is_status_success && $has_confirmed_ref;
+        $is_now_pending = $this->is_pending_transfer_status($snapshot['status']) || ($is_status_success && !$has_confirmed_ref);
+
+        if ($is_status_success && !$has_confirmed_ref) {
+            $item->update_meta_data('_dc_transfer_status', 'pending_confirmation');
+            $item->update_meta_data('_dc_transfer_error', 'Estado exitoso sin referencia de transferencia confirmada. Se requiere conciliación por ListTransferRecords.');
+            $item->update_meta_data('_dc_transfer_error_code', 'missing_confirmed_transfer_ref');
+            $item->update_meta_data('_dc_transfer_error_context', 'sync_validation');
+            $item->save();
+        }
 
         if ($snapshot['status'] !== $previous_status) {
             $order->add_order_note(sprintf(
@@ -2143,7 +2224,7 @@ class DC_Recargas_WooCommerce {
         return [
             'synced' => true,
             'success' => $is_now_success,
-            'pending' => $this->is_pending_transfer_status($snapshot['status']),
+            'pending' => $is_now_pending,
             'status' => $snapshot['status'],
         ];
     }
@@ -2283,6 +2364,38 @@ class DC_Recargas_WooCommerce {
         }
 
         return strpos($status, 'wc-') === 0 ? substr($status, 3) : $status;
+    }
+
+    private function get_dispatch_stage_for_order($order) {
+        $options = $this->api->get_options();
+        $fallback = $this->sanitize_dispatch_stage((string) ($options['woo_dispatch_stage_default'] ?? 'payment_complete'));
+        $map = (array) ($options['woo_dispatch_stage_by_gateway'] ?? []);
+        $payment_method = sanitize_key((string) ($order instanceof WC_Order ? $order->get_payment_method() : ''));
+        if ($payment_method === '') {
+            return $fallback;
+        }
+
+        $by_gateway = sanitize_key((string) ($map[$payment_method] ?? ''));
+        if ($by_gateway === '') {
+            return $fallback;
+        }
+
+        return $this->sanitize_dispatch_stage($by_gateway);
+    }
+
+    private function should_process_order_for_trigger_stage($order, $trigger_stage) {
+        $selected_stage = $this->get_dispatch_stage_for_order($order);
+        $trigger_stage = $this->sanitize_dispatch_stage((string) $trigger_stage);
+        return $selected_stage === $trigger_stage;
+    }
+
+    private function sanitize_dispatch_stage($stage) {
+        $stage = sanitize_key((string) $stage);
+        $allowed = ['payment_complete', 'processing', 'completed'];
+        if (!in_array($stage, $allowed, true)) {
+            return 'payment_complete';
+        }
+        return $stage;
     }
 
     private function update_order_status_slug($order, $target_status, $reason = '') {

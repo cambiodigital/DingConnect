@@ -32,6 +32,8 @@ class DC_Recargas_API {
             'webhook_enabled' => 0,
             'webhook_timestamp_tolerance_seconds' => 300,
             'webhook_signature_compat_mode' => 1,
+            'woo_dispatch_stage_default' => 'payment_complete',
+            'woo_dispatch_stage_by_gateway' => [],
         ];
 
         return wp_parse_args(get_option('dc_recargas_options', []), $defaults);
@@ -391,12 +393,7 @@ class DC_Recargas_API {
     }
 
     public function send_transfer($payload) {
-        $options = $this->get_options();
-        $validate_only = !empty($options['validate_only']);
-
-        if (!empty($options['allow_real_recharge']) && isset($payload['ValidateOnly'])) {
-            $validate_only = (bool) $payload['ValidateOnly'];
-        }
+        $validate_only = $this->is_effective_validate_only($payload);
 
         $send_currency = sanitize_text_field($payload['SendCurrencyIso'] ?? '');
 
@@ -423,6 +420,18 @@ class DC_Recargas_API {
         }
 
         return $this->request('POST', 'SendTransfer', [], $body);
+    }
+
+    public function is_effective_validate_only($payload = []) {
+        $options = $this->get_options();
+        $validate_only = !empty($options['validate_only']);
+        $payload = is_array($payload) ? $payload : [];
+
+        if (!empty($options['allow_real_recharge']) && isset($payload['ValidateOnly'])) {
+            $validate_only = (bool) $payload['ValidateOnly'];
+        }
+
+        return (bool) $validate_only;
     }
 
     public function new_ref() {
@@ -696,7 +705,7 @@ class DC_Recargas_API {
         if (strpos($normalized, 'validate') !== false) {
             return 'validate';
         }
-        if (in_array($normalized, ['transfersuccessful', 'completed', 'success', 'ok', 'approved'], true)) {
+        if (in_array($normalized, ['transfersuccessful', 'complete', 'completed', 'success', 'ok', 'approved'], true)) {
             return 'TransferSuccessful';
         }
         if (in_array($normalized, ['submitted', 'pending', 'processing', 'queued', 'inprogress', 'pending_retry', 'escalado_soporte'], true)) {
@@ -878,7 +887,7 @@ class DC_Recargas_API {
             $snapshot = [];
         }
 
-        if (!empty($snapshot['transfer_ref'])) {
+        if (array_key_exists('transfer_ref', $snapshot) && (string) $snapshot['transfer_ref'] !== '') {
             $item->update_meta_data('_dc_transfer_ref', $snapshot['transfer_ref']);
         }
 
@@ -922,11 +931,20 @@ class DC_Recargas_API {
     }
 
     public function is_successful_transfer_status($status) {
-        return in_array(strtolower((string) $status), ['success', 'completed', 'ok', 'approved'], true);
+        return in_array(strtolower((string) $status), ['success', 'complete', 'completed', 'transfersuccessful', 'ok', 'approved'], true);
     }
 
     public function is_pending_transfer_status($status) {
-        return in_array(strtolower((string) $status), ['submitted', 'pending', 'processing', 'queued', 'inprogress'], true);
+        return in_array(strtolower((string) $status), ['submitted', 'pending', 'processing', 'queued', 'inprogress', 'pending_confirmation'], true);
+    }
+
+    public function is_confirmed_transfer_reference($transfer_ref) {
+        $transfer_ref = trim((string) $transfer_ref);
+        if ($transfer_ref === '') {
+            return false;
+        }
+
+        return $transfer_ref !== '0';
     }
 
     public function verify_webhook_signature($raw_body, $signature_header, $timestamp_header, $algorithm_header, $kid_header) {

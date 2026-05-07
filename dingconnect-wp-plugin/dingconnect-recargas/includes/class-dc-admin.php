@@ -729,6 +729,28 @@ class DC_Recargas_Admin {
         }
         $woo_allowed_gateways = array_values(array_unique($woo_allowed_gateways));
 
+        $woo_dispatch_stage_default = sanitize_key((string) ($input['woo_dispatch_stage_default'] ?? 'payment_complete'));
+        if (!in_array($woo_dispatch_stage_default, ['payment_complete', 'processing', 'completed'], true)) {
+            $woo_dispatch_stage_default = 'payment_complete';
+        }
+
+        $raw_dispatch_stage_by_gateway = wp_unslash($input['woo_dispatch_stage_by_gateway'] ?? []);
+        if (!is_array($raw_dispatch_stage_by_gateway)) {
+            $raw_dispatch_stage_by_gateway = [];
+        }
+        $woo_dispatch_stage_by_gateway = [];
+        foreach ($raw_dispatch_stage_by_gateway as $gateway_id => $stage) {
+            $clean_gateway_id = sanitize_key((string) $gateway_id);
+            if ($clean_gateway_id === '' || !isset($allowed_gateway_map[$clean_gateway_id])) {
+                continue;
+            }
+            $clean_stage = sanitize_key((string) $stage);
+            if (!in_array($clean_stage, ['payment_complete', 'processing', 'completed'], true)) {
+                continue;
+            }
+            $woo_dispatch_stage_by_gateway[$clean_gateway_id] = $clean_stage;
+        }
+
         $submitted_retry_max_attempts = (int) ($input['submitted_retry_max_attempts'] ?? 4);
         if ($submitted_retry_max_attempts < 1) {
             $submitted_retry_max_attempts = 1;
@@ -815,6 +837,8 @@ class DC_Recargas_Admin {
             'api_key' => $new_api_key,
             'payment_mode' => $mode,
             'woo_allowed_gateways' => $woo_allowed_gateways,
+            'woo_dispatch_stage_default' => $woo_dispatch_stage_default,
+            'woo_dispatch_stage_by_gateway' => $woo_dispatch_stage_by_gateway,
             'hide_acfw_store_credit_dc_only' => $hide_acfw_store_credit_dc_only,
             'recharge_mode' => $recharge_mode,
             'manual_amount_mode' => $manual_amount_mode,
@@ -1652,6 +1676,11 @@ class DC_Recargas_Admin {
             $wc_gateways = WC_Payment_Gateways::instance()->payment_gateways();
         }
         $selected_woo_gateways = array_values(array_unique(array_filter(array_map('sanitize_key', (array) ($options['woo_allowed_gateways'] ?? [])))));
+        $selected_dispatch_stage_default = sanitize_key((string) ($options['woo_dispatch_stage_default'] ?? 'payment_complete'));
+        if (!in_array($selected_dispatch_stage_default, ['payment_complete', 'processing', 'completed'], true)) {
+            $selected_dispatch_stage_default = 'payment_complete';
+        }
+        $selected_dispatch_stage_by_gateway = (array) ($options['woo_dispatch_stage_by_gateway'] ?? []);
         $available_woo_gateway_ids = [];
         foreach ($wc_gateways as $gateway_id => $gateway) {
             $clean_gateway_id = sanitize_key((string) $gateway_id);
@@ -3424,6 +3453,49 @@ class DC_Recargas_Admin {
                                         </p>
                                     </div>
                                 <?php endif; ?>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_woo_dispatch_stage_default">Etapa de despacho DingConnect</label></th>
+                        <td>
+                            <select id="dc_woo_dispatch_stage_default" name="dc_recargas_options[woo_dispatch_stage_default]">
+                                <option value="payment_complete" <?php selected($selected_dispatch_stage_default, 'payment_complete'); ?>>payment_complete (recomendado)</option>
+                                <option value="processing" <?php selected($selected_dispatch_stage_default, 'processing'); ?>>order_status_processing</option>
+                                <option value="completed" <?php selected($selected_dispatch_stage_default, 'completed'); ?>>order_status_completed</option>
+                            </select>
+                            <p class="description">Define el hook por defecto que dispara la recarga para pasarelas WooCommerce.</p>
+                            <?php if (!empty($wc_gateways)): ?>
+                                <div style="margin-top:10px;padding:10px;border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;">
+                                    <strong style="display:block;margin-bottom:8px;">Excepción por pasarela</strong>
+                                    <?php foreach ($wc_gateways as $gateway_id => $gateway): ?>
+                                        <?php
+                                        $clean_gateway_id = sanitize_key((string) $gateway_id);
+                                        if ($clean_gateway_id === '') {
+                                            continue;
+                                        }
+                                        $gateway_title = '';
+                                        if (is_object($gateway) && method_exists($gateway, 'get_title')) {
+                                            $gateway_title = (string) $gateway->get_title();
+                                        }
+                                        if ($gateway_title === '') {
+                                            $gateway_title = $clean_gateway_id;
+                                        }
+                                        $selected_stage = sanitize_key((string) ($selected_dispatch_stage_by_gateway[$clean_gateway_id] ?? $selected_dispatch_stage_default));
+                                        if (!in_array($selected_stage, ['payment_complete', 'processing', 'completed'], true)) {
+                                            $selected_stage = $selected_dispatch_stage_default;
+                                        }
+                                        ?>
+                                        <label style="display:block;margin-bottom:8px;">
+                                            <span style="display:inline-block;min-width:220px;"><?php echo esc_html(wp_strip_all_tags($gateway_title)); ?> <span style="color:#64748b;">(<?php echo esc_html($clean_gateway_id); ?>)</span></span>
+                                            <select name="dc_recargas_options[woo_dispatch_stage_by_gateway][<?php echo esc_attr($clean_gateway_id); ?>]">
+                                                <option value="payment_complete" <?php selected($selected_stage, 'payment_complete'); ?>>payment_complete</option>
+                                                <option value="processing" <?php selected($selected_stage, 'processing'); ?>>processing</option>
+                                                <option value="completed" <?php selected($selected_stage, 'completed'); ?>>completed</option>
+                                            </select>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
                             <?php endif; ?>
                         </td>
                     </tr>

@@ -234,7 +234,9 @@ Una iniciativa se considera lista cuando cumple:
 1. Webhook backend (Deferred SendTransfer): nuevo endpoint `POST /wp-json/dingconnect/v1/webhook` con verificación RS256 usando JWKS por `kid`, validación de timestamp y modo compatibilidad de “signed payload” para cubrir inconsistencias hasta contrastar con el primer webhook real; deshabilitado por defecto vía `webhook_enabled`.
 2. Hardening balanceado de trazabilidad operativa en WooCommerce/REST: se añadieron eventos de auditoría (`cart_added`, `cart_add_failed`, `payment_status_changed`, `payment_not_effective`, `dispatch_started`, `dispatch_result`, `dispatch_failed_local_validation`, `retry_scheduled`, `gateway_blocked`, `transfer_blocked_payment_mode`) persistidos en `Transfer Logs`, junto con metadatos de orden/item/pasarela cuando aplica.
 3. Panel `Registros` reforzado para operación diaria: estadísticas ahora incluyen `Pendientes`, filtros contemplan ese estado y la tabla de logs muestra columna `Evento` para identificar en qué etapa ocurrió cada movimiento.
-4. Versionado de release técnico por trazabilidad: cabecera del plugin actualizada a `2.6.95` en `dingconnect-recargas.php`.
+4. Versionado de release técnico por trazabilidad: cabecera del plugin actualizada a `2.6.96` en `dingconnect-recargas.php`.
+5. Hardening de despacho WooCommerce por estado real de transferencia: se bloquea `SendTransfer` cuando el modo efectivo es `ValidateOnly`, se agrega selector de etapa de ejecución por pasarela (`payment_complete|processing|completed`) en `Credenciales`, y una respuesta `Complete` sin `TransferRef` confirmado (por ejemplo `0`) pasa a `pending_confirmation` para conciliación en vez de éxito terminal.
+6. Corrección de semántica de estados DingConnect en backend: normalización de `Complete`/`TransferSuccessful` como éxito candidato, pero condicionado a referencia confirmada; mejora de persistencia de `TransferRef` para evitar perder el valor literal `0` por evaluación `empty()`.
 
 ## Backlog actualizado por impacto
 

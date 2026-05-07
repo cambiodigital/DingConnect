@@ -141,6 +141,7 @@ Namespace actual: `dingconnect/v1`
 57. Ajuste visual en `Wizard y landings`: la columna `Logo` de `Bundles de la landing` aplica tamaño fijo con `object-fit: contain` para conservar proporción y evitar deformación de imágenes no cuadradas.
 58. Rediseño del modal `Editar shortcode dinámico`: la tabla de bundles en edición se compactó con cabecera sticky, menor densidad vertical, metadatos de país/tipo integrados por producto y chips de precio (`DIN`/`Público`) para mejorar legibilidad y operación en lotes sin perder drag and drop ni acciones `Añadir/Quitar`.
 59. Compactación de banda de filtros en modal de shortcodes: los filtros (`País`, `Tipo de producto`, `Buscar`, `Vista`) ahora ocupan una única fila con `flex-wrap: nowrap`, gap reducido a 6px, anchos fijos (110px selects, 160px buscador) y tipografía más pequeña (11px etiqueta, 12px campos) para maximizar espacio de tabla.
+60. Hardening de despacho WooCommerce: nuevo control por pasarela para elegir etapa de ejecución (`payment_complete`/`processing`/`completed`), bloqueo de envío real cuando el modo efectivo es `ValidateOnly`, y degradación a `pending_confirmation` cuando Ding responde `Complete` sin `TransferRef` confirmado (incluyendo `0`).
 
 ## Hallazgos clave para futuras IA
 
