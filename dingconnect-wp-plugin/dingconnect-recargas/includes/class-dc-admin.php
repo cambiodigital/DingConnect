@@ -852,6 +852,8 @@ class DC_Recargas_Admin {
             'webhook_enabled' => $webhook_enabled,
             'webhook_timestamp_tolerance_seconds' => $webhook_timestamp_tolerance_seconds,
             'webhook_signature_compat_mode' => $webhook_signature_compat_mode,
+            'voucher_v2_enabled' => $voucher_v2_enabled,
+            'voucher_v2_shadow_mode' => $voucher_v2_shadow_mode,
         ];
 
         return $sanitized;

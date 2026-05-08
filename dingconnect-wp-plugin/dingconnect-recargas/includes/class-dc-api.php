@@ -34,6 +34,11 @@ class DC_Recargas_API {
             'webhook_signature_compat_mode' => 1,
             'woo_dispatch_stage_default' => 'payment_complete',
             'woo_dispatch_stage_by_gateway' => [],
+            'voucher_v2_enabled' => 0,
+            'voucher_v2_shadow_mode' => 1,
+            'voucher_outbox_enabled' => 1,
+            'voucher_outbox_max_attempts' => 6,
+            'voucher_outbox_backoff_minutes' => '1,2,5,10,20,30',
         ];
 
         return wp_parse_args(get_option('dc_recargas_options', []), $defaults);
