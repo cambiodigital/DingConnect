@@ -18,6 +18,13 @@ class DC_Recargas_Voucher_Outbox {
             return; 
         }
         set_transient('dc_voucher_outbox_' . md5($job_key), 1, DAY_IN_SECONDS);
+        
+        $this->api->log_operational_event('voucher_email_queued', [
+            'order_id' => $order_id,
+            'item_id' => $item_id,
+            'voucher_hash' => $voucher_hash
+        ]);
+
         wp_schedule_single_event(time() + 10, 'dc_voucher_send_email', [$order_id, $item_id, $voucher_hash, 1]);
     }
 

@@ -76,6 +76,11 @@ La guía oficial está estructurada en estas áreas:
 - `POST /api/V1/CancelTransfers`: intento de cancelación de transferencias cancelables.
 - `GET /api/V1/GetBalance`: consulta de balance del agente.
 
+### Entrega de Vouchers y Correos
+
+Para garantizar rendimiento en el checkout y prevenir cuellos de botella de SMTP, el envío de correos de confirmación (vouchers) utiliza un patrón de Outbox asíncrono (`DC_Recargas_Voucher_Outbox`). 
+Los metadatos se persisten en WooCommerce bajo `_dc_voucher_payload_v2` con un hash determinístico (`_dc_voucher_hash`) que garantiza la idempotencia y previene envíos duplicados causados por condiciones de carrera entre webhooks y hooks de pago. Adicionalmente se provee una acción manual para reenvío de vouchers desde el pedido.
+
 ## 5. Endpoints críticos en una integración estándar
 
 No todos los endpoints son obligatorios para un primer release. Para la mayoría de integraciones comerciales, Ding deja claro que hay un subconjunto crítico.

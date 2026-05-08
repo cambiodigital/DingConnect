@@ -98,6 +98,7 @@ Una iniciativa se considera lista cuando cumple:
 24. Diagnóstico extendido de recargas fallidas: errores `ProviderError` agregan contexto (`ding_error_context`) y trazas de operación (`transfer_ref`, `distributor_ref`, `processing_state`) para investigación de soporte.
 25. Gestión masiva de bundles en admin: la tabla de bundles guardados ahora permite seleccionar uno o varios registros (incluye "seleccionar todos") y eliminarlos en bloque con confirmación.
 26. Fundaciones del wizard v2: se creó `includes/class-dc-wizard.php` con pasos base, validación de transición y estructura de estado inicial para recargas + gift cards.
+27. Voucher canónico y Outbox asíncrono (Paso 5 implementado): persistencia determinística de hash, reenvío manual y renderer único para UI y correo electrónico.
 27. Estado de wizard persistente: se agregó tabla `dc_wizard_sessions` con creación automática (activación y upgrade) para guardar/recuperar sesiones.
 28. API REST del wizard: nuevos endpoints `wizard/config` y `wizard/session` para configuración pública y recuperación de estado por `session_id`.
 29. Panel admin preparado para wizard: nuevo feature flag (`wizard_enabled`), límite de ofertas por categoría y parámetros de mapeo de teléfono en checkout.

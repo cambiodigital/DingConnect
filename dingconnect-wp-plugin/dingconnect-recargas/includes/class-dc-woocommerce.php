@@ -102,6 +102,7 @@ class DC_Recargas_WooCommerce {
         // Manual reconciliation + voucher rendering
         add_filter('woocommerce_order_actions', [$this, 'register_manual_reconcile_action']);
         add_action('woocommerce_order_action_dc_recargas_manual_reconcile', [$this, 'handle_manual_reconcile_action']);
+        add_action('woocommerce_order_action_dc_resend_voucher', [$this, 'handle_resend_voucher_action']);
         add_action('woocommerce_thankyou', [$this, 'render_thankyou_voucher_summary'], 25);
         add_filter('woocommerce_email_order_meta_fields', [$this, 'inject_voucher_meta_into_email'], 10, 3);
 
@@ -1578,7 +1579,37 @@ class DC_Recargas_WooCommerce {
 
     public function register_manual_reconcile_action($actions) {
         $actions['dc_recargas_manual_reconcile'] = __('Reintentar recargas DingConnect', 'dingconnect-recargas');
+        $actions['dc_resend_voucher'] = __('Reenviar Voucher (Email)', 'dingconnect-recargas');
         return $actions;
+    }
+
+    public function handle_resend_voucher_action($order) {
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+
+        $order->add_order_note('DingConnect: inicio de reenvío de voucher manual solicitado por operador.');
+
+        $processed = 0;
+        foreach ($order->get_items() as $item_id => $item) {
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            if ($this->is_item_already_successful($item)) {
+                $voucher_hash = (string) $item->get_meta('_dc_voucher_hash');
+                if ($voucher_hash !== '') {
+                    $this->voucher_outbox->enqueue((int) $order->get_id(), (int) $item->get_id(), $voucher_hash);
+                    $processed++;
+                }
+            }
+        }
+
+        if ($processed > 0) {
+            $order->add_order_note(sprintf('DingConnect: %d email(s) de voucher encolado(s) para reenvío manual.', $processed));
+        } else {
+            $order->add_order_note('DingConnect: reenvío manual cancelado (no hay recargas exitosas con voucher generado).');
+        }
     }
 
     public function handle_manual_reconcile_action($order) {
@@ -2591,6 +2622,12 @@ class DC_Recargas_WooCommerce {
                 if ((string) $item->get_meta('_dc_voucher_hash') === $new_hash) {
                     return false; // ya generado para mismo estado/snapshot
                 }
+                
+                $this->api->log_operational_event('voucher_generated', [
+                    'order_id' => $order->get_id(),
+                    'item_id' => $item->get_id(),
+                    'voucher_hash' => $new_hash
+                ]);
                 
                 $this->api->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
                 
