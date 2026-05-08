@@ -22,8 +22,13 @@ class DC_Recargas_WooCommerce {
     /** @var DC_Recargas_API */
     private $api;
 
+    public $voucher_service;
+    public $voucher_outbox;
+    public $voucher_renderer;
+
     public function __construct($api) {
         $this->api = $api;
+        $this->voucher_service = new DC_Recargas_Voucher();
         $this->api->set_woocommerce($this);
 
         // Add-to-cart is handled by DC_Recargas_REST, which delegates here via filter
@@ -2545,6 +2550,14 @@ class DC_Recargas_WooCommerce {
             'customer_care_number' => (string) $item->get_meta('_dc_customer_care_number'),
         ];
         $item->update_meta_data('_dc_voucher_payload', wp_json_encode($voucher_payload));
+        
+        $order = $item->get_order();
+        if ($order) {
+            $voucher_v2 = $this->voucher_service->build_snapshot($order, $item, $snapshot);
+            $item->update_meta_data('_dc_voucher_payload_v2', wp_json_encode($voucher_v2));
+            $item->update_meta_data('_dc_voucher_hash', (string) $voucher_v2['voucher_hash']);
+        }
+        
         $item->save();
     }
 
