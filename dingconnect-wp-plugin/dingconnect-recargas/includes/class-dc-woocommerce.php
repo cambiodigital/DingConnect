@@ -2207,7 +2207,7 @@ class DC_Recargas_WooCommerce {
         }
 
         $snapshot = $this->extract_transfer_snapshot($response, $distributor_ref);
-        $this->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
+        $applied = $this->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
         $status = $snapshot['status_label'];
         $transfer_ref = $snapshot['transfer_ref'];
         $receive_value = $snapshot['receive_value'];
@@ -2283,7 +2283,7 @@ class DC_Recargas_WooCommerce {
         ]);
 
         // Enviar email de confirmación al cliente cuando la recarga es exitosa
-        if ($is_success) {
+        if ($is_success && $applied) {
             $this->send_recarga_confirmacion_email($order, $item, $snapshot);
         }
 
@@ -2335,7 +2335,7 @@ class DC_Recargas_WooCommerce {
         }
 
         $send_value = (float) $item->get_meta('_dc_send_value');
-        $this->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
+        $applied = $this->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
 
         $is_status_success = $this->is_successful_transfer_status($snapshot['status']);
         $has_confirmed_ref = $this->api->is_confirmed_transfer_reference($snapshot['transfer_ref']);
@@ -2350,7 +2350,7 @@ class DC_Recargas_WooCommerce {
             $item->save();
         }
 
-        if ($snapshot['status'] !== $previous_status) {
+        if ($snapshot['status'] !== $previous_status || $applied) {
             $order->add_order_note(sprintf(
                 'Reconciliacion DingConnect para %s (SKU: %s): estado %s.',
                 $account_number,
@@ -2359,7 +2359,7 @@ class DC_Recargas_WooCommerce {
             ));
 
             // Enviar email de confirmación cuando la reconciliación transiciona a éxito
-            if ($is_now_success && !$this->is_successful_transfer_status($previous_status)) {
+            if ($is_now_success && $applied) {
                 $this->send_recarga_confirmacion_email($order, $item, $snapshot);
             }
         }
@@ -2577,36 +2577,54 @@ class DC_Recargas_WooCommerce {
     }
 
     private function apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value) {
-        $this->api->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
-
-        $snapshot = is_array($snapshot) ? $snapshot : [];
-        $voucher_payload = [
-            'transaction_id' => $snapshot['transfer_ref'],
-            'status' => $snapshot['status_label'],
-            'operator' => (string) $item->get_meta('_dc_provider_name'),
-            'flow_kind' => (string) $item->get_meta('_dc_flow_kind'),
-            'product_type' => (string) $item->get_meta('_dc_product_type'),
-            'amount_sent' => $send_value,
-            'amount_received' => (float) ($snapshot['receive_value'] ?? 0),
-            'beneficiary_phone' => $account_number,
-            'timestamp' => current_time('mysql'),
-            'promotion' => '',
-            'receipt_text' => (string) ($snapshot['receipt_text'] ?? ''),
-            'receipt_params' => (array) ($snapshot['receipt_params'] ?? []),
-            'processing_state' => (string) ($snapshot['processing_state'] ?? ''),
-            'bill_ref' => (string) $item->get_meta('_dc_bill_ref'),
-            'customer_care_number' => (string) $item->get_meta('_dc_customer_care_number'),
-        ];
-        $item->update_meta_data('_dc_voucher_payload', wp_json_encode($voucher_payload));
-        
         $order = $item->get_order();
         if ($order) {
-            $voucher_v2 = $this->voucher_service->build_snapshot($order, $item, $snapshot);
-            $item->update_meta_data('_dc_voucher_payload_v2', wp_json_encode($voucher_v2));
-            $item->update_meta_data('_dc_voucher_hash', (string) $voucher_v2['voucher_hash']);
+            $lock = 'dc_voucher_lock_' . md5($order->get_id() . ':' . $item->get_id());
+            if (get_transient($lock)) { 
+                return false; 
+            }
+            set_transient($lock, 1, 60);
+            try {
+                $voucher_v2 = $this->voucher_service->build_snapshot($order, $item, $snapshot);
+                $new_hash = (string) $voucher_v2['voucher_hash'];
+                
+                if ((string) $item->get_meta('_dc_voucher_hash') === $new_hash) {
+                    return false; // ya generado para mismo estado/snapshot
+                }
+                
+                $this->api->apply_transfer_snapshot_to_item($item, $snapshot, $account_number, $send_value);
+                
+                $snapshot_safe = is_array($snapshot) ? $snapshot : [];
+                $voucher_payload = [
+                    'transaction_id' => $snapshot_safe['transfer_ref'] ?? '',
+                    'status' => $snapshot_safe['status_label'] ?? '',
+                    'operator' => (string) $item->get_meta('_dc_provider_name'),
+                    'flow_kind' => (string) $item->get_meta('_dc_flow_kind'),
+                    'product_type' => (string) $item->get_meta('_dc_product_type'),
+                    'amount_sent' => $send_value,
+                    'amount_received' => (float) ($snapshot_safe['receive_value'] ?? 0),
+                    'beneficiary_phone' => $account_number,
+                    'timestamp' => current_time('mysql'),
+                    'promotion' => '',
+                    'receipt_text' => (string) ($snapshot_safe['receipt_text'] ?? ''),
+                    'receipt_params' => (array) ($snapshot_safe['receipt_params'] ?? []),
+                    'processing_state' => (string) ($snapshot_safe['processing_state'] ?? ''),
+                    'bill_ref' => (string) $item->get_meta('_dc_bill_ref'),
+                    'customer_care_number' => (string) $item->get_meta('_dc_customer_care_number'),
+                ];
+                
+                $item->update_meta_data('_dc_voucher_payload', wp_json_encode($voucher_payload));
+                $item->update_meta_data('_dc_voucher_payload_v2', wp_json_encode($voucher_v2));
+                $item->update_meta_data('_dc_voucher_hash', $new_hash);
+                $item->save();
+                
+                return true;
+            } finally {
+                delete_transient($lock);
+            }
         }
         
-        $item->save();
+        return false;
     }
 
     private function is_successful_transfer_status($status) {
@@ -2675,10 +2693,10 @@ class DC_Recargas_WooCommerce {
                 continue;
             }
 
-            $this->apply_transfer_snapshot_to_item($item, $snapshot, $effective_account_number, $send_value);
+            $applied = $this->apply_transfer_snapshot_to_item($item, $snapshot, $effective_account_number, $send_value);
 
             $is_now_success = $this->is_successful_transfer_status($snapshot['status']);
-            if (($snapshot['status'] ?? '') !== $previous_status) {
+            if (($snapshot['status'] ?? '') !== $previous_status || $applied) {
                 $order->add_order_note(sprintf(
                     'DingConnect webhook para %s (SKU: %s): estado %s.',
                     $effective_account_number,
@@ -2687,7 +2705,7 @@ class DC_Recargas_WooCommerce {
                 ));
                 $updated++;
 
-                if ($is_now_success && !$this->is_successful_transfer_status($previous_status)) {
+                if ($is_now_success && $applied) {
                     $this->send_recarga_confirmacion_email($order, $item, $snapshot);
                     $emailed++;
                 }
