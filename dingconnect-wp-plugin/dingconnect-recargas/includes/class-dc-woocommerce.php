@@ -1902,7 +1902,7 @@ class DC_Recargas_WooCommerce {
      * @param string                $send_currency_iso
      * @return array{send_value: float, send_currency_iso: string, normalized: bool}
      */
-    private function normalize_fixed_send_value_for_dispatch($order, $item, $send_value, $send_currency_iso) {
+    private function normalize_fixed_send_value_for_dispatch($order, WC_Order_Item_Product $item, $send_value, $send_currency_iso) {
         $send_value = (float) $send_value;
         $send_currency_iso = (string) $send_currency_iso;
 

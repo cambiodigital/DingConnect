@@ -806,6 +806,9 @@ class DC_Recargas_Admin {
         }
         $webhook_signature_compat_mode = !empty($input['webhook_signature_compat_mode']) ? 1 : 0;
 
+        $voucher_v2_enabled = !empty($input['voucher_v2_enabled']) ? 1 : 0;
+        $voucher_v2_shadow_mode = !empty($input['voucher_v2_shadow_mode']) ? 1 : 0;
+
         // Convert recharge mode select to validate_only and allow_real_recharge flags
         $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
         if (!in_array($recharge_mode, ['test_simulate', 'test_allow_change', 'production'], true)) {
