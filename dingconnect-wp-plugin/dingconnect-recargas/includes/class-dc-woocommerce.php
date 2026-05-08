@@ -29,6 +29,7 @@ class DC_Recargas_WooCommerce {
     public function __construct($api) {
         $this->api = $api;
         $this->voucher_service = new DC_Recargas_Voucher();
+        $this->voucher_outbox = new DC_Recargas_Voucher_Outbox($this->api);
         $this->api->set_woocommerce($this);
 
         // Add-to-cart is handled by DC_Recargas_REST, which delegates here via filter
@@ -1922,9 +1923,18 @@ class DC_Recargas_WooCommerce {
      * @param array                     $snapshot  Snapshot del transfer.
      */
     private function send_recarga_confirmacion_email($order, $item, array $snapshot) {
-        $emails = WC()->mailer()->get_emails();
-        if (isset($emails['WC_DC_Email_Recarga_Confirmacion'])) {
-            $emails['WC_DC_Email_Recarga_Confirmacion']->trigger($order->get_id(), $item, $snapshot);
+        $options = $this->api->get_options();
+        if (empty($options['voucher_outbox_enabled'])) {
+            $emails = WC()->mailer()->get_emails();
+            if (isset($emails['WC_DC_Email_Recarga_Confirmacion'])) {
+                $emails['WC_DC_Email_Recarga_Confirmacion']->trigger($order->get_id(), $item, $snapshot);
+            }
+            return;
+        }
+        
+        $voucher_hash = (string) $item->get_meta('_dc_voucher_hash');
+        if ($voucher_hash !== '') {
+            $this->voucher_outbox->enqueue((int) $order->get_id(), (int) $item->get_id(), $voucher_hash);
         }
     }
 

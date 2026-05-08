@@ -82,6 +82,7 @@ add_action('plugins_loaded', function () {
 
     $files = [
         'includes/class-dc-voucher.php',
+        'includes/class-dc-voucher-outbox.php',
         'includes/class-dc-api.php',
         'includes/class-dc-admin.php',
         'includes/class-dc-rest.php',
