@@ -11,7 +11,9 @@ class DC_Recargas_Voucher {
      * @param array                 $snapshot
      * @return array
      */
-    public function build_snapshot(WC_Order $order, WC_Order_Item_Product $item, array $snapshot): array {
+    public function build_snapshot($order, $item, array $snapshot): array {
+        /** @var WC_Order $order */
+        /** @var WC_Order_Item_Product $item */
         $payload = [
             'contract_version' => 'voucher.v1',
             'order_id' => (int) $order->get_id(),
@@ -35,7 +37,8 @@ class DC_Recargas_Voucher {
      * @param WC_Order_Item_Product $item
      * @return array|null
      */
-    public function get_item_voucher_v2(WC_Order_Item_Product $item): ?array {
+    public function get_item_voucher_v2($item): ?array {
+        /** @var WC_Order_Item_Product $item */
         $meta = $item->get_meta('_dc_voucher_payload_v2');
         if (empty($meta)) {
             return null;
