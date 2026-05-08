@@ -22,6 +22,7 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
      * @var array
      */
     public $recarga_data = [];
+    public $recarga_data_v2 = null;
 
     public function __construct() {
         $this->id             = 'dc_recarga_confirmacion';
@@ -61,6 +62,11 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
 
         $this->object = $order;
         $this->recarga_data = $this->build_recarga_data( $item, $snapshot, $order );
+        
+        if (class_exists('DC_Recargas_Voucher')) {
+            $voucher_service = new DC_Recargas_Voucher();
+            $this->recarga_data_v2 = $voucher_service->get_item_voucher_v2($item);
+        }
 
         $this->recipient = $order->get_billing_email();
         if ( ! $this->recipient ) {
@@ -217,6 +223,16 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
       </td>
     </tr>
 
+    <!-- Detalles V2 -->
+    <?php if ( $this->recarga_data_v2 && class_exists('DC_Recargas_Voucher_Renderer') ) : 
+        $renderer = new DC_Recargas_Voucher_Renderer();
+    ?>
+    <tr>
+      <td style="padding:24px 36px 0;">
+        <?php echo $renderer->render_html($this->recarga_data_v2); ?>
+      </td>
+    </tr>
+    <?php else : ?>
     <!-- ID de transacción DingConnect (destacado) -->
     <tr>
       <td style="padding:24px 36px 0;">
@@ -300,6 +316,7 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
       </td>
     </tr>
     <?php endif; ?>
+    <?php endif; ?>
 
     <!-- CTA: Ver pedido -->
     <tr>
@@ -346,38 +363,44 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
         $lines[] = sprintf( __( 'Pedido: #%s', 'dingconnect-recargas' ), $order->get_order_number() );
         $lines[] = sprintf( __( 'Fecha: %s', 'dingconnect-recargas' ), wc_format_datetime( $order->get_date_created() ) );
         $lines[] = '';
-        $lines[] = __( 'ID DE TRANSACCIÓN DINGCONNECT:', 'dingconnect-recargas' );
-        $lines[] = $d['transfer_ref'] !== '' ? $d['transfer_ref'] : '—';
-        if ( $d['distributor_ref'] ) {
-            $lines[] = sprintf( __( 'Ref. interna: %s', 'dingconnect-recargas' ), $d['distributor_ref'] );
-        }
-        $lines[] = '';
-        $lines[] = __( 'DETALLES DE LA OPERACIÓN', 'dingconnect-recargas' );
-        $lines[] = sprintf( __( 'Teléfono:        %s', 'dingconnect-recargas' ), $d['account'] );
-        $lines[] = sprintf( __( 'Operador:        %s', 'dingconnect-recargas' ), $d['provider'] );
-        $lines[] = sprintf( __( 'Paquete:         %s', 'dingconnect-recargas' ), $d['bundle'] );
-        $lines[] = sprintf( __( 'País:            %s', 'dingconnect-recargas' ), $d['country_iso'] );
-        $lines[] = sprintf( __( 'Precio pagado:   %s %.2f', 'dingconnect-recargas' ), $d['public_currency'], $d['public_price'] );
-        $lines[] = sprintf( __( 'Monto operación: %s %.2f', 'dingconnect-recargas' ), $d['send_currency'], $d['send_value'] );
 
-        if ( $d['receive_value'] > 0 ) {
-            $lines[] = sprintf( __( 'Monto recibido:  %s %.2f', 'dingconnect-recargas' ), $d['receive_currency'], $d['receive_value'] );
-        }
-
-        if ( $d['pin'] ) {
-            $lines[] = sprintf( __( 'PIN:             %s', 'dingconnect-recargas' ), $d['pin'] );
-        }
-
-        if ( $d['provider_ref'] ) {
-            $lines[] = sprintf( __( 'Ref. proveedor:  %s', 'dingconnect-recargas' ), $d['provider_ref'] );
-        }
-
-        $lines[] = sprintf( __( 'Estado:          %s', 'dingconnect-recargas' ), strtoupper( $d['status_label'] ) );
-
-        if ( $d['receipt_text'] ) {
+        if ( $this->recarga_data_v2 && class_exists('DC_Recargas_Voucher_Renderer') ) {
+            $renderer = new DC_Recargas_Voucher_Renderer();
+            $lines[] = $renderer->render_plain($this->recarga_data_v2);
+        } else {
+            $lines[] = __( 'ID DE TRANSACCIÓN DINGCONNECT:', 'dingconnect-recargas' );
+            $lines[] = $d['transfer_ref'] !== '' ? $d['transfer_ref'] : '—';
+            if ( $d['distributor_ref'] ) {
+                $lines[] = sprintf( __( 'Ref. interna: %s', 'dingconnect-recargas' ), $d['distributor_ref'] );
+            }
             $lines[] = '';
-            $lines[] = __( 'RECIBO DEL OPERADOR:', 'dingconnect-recargas' );
-            $lines[] = $d['receipt_text'];
+            $lines[] = __( 'DETALLES DE LA OPERACIÓN', 'dingconnect-recargas' );
+            $lines[] = sprintf( __( 'Teléfono:        %s', 'dingconnect-recargas' ), $d['account'] );
+            $lines[] = sprintf( __( 'Operador:        %s', 'dingconnect-recargas' ), $d['provider'] );
+            $lines[] = sprintf( __( 'Paquete:         %s', 'dingconnect-recargas' ), $d['bundle'] );
+            $lines[] = sprintf( __( 'País:            %s', 'dingconnect-recargas' ), $d['country_iso'] );
+            $lines[] = sprintf( __( 'Precio pagado:   %s %.2f', 'dingconnect-recargas' ), $d['public_currency'], $d['public_price'] );
+            $lines[] = sprintf( __( 'Monto operación: %s %.2f', 'dingconnect-recargas' ), $d['send_currency'], $d['send_value'] );
+
+            if ( $d['receive_value'] > 0 ) {
+                $lines[] = sprintf( __( 'Monto recibido:  %s %.2f', 'dingconnect-recargas' ), $d['receive_currency'], $d['receive_value'] );
+            }
+
+            if ( $d['pin'] ) {
+                $lines[] = sprintf( __( 'PIN:             %s', 'dingconnect-recargas' ), $d['pin'] );
+            }
+
+            if ( $d['provider_ref'] ) {
+                $lines[] = sprintf( __( 'Ref. proveedor:  %s', 'dingconnect-recargas' ), $d['provider_ref'] );
+            }
+
+            $lines[] = sprintf( __( 'Estado:          %s', 'dingconnect-recargas' ), strtoupper( $d['status_label'] ) );
+
+            if ( $d['receipt_text'] ) {
+                $lines[] = '';
+                $lines[] = __( 'RECIBO DEL OPERADOR:', 'dingconnect-recargas' );
+                $lines[] = $d['receipt_text'];
+            }
         }
 
         $lines[] = '';

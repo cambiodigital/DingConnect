@@ -30,6 +30,7 @@ class DC_Recargas_WooCommerce {
         $this->api = $api;
         $this->voucher_service = new DC_Recargas_Voucher();
         $this->voucher_outbox = new DC_Recargas_Voucher_Outbox($this->api);
+        $this->voucher_renderer = new DC_Recargas_Voucher_Renderer();
         $this->api->set_woocommerce($this);
 
         // Add-to-cart is handled by DC_Recargas_REST, which delegates here via filter
@@ -1706,6 +1707,43 @@ class DC_Recargas_WooCommerce {
     public function render_thankyou_voucher_summary($order_id) {
         $order = wc_get_order((int) $order_id);
         if (!$order) {
+            return;
+        }
+
+        $options = $this->api->get_options();
+        $voucher_v2_enabled = !empty($options['voucher_v2_enabled']);
+
+        if ($voucher_v2_enabled) {
+            $has_dc_items = false;
+            $has_pending = $this->order_has_pending_recargas($order);
+            $has_errors = $this->order_has_error_recargas($order);
+
+            ob_start();
+            echo '<section class="woocommerce-order-details" style="margin-top:22px;">';
+            echo '<h2>Resumen final de tu compra DingConnect</h2>';
+            if ($has_pending) {
+                echo '<p style="margin:0 0 14px;color:#7c2d12;">Tu pedido contiene operaciones pendientes en DingConnect. No repitas la compra mientras el estado siga Submitted o Pending; el sistema seguira conciliando segun la politica configurada.</p>';
+            }
+            if ($has_errors) {
+                echo '<p style="margin:0 0 14px;color:#991b1b;">Una o más recargas no pudieron confirmarse. No repitas la compra de inmediato: revisa tu correo y, si el problema persiste, contacta soporte indicando tu número de pedido.</p>';
+            }
+            
+            foreach ($order->get_items() as $item) {
+                if ($item->get_meta('_dc_recarga') === 'yes') {
+                    $has_dc_items = true;
+                    $voucher = $this->voucher_service->get_item_voucher_v2($item);
+                    if ($voucher) {
+                        echo $this->voucher_renderer->render_html($voucher);
+                    }
+                }
+            }
+            echo '</section>';
+            
+            if ($has_dc_items) {
+                echo ob_get_clean();
+            } else {
+                ob_end_clean();
+            }
             return;
         }
 
