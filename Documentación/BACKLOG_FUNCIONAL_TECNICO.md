@@ -30,11 +30,16 @@ Priorizar próximos proyectos y funcionalidades sobre la base actual del plugin 
 1. Administración de bundles más completa.
    - Edición de bundles existentes.
    - Importación desde CSV filtrado.
+   - Ordenamiento dinámico de columnas en tablas de administración (Catálogo, Productos Guardados, Bundles de landing, Shortcode dinámico).
 2. Registro operativo.
    - Historial de operaciones en WordPress con búsqueda por referencia.
 3. Endurecimiento de API REST.
    - Rate limit básico.
    - Auditoría de requests/responses (sin exponer datos sensibles).
+4. Mejorar voucher PDF (WooCommerce thank-you).
+   - Impresión tipo comprobante en A6.
+   - Mostrar “ID de transacción” (código canónico).
+   - Un voucher por página si hay múltiples recargas.
 
 ## Prioridad P3 (evolutivo)
 
@@ -78,6 +83,10 @@ Una iniciativa se considera lista cuando cumple:
 15. Corrección de sincronización frontend-admin: el caché de búsqueda por país+número en el frontend ahora expira (TTL 10 segundos) para refrescar operadores y bundles nuevos sin recargar toda la página.
 16. Corrección estructural en tabs del admin: se cerró correctamente la sección "Wizard y landings" para evitar que "Catálogo y alta", "Bundles guardados" y "Registros" quedaran anidados dentro de un panel oculto (síntoma: pestaña activa sin contenido visible).
 16. Corrección de robustez en frontend público: el script del shortcode ahora valida nodos requeridos y maneja markup parcial sin lanzar errores de JavaScript como `Cannot set properties of null (setting 'innerHTML')` durante la búsqueda automática de paquetes.
+
+## Avances implementados (09-05-2026)
+
+1. Mejora de UI en el modal de edición de shortcodes dinámicos: Se desglosó la columna consolidada de Producto en columnas individuales (País, Tipo, Nombre, SKU, Operador) para hacer la tabla más compacta y legible. Además, se eliminó la redirección al modal de edición de producto al hacer clic en un bundle desde este listado, evitando sacar al usuario del editor de shortcode.
 
 ## Avances implementados (23-04-2026)
 
@@ -177,8 +186,9 @@ Una iniciativa se considera lista cuando cumple:
 99. Hardening anti-duplicados en WooCommerce: se restauró la guardia de idempotencia por `transfer_ref` existente y se ajustó la conciliación para que, ante fallo de `ListTransferRecords`, se difiera la operación sin reenviar `SendTransfer` hasta recuperar estado, evitando riesgo de recargas duplicadas.
 100. Estabilidad de estimaciones en frontend: el cálculo de `EstimatePrices` ahora invalida respuestas asíncronas tardías al cambiar importe o paquete, evitando que una estimación vieja sobrescriba la selección actual del usuario.
 101. Mejora de usabilidad en `Bundles guardados` (admin): la tabla ahora se renderiza dentro de contenedor con scroll horizontal interno para evitar desbordes y la columna de checkboxes (incluyendo `seleccionar todos`) queda centrada y con espaciado consistente respecto al resto de filas.
-102. Limpieza final API-only en panel admin: `Catálogo y alta` eliminó referencias visuales y lógicas a CSV (avisos, badge condicional, sufijos de conteo y copy heredado), por lo que la búsqueda live muestra fuente única `API` y la carga de formulario manual se alimenta exclusivamente de respuesta DingConnect.
-103. Mejora integral del mini sistema interactivo `mejoras-solicitud-interactiva.html`: se añadieron panel de métricas visuales, búsqueda/filtros por módulo, historial reciente, plantillas rápidas de cambios, formulario guiado de solicitud (objetivo/prioridad/impacto/criterios/notas), deduplicación de campos y acciones de productividad (deshacer historial y reinicio de sesión) para facilitar solicitudes precisas de evolución del plugin.
+102. Resolución de falso positivo en análisis estático para WC_Order_Item_Product: se actualizó el stub global añadiendo `get_id()` y se unificó su uso en `class-dc-voucher.php` mediante `call_user_func` para consistencia con el workaround utilizado en el resto del plugin frente a alertas de IDEs estrictos.
+103. Limpieza final API-only en panel admin: `Catálogo y alta` eliminó referencias visuales y lógicas a CSV (avisos, badge condicional, sufijos de conteo y copy heredado), por lo que la búsqueda live muestra fuente única `API` y la carga de formulario manual se alimenta exclusivamente de respuesta DingConnect.
+104. Mejora integral del mini sistema interactivo `mejoras-solicitud-interactiva.html`: se añadieron panel de métricas visuales, búsqueda/filtros por módulo, historial reciente, plantillas rápidas de cambios, formulario guiado de solicitud (objetivo/prioridad/impacto/criterios/notas), deduplicación de campos y acciones de productividad (deshacer historial y reinicio de sesión) para facilitar solicitudes precisas de evolución del plugin.
 104. Ampliación del diccionario de contrato API en `mejoras-solicitud-interactiva.html`: el nodo `Producto Live Normalizado` ahora incluye el catálogo completo de campos DingConnect relevantes para operación (`ProviderCode`, `ProductType`, precios/impuestos, descripciones markdown, reglas dinámicas, lookup/status y metadatos UAT), con descripciones funcionales para modelar cambios y generar solicitudes IA sin omitir datos críticos.
 105. Persistencia enriquecida de bundles y salida `saved` alineada al contrato API: el admin ahora puede conservar metadatos ricos al cargar desde catálogo API (provider, regiones, pricing extendido, flags/rules, settings dinámicos, medios de pago, UAT), y `GET /products` en `source=saved` prioriza esos campos persistidos con fallback seguro; adicionalmente `ReceiveCurrencyIso` del precio comercial pasa a usar `public_price_currency` para reflejar moneda pública en frontend.
 106. Auditoría visual de flujo por campo en asistente interactivo: se agregó nodo `API -> Persistencia -> Landing (Auditoría)` en `mejoras-solicitud-interactiva.html` con estado por campo (`Persistido`, `Derivado`, `Pendiente`) para identificar rápidamente brechas de contrato antes de solicitar cambios a IA.
@@ -195,11 +205,13 @@ Una iniciativa se considera lista cuando cumple:
 115. Mejora visual en el shortcode público `dingconnect_recargas`: la ficha `Paquete activo` ahora muestra el icono/logo del paquete a la derecha del bloque `Operador`, reutilizando `LogoUrl` tanto en catálogo live como en bundles guardados para mantener la imagen estable entre selección, render y persistencia.
 116. Corrección de visibilidad en acciones de landings (admin): el botón `Duplicar shortcode` en la tabla `Shortcodes creados` reemplazó el glyph `dashicons-admin-page` por `dashicons-controls-repeat` para asegurar legibilidad del ícono en modo `icon-only`.
 117. Endurecimiento del flujo payment-first en REST: el endpoint público `POST /wp-json/dingconnect/v1/transfer` ahora devuelve `403` cuando `payment_mode=woocommerce`, forzando el camino `add-to-cart -> checkout` para evitar bypass de pago.
+118. Branding en Thank You (WooCommerce): el producto base de recarga y la visualización de ítems en el pedido reemplazan `DingConnect` por `Cubakilos` para evitar exposición de marca técnica al cliente.
 118. Guard rail de cumplimiento por pasarela en despacho DingConnect: antes de enviar `SendTransfer` (evento de pago, reintento programado o reconciliación manual), WooCommerce valida que la orden use una pasarela permitida para recargas; si no coincide, marca `blocked_gateway`, cancela reintentos y deja nota de orden para soporte.
 119. Mejora visual en `Productos guardados` (admin): las filas de productos con estado `Inactivo` ahora se resaltan con fondo rojo suave para identificación rápida sin perder legibilidad ni acciones inline.
 120. Normalización de entrypoint del plugin: se restauró `dingconnect-recargas.php` como archivo principal canónico y `dingconnect-recargas-hotfix.php` quedó como cargador de compatibilidad para instalaciones que aún apuntan al hotfix, evitando ruptura operativa durante la transición.
 121. Ajuste de compatibilidad para actualización por ZIP: se restableció `dingconnect-recargas.php` como único entrypoint con cabecera de plugin y `dingconnect-recargas-hotfix.php` como shim, manteniendo el mismo slug/carpeta del plugin para que WordPress compare versiones y permita reemplazo por subida de ZIP.
 122. Limpieza funcional de shortcodes dinámicos: se eliminó completamente la característica de personalización visual de shortcode (botón, modal, vista previa, guardado REST y CSS inline por instancia), dejando el flujo de landings centrado en catálogo, orden y destacado de bundles.
+123. Refinamiento en Thank You page de WooCommerce: se implementó un modal flotante automático (`dc-voucher-modal`) para el resumen final de compra, eliminando la referencia explícita a la marca 'DingConnect' (ahora 'Cubakilos') y omitiendo el campo de coste operativo ('Operación EUR X.XX') por razones comerciales, manteniendo disponible la opción de impresión/PDF.
 123. Gestión avanzada de shortcodes en modal + robustez anti-caché de landing: el modal de edición ahora incorpora buscador y acciones masivas para marcar/quitar bundles visibles, el guardado envía `bundle_order` explícito según orden DOM para persistir reordenamientos, el shortcode publica `data-landing-key` y el frontend refresca la configuración en runtime vía REST (`/landing-config`) para evitar drift cuando hay HTML cacheado. Además, en `Paquetes disponibles` la ficha no se renderiza hasta que el usuario seleccione un paquete (salvo cuando solo existe uno, que se auto-selecciona).
 124. Nuevo panel transversal de reporte en admin: cada pestaña principal (`Credenciales`, `Catálogo y alta`, `Productos guardados`, `Landings`, `Registros`) ahora muestra un panel inferior colapsado y sutil, renderizado fuera del contenedor principal del plugin; permite reportar mejoras/fallos por sección con detalle, estado (`Abierto/En progreso/Resuelto`), respuesta y solución para seguimiento operativo sin salir del admin.
 125. Endurecimiento de seguridad UX en `Credenciales`: el campo `API Key DingConnect` del admin pasa a input tipo contraseña sin exponer el valor guardado en el HTML; tras guardar, se muestra enmascarado con puntos y si el campo se deja vacío se conserva la clave existente para evitar borrados accidentales.
@@ -229,6 +241,8 @@ Una iniciativa se considera lista cuando cumple:
 148. Ajuste de copy en `Tu pedido` (checkout): el campo del número ingresado para la recarga se muestra como `Número beneficiario` (etiqueta corta) en los datos del item, manteniendo el valor del `account_number` capturado en la compra.
 149. Refuerzo visual en columna `Producto` de `Tu pedido`: el nombre del item DingConnect en checkout ahora incluye en segunda línea `Número beneficiario: <account_number>` (formato corto con etiqueta en negrita) para que el dato clave sea visible sin depender del bloque de metadatos.
 150. Mejora UX en `Shortcodes dinámicos` (admin): dentro del modal `Editar shortcode dinámico`, hacer click sobre el bloque `Producto` de cualquier bundle ahora abre el modal propio de `Editar producto` para ajustar datos del bundle sin buscarlo manualmente en `Productos guardados`.
+151. Hardening UX post-pago en WooCommerce: en pedidos de recarga ya pagados, se suprimen acciones del cliente (`Pagar`/`Cancelar`) en el detalle del pedido/thank-you para evitar confusión operativa.
+152. Compatibilidad de análisis estático en WooCommerce: se evita dependencia directa de `wp_doing_ajax()` usando fallback a `DOING_AJAX` para prevenir falsos positivos de “undefined function” en entorno local.
 
 ## Avances implementados (07-05-2026)
 
@@ -240,6 +254,10 @@ Una iniciativa se considera lista cuando cumple:
 6. Corrección de semántica de estados DingConnect en backend: normalización de `Complete`/`TransferSuccessful` como éxito candidato, pero condicionado a referencia confirmada; mejora de persistencia de `TransferRef` para evitar perder el valor literal `0` por evaluación `empty()`.
 7. Hardening de monto fijo en despacho WooCommerce: antes de `SendTransfer`, si el bundle es de monto fijo el backend normaliza el item al `send_value` técnico del bundle (preserva el importe comercial cobrado al cliente), guarda `_dc_send_value_original` para auditoría y registra evento `dispatch_send_value_normalized_fixed` + nota de pedido con el ajuste aplicado.
 8. Auditoría documental oficial DingConnect (Description/API/FAQ): se confirmó cobertura explícita para `ValidateOnly`, `EstimatePrices`, `ListTransferRecords` obligatorio para timeout/reconciliación, espera de 90s y firma RS256 de webhooks; se detectó inconsistencia textual de estados (`Completed` vs `Complete`) y se consolidó lista de preguntas críticas para soporte antes de cierre de política de éxito WooCommerce.
+
+## Avances implementados (08-05-2026)
+
+1. Mejora de formato en voucher post-pago (WooCommerce): el modal “Resumen final de tu compra Cubakilos” muestra un bloque formal por recarga con tabla de campos, usando `Ref` = `transfer_ref` y priorizando el `Importe pagado` (precio público) para evitar exposición de costes internos.
 
 ## Backlog actualizado por impacto
 
@@ -397,7 +415,9 @@ Corrección aplicada de checkout inválido por rehidratación de carrito (29-04-
 
 3. **Fase 3 — Diagnóstico enriquecido**: la respuesta de errores WP_Error de la API ahora persiste `_dc_transfer_http_status`, `_dc_transfer_error_code` y `_dc_transfer_error_context` en los metadatos del ítem de orden. Las notas de pedido incluyen estos campos para triaje rápido. El panel de detalle de pedido en admin muestra los tres campos nuevos con estilo rojo diferenciado, y aparece un aviso visual de drift de catálogo (fondo rojo, borde izquierdo) cuando el código de error o la huella de validación local indican desajuste de rango.
 
-4. **Fase 4 — Documentación operativa**: este registro en backlog y nuevo apartado en `GUIA_TECNICA_DING_CONNECT.md` con protocolo de refresco y remediación ante drift.
+4. **Fase 4 — Validación Live Pre-Cart (08-05-2026)**: se introdujo una llamada síncrona a `EstimatePrices` directamente dentro del endpoint `/add-to-cart` de la API REST. Esto asegura que el `send_value` sea aceptado por la API real de DingConnect antes de permitir que el usuario añada el producto al carrito y lo pague, eliminando por completo el riesgo de cobrar por un bundle desactualizado (drift de catálogo) que luego falle con `ParameterOutOfRange` en el despacho post-pago.
+
+5. **Fase 5 — Documentación operativa**: este registro en backlog y nuevo apartado en `GUIA_TECNICA_DING_CONNECT.md` con protocolo de refresco y remediación ante drift.
 
 **Archivos modificados**:
 - `includes/class-dc-api.php` — defaults de códigos no reintentables, mensajes amigables para `ParameterOutOfRange`/`SendValue`, métodos públicos `validate_send_value_against_bundle()` y `find_bundle_for_amount_validation()`.
@@ -405,3 +425,35 @@ Corrección aplicada de checkout inválido por rehidratación de carrito (29-04-
 - `includes/class-dc-woocommerce.php` — pre-validación local, metadatos diagnósticos enriquecidos, huella de validación (`_dc_validation_fingerprint`), aviso administrativo de drift en panel de pedido.
 
 **Protocolo operativo ante drift**: si un pedido muestra el aviso de drift, el operador debe: (1) refrescar bundles desde `Catálogo > Buscar en API`, (2) actualizar mínimos/máximos en el bundle afectado, (3) usar "Reintentar recargas DingConnect" en el pedido para lanzar un intento con el monto corregido manualmente.
+
+## Hardening de estados y confirmación post-pago (v2.8.11, 09-05-2026)
+
+**Problema detectado**: en pruebas de producción, el voucher y mensaje del pedido mostraban "Recarga no confirmada" incluso cuando la recarga había sido exitosa (estado `Complete`, `TransferRef` confirmado). El síntoma visible al cliente generaba confusión y potencial recompra innecesaria.
+
+### Causa raíz
+
+Dos escenarios contribuyentes:
+
+1. **Race condition de renderizado**: `_dc_transfer_status` no se fijaba hasta después de la llamada a `SendTransfer`. Si la página de thank-you se cargaba durante los 2-3 segundos de latencia de la API, el estado aparecía vacío y se clasificaba como "error", mostrando "Recarga no confirmada" en vez de "Recarga en validación".
+
+2. **Estado vacío tratado como error terminal**: las funciones `get_item_copy_title` y `collect_order_voucher_rows` clasificaban un `_dc_transfer_status` vacío o `not_started` como error definitivo (estado rojo), cuando en realidad es un estado transitorio.
+
+### Correcciones aplicadas
+
+1. **Inicialización temprana de estado** (`class-dc-woocommerce.php`): se fija `_dc_transfer_status = 'processing'` y se guarda el ítem inmediatamente después de adquirir el lock anti-duplicado y antes de la llamada a la API. Esto asegura que cualquier renderizado durante la ventana de despacho muestre "Recarga en validación" (amarillo) en vez de "Recarga no confirmada" (rojo).
+
+2. **Normalización de estado vacío en `get_item_copy_title`**: se añade normalización `strtolower(trim(...))` al inicio y se incluyen `'not_started'` y `''` (cadena vacía) en la lista de estados pendientes, evitando que un ítem sin estado inicial se clasifique como error.
+
+3. **Fallback amigable en `collect_order_voucher_rows`**: el estado vacío ahora muestra "PROCESANDO" (en vez de "PENDING") en la columna de estado del resumen de pedido, para comunicar progreso en curso.
+
+4. **Traducción de estados en voucher renderer** (`class-dc-voucher-renderer.php`): se añadió `translate_status()` para mapear estados técnicos (ej. `Complete`, `Processing`, `Submitted`) a etiquetas amigables en español (ej. `Completada`, `Procesando`, `Enviada`).
+
+5. **Marca blanca completa en frontend.js**: se eliminaron 6 referencias a "DingConnect" en textos visibles al cliente (errores, hints, mensajes de estado, textos de confirmación), reemplazándolas por términos genéricos ("proveedor", "servicio de recarga").
+
+6. **Marca blanca en aviso de checkout** (`class-dc-woocommerce.php`): el aviso de pasarelas no habilitadas eliminó la mención "DingConnect".
+
+**Archivos modificados**:
+- `includes/class-dc-woocommerce.php` — inicialización temprana de `processing`, normalización de estado vacío, fallback "PROCESANDO", eliminación de marca en aviso de checkout.
+- `includes/class-dc-voucher-renderer.php` — nuevo método `translate_status()` con mapeo completo de estados a español.
+- `assets/js/frontend.js` — eliminación de 6 fugas de marca "DingConnect" en textos cliente.
+- `dingconnect-recargas.php` — versión 2.8.11.

@@ -20,6 +20,7 @@ class DC_Recargas_Admin {
         add_action('admin_post_dc_update_bundle', [$this, 'handle_update_bundle']);
         add_action('admin_post_dc_toggle_bundle', [$this, 'handle_toggle_bundle']);
         add_action('admin_post_dc_delete_bundle', [$this, 'handle_delete_bundle']);
+        add_action('admin_post_dc_duplicate_bundle', [$this, 'handle_duplicate_bundle']);
         add_action('admin_post_dc_bulk_delete_bundles', [$this, 'handle_bulk_delete_bundles']);
         add_action('wp_ajax_dc_create_bundle_from_catalog', [$this, 'ajax_create_bundle_from_catalog']);
         add_action('wp_ajax_dc_get_transfer_logs', [$this, 'ajax_get_transfer_logs']);
@@ -808,6 +809,27 @@ class DC_Recargas_Admin {
 
         $voucher_v2_enabled = !empty($input['voucher_v2_enabled']) ? 1 : 0;
         $voucher_v2_shadow_mode = !empty($input['voucher_v2_shadow_mode']) ? 1 : 0;
+        $voucher_outbox_enabled = !empty($input['voucher_outbox_enabled']) ? 1 : 0;
+        
+        $voucher_outbox_max_attempts = (int) ($input['voucher_outbox_max_attempts'] ?? 6);
+        if ($voucher_outbox_max_attempts < 1) {
+            $voucher_outbox_max_attempts = 1;
+        }
+        
+        $raw_outbox_backoff = (string) ($input['voucher_outbox_backoff_minutes'] ?? '1,2,5,10,20,30');
+        $outbox_backoff_parts = preg_split('/[\s,;]+/', $raw_outbox_backoff);
+        $outbox_backoff_values = [];
+        foreach ((array) $outbox_backoff_parts as $part) {
+            $minutes = (int) $part;
+            if ($minutes < 1 || $minutes > 1440) {
+                continue;
+            }
+            $outbox_backoff_values[] = $minutes;
+        }
+        if (empty($outbox_backoff_values)) {
+            $outbox_backoff_values = [1, 2, 5, 10, 20, 30];
+        }
+        $voucher_outbox_backoff_minutes = implode(',', $outbox_backoff_values);
 
         // Convert recharge mode select to validate_only and allow_real_recharge flags
         $recharge_mode = sanitize_key((string) ($input['recharge_mode'] ?? 'test_simulate'));
@@ -857,6 +879,9 @@ class DC_Recargas_Admin {
             'webhook_signature_compat_mode' => $webhook_signature_compat_mode,
             'voucher_v2_enabled' => $voucher_v2_enabled,
             'voucher_v2_shadow_mode' => $voucher_v2_shadow_mode,
+            'voucher_outbox_enabled' => $voucher_outbox_enabled,
+            'voucher_outbox_max_attempts' => $voucher_outbox_max_attempts,
+            'voucher_outbox_backoff_minutes' => $voucher_outbox_backoff_minutes,
         ];
 
         return $sanitized;
@@ -1034,6 +1059,49 @@ class DC_Recargas_Admin {
         wp_safe_redirect(add_query_arg([
             'page' => 'dc-recargas',
             'dc_msg' => 'bundle_deleted',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_duplicate_bundle() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_duplicate_bundle');
+
+        $bundle_id = sanitize_text_field((string) ($_GET['bundle_id'] ?? ''));
+        $bundles = get_option('dc_recargas_bundles', []);
+        if (!is_array($bundles)) {
+            $bundles = [];
+        }
+
+        $source = $this->find_bundle_by_id($bundles, $bundle_id);
+        if (!is_array($source) || empty($source)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_msg' => 'bundle_not_found',
+                'dc_tab' => 'tab_saved',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $base_label = sanitize_text_field((string) ($source['label'] ?? ''));
+        $clone = $source;
+        $clone['id'] = uniqid('bundle_', true);
+        $clone['label'] = $base_label !== '' ? ($base_label . ' (copia)') : 'Producto (copia)';
+        $clone['is_active'] = 0;
+        $clone['created_at'] = current_time('mysql');
+        $clone['cloned_from'] = sanitize_text_field((string) ($source['id'] ?? ''));
+
+        $bundles[] = $clone;
+        update_option('dc_recargas_bundles', array_values($bundles));
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_tab' => 'tab_saved',
+            'dc_msg' => 'bundle_duplicated',
+            'dc_edit_bundle' => $clone['id'],
         ], admin_url('admin.php')));
         exit;
     }
@@ -1484,6 +1552,27 @@ class DC_Recargas_Admin {
             }
         }
 
+        if ($has('profit_percent')) {
+            $raw_profit_percent = trim((string) $get('profit_percent'));
+            if ($raw_profit_percent === '') {
+                $fields['profit_percent'] = '';
+            } else {
+                $normalized_profit_percent = str_replace(',', '.', $raw_profit_percent);
+                if (!is_numeric($normalized_profit_percent)) {
+                    $fields['profit_percent'] = '';
+                } else {
+                    $profit_percent = (float) $normalized_profit_percent;
+                    if ($profit_percent < 0) {
+                        $profit_percent = 0;
+                    }
+                    if ($profit_percent > 1000) {
+                        $profit_percent = 1000;
+                    }
+                    $fields['profit_percent'] = $profit_percent;
+                }
+            }
+        }
+
         foreach ([
             'receive_currency_iso',
             'tax_name',
@@ -1914,6 +2003,37 @@ class DC_Recargas_Admin {
                     border-left: 4px solid #0f4aa3 !important;
                     border-radius: 6px !important;
                     background: #eaf2ff !important;
+                }
+
+                .dc-sortable-th {
+                    cursor: pointer;
+                    position: relative;
+                    padding-right: 20px !important;
+                    user-select: none;
+                }
+                .dc-sortable-th::after {
+                    content: '▼';
+                    position: absolute;
+                    right: 6px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    font-size: 10px;
+                    color: #999;
+                    opacity: 0.3;
+                    transition: all 0.2s;
+                }
+                .dc-sortable-th:hover::after {
+                    opacity: 0.7;
+                }
+                .dc-sortable-th.dc-sort-asc::after {
+                    content: '▲';
+                    opacity: 1;
+                    color: #0f4aa3;
+                }
+                .dc-sortable-th.dc-sort-desc::after {
+                    content: '▼';
+                    opacity: 1;
+                    color: #0f4aa3;
                 }
 
                 .dc-admin-wrap {
@@ -3616,6 +3736,43 @@ class DC_Recargas_Admin {
                             <p class="description">Lista de códigos DingConnect que deben cortarse sin reintento (separados por coma).</p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row">Generación de Voucher (Paso 5)</th>
+                        <td>
+                            <label style="display:block;margin-bottom:6px;">
+                                <input type="checkbox" name="dc_recargas_options[voucher_v2_enabled]" value="1" <?php checked(!empty($options['voucher_v2_enabled'])); ?>>
+                                Habilitar generación de voucher canónico (v2)
+                            </label>
+                            <label style="display:block;margin-bottom:6px;">
+                                <input type="checkbox" name="dc_recargas_options[voucher_v2_shadow_mode]" value="1" <?php checked(!empty($options['voucher_v2_shadow_mode'])); ?>>
+                                Modo Shadow (Generar pero no mostrar en UI)
+                            </label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Outbox de Email de Vouchers</th>
+                        <td>
+                            <label style="display:block;margin-bottom:6px;">
+                                <input type="checkbox" name="dc_recargas_options[voucher_outbox_enabled]" value="1" <?php checked(!empty($options['voucher_outbox_enabled'])); ?>>
+                                Habilitar Outbox asíncrono para correos de recarga
+                            </label>
+                            <p class="description">Evita bloqueos de checkout delegando el envío de correo a tareas asíncronas.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_voucher_outbox_max_attempts">Outbox: intentos máximos</label></th>
+                        <td>
+                            <input type="number" id="dc_voucher_outbox_max_attempts" name="dc_recargas_options[voucher_outbox_max_attempts]" min="1" max="10" value="<?php echo esc_attr((string) ($options['voucher_outbox_max_attempts'] ?? 6)); ?>" class="small-text">
+                            <p class="description">Cantidad máxima de reintentos para envío de email de voucher.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_voucher_outbox_backoff_minutes">Outbox: backoff (minutos)</label></th>
+                        <td>
+                            <input type="text" id="dc_voucher_outbox_backoff_minutes" name="dc_recargas_options[voucher_outbox_backoff_minutes]" class="regular-text" value="<?php echo esc_attr((string) ($options['voucher_outbox_backoff_minutes'] ?? '1,2,5,10,20,30')); ?>" placeholder="1,2,5,10,20,30">
+                            <p class="description">Secuencia de espera por ciclo de reintento de email (minutos).</p>
+                        </td>
+                    </tr>
                 </table>
 
                 <?php submit_button('Guardar configuración'); ?>
@@ -3863,8 +4020,15 @@ class DC_Recargas_Admin {
                                     <tr>
                                         <th style="width:36px;"></th>
                                         <th class="dc-saved-col-logo">Logo</th>
-                                        <th>Producto</th>
-                                        <th>Precios</th>
+                                        <th>País</th>
+                                        <th>Tipo</th>
+                                        <th>Nombre</th>
+                                        <th>SKU</th>
+                                        <th>Coste DIN</th>
+                                        <th>Moneda</th>
+                                        <th>Precio público</th>
+                                        <th>Moneda pública</th>
+                                        <th>Operador</th>
                                         <th>Estado</th>
                                         <th>Destacado</th>
                                         <th>Acción</th>
@@ -3886,20 +4050,18 @@ class DC_Recargas_Admin {
                                     <tr class="dc-landing-bundles-checklist__item" data-bundle-id="<?php echo esc_attr($bundle_id); ?>" data-country-iso="<?php echo esc_attr($bundle_country); ?>" data-package-family="<?php echo esc_attr($bundle_family); ?>" data-search-index="<?php echo esc_attr(strtolower(trim($bundle_label . ' ' . $bundle_sku . ' ' . $bundle_operator . ' ' . $bundle_country . ' ' . $bundle_fam_label))); ?>" data-edit-bundle="<?php echo esc_attr(wp_json_encode($bundle)); ?>">
                                         <td><button type="button" class="dc-landing-bundles-drag-handle" title="Arrastrar para cambiar orden" aria-label="Arrastrar para cambiar orden">⋮⋮</button></td>
                                         <td class="dc-saved-col-logo"><?php if (!empty($bundle['logo_url'])) : ?><img src="<?php echo esc_url($bundle['logo_url']); ?>" alt="<?php echo esc_attr($bundle_operator); ?>" width="28" height="28"><?php endif; ?></td>
-                                        <td class="dc-landing-bundle-product dc-landing-bundle-open-editor" role="button" tabindex="0" title="Abrir editor del producto">
-                                            <strong><?php echo esc_html($bundle_label); ?></strong>
-                                            <small>SKU: <?php echo esc_html($bundle_sku); ?></small>
-                                            <small>Operador: <?php echo esc_html($bundle_operator !== '' ? $bundle_operator : 'N/D'); ?></small>
-                                            <div class="dc-landing-bundle-meta">
-                                                <span><?php echo esc_html($bundle_country); ?></span>
-                                                <span><?php echo esc_html($bundle_fam_label); ?></span>
-                                            </div>
+                                        <td><?php echo esc_html($bundle_country); ?></td>
+                                        <td><?php echo esc_html($bundle_fam_label); ?></td>
+                                        <td>
+                                            <?php echo esc_html($bundle_label); ?>
                                             <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>" aria-label="Seleccionar <?php echo esc_attr($bundle_label); ?>" hidden>
                                         </td>
-                                        <td class="dc-landing-bundle-prices">
-                                            <div class="dc-landing-bundle-price-line is-din">DIN: <?php echo esc_html(number_format((float) ($bundle['send_value'] ?? 0), 2)); ?> <?php echo esc_html($bundle['send_currency_iso'] ?? ''); ?></div>
-                                            <div class="dc-landing-bundle-price-line is-public">Público: <?php echo esc_html(isset($bundle['public_price']) && $bundle['public_price'] !== '' ? number_format((float) $bundle['public_price'], 2) : ''); ?> <?php echo esc_html($bundle['public_price_currency'] ?? 'EUR'); ?></div>
-                                        </td>
+                                        <td><?php echo esc_html($bundle_sku); ?></td>
+                                        <td><?php echo esc_html(number_format((float) ($bundle['send_value'] ?? 0), 2)); ?></td>
+                                        <td><?php echo esc_html($bundle['send_currency_iso'] ?? ''); ?></td>
+                                        <td><?php echo esc_html(isset($bundle['public_price']) && $bundle['public_price'] !== '' ? number_format((float) $bundle['public_price'], 2) : ''); ?></td>
+                                        <td><?php echo esc_html($bundle['public_price_currency'] ?? 'EUR'); ?></td>
+                                        <td><?php echo esc_html($bundle_operator !== '' ? $bundle_operator : 'N/D'); ?></td>
                                         <td><span class="dc-landing-bundle-status <?php echo !empty($bundle['is_active']) ? 'is-active' : 'is-inactive'; ?>"><?php echo !empty($bundle['is_active']) ? 'Activo' : 'Inactivo'; ?></span></td>
                                         <td class="dc-landing-bundles-checklist__featured"><input type="radio" class="dc-edit-landing-featured-radio" name="featured_bundle_id" value="<?php echo esc_attr($bundle_id); ?>"> Dest.</td>
                                         <td><button type="button" class="button button-secondary dc-landing-bundle-toggle" data-label-add="Añadir" data-label-remove="Quitar">Añadir</button></td>
@@ -4901,6 +5063,13 @@ class DC_Recargas_Admin {
                         <td><input type="text" id="dc_public_price_currency" name="public_price_currency" class="small-text dc-combo-input" value="EUR" list="dc_dl_public_currency"></td>
                     </tr>
                     <tr>
+                        <th scope="row"><label for="dc_profit_percent">Utilidad (%)</label></th>
+                        <td>
+                            <input type="number" step="0.01" min="0" id="dc_profit_percent" name="profit_percent" class="small-text" value="">
+                            <p class="description">Campo informativo editable. No afecta cálculos ni el checkout.</p>
+                        </td>
+                    </tr>
+                    <tr>
                         <th scope="row"><label for="dc_provider_name">Operador</label></th>
                         <td><input type="text" id="dc_provider_name" name="provider_name" class="regular-text dc-combo-input" placeholder="Cubacel" value="" list="dc_dl_provider_name"></td>
                     </tr>
@@ -5040,6 +5209,13 @@ class DC_Recargas_Admin {
                             <td>
                                 <div class="dc-bundle-actions dc-table-actions">
                                 <a class="button dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
+                                    'action' => 'dc_duplicate_bundle',
+                                    'bundle_id' => $bundle['id'] ?? '',
+                                ], admin_url('admin-post.php')), 'dc_duplicate_bundle')); ?>" title="Duplicar producto" aria-label="Duplicar producto <?php echo esc_attr($bundle['label'] ?? ''); ?>">
+                                    <span class="dashicons dashicons-admin-page" aria-hidden="true"></span>
+                                </a>
+
+                                <a class="button dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
                                     'action' => 'dc_toggle_bundle',
                                     'bundle_id' => $bundle['id'] ?? '',
                                 ], admin_url('admin-post.php')), 'dc_toggle_bundle')); ?>" title="<?php echo !empty($bundle['is_active']) ? esc_attr('Desactivar producto') : esc_attr('Activar producto'); ?>" aria-label="<?php echo !empty($bundle['is_active']) ? esc_attr('Desactivar producto ' . ($bundle['label'] ?? '')) : esc_attr('Activar producto ' . ($bundle['label'] ?? '')); ?>">
@@ -5118,6 +5294,13 @@ class DC_Recargas_Admin {
                                 <td>
                                     <div id="dc_edit_profit_display" class="dc-profit-field" aria-live="polite"></div>
                                     <p class="description">Informativo: precio al público menos coste DING.</p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_profit_percent">Utilidad (%)</label></th>
+                                <td>
+                                    <input type="number" step="0.01" min="0" id="dc_edit_profit_percent" name="profit_percent" class="small-text" value="<?php echo esc_attr($editing_bundle['profit_percent'] ?? ''); ?>">
+                                    <p class="description">Campo informativo editable. No afecta cálculos ni el checkout.</p>
                                 </td>
                             </tr>
                             <tr>
@@ -6248,6 +6431,7 @@ class DC_Recargas_Admin {
                 var editPublicPriceEl = document.getElementById('dc_edit_public_price');
                 var editPublicPriceCurrencyEl = document.getElementById('dc_edit_public_price_currency');
                 var editProfitDisplayEl = document.getElementById('dc_edit_profit_display');
+                var editProfitPercentEl = document.getElementById('dc_edit_profit_percent');
                 var editPackageFamilyEl = document.getElementById('dc_edit_package_family');
                 var editProductTypeRawEl = document.getElementById('dc_edit_product_type_raw');
                 var editValidityRawEl = document.getElementById('dc_edit_validity_raw');
@@ -6433,7 +6617,7 @@ class DC_Recargas_Admin {
                         var rowFamily = normalizeFilterValue(rowEl.getAttribute('data-family') || 'other') || 'other';
                         var rowCountry = String(rowEl.getAttribute('data-country-iso') || '').trim().toUpperCase();
                         var rowOperator = String(rowEl.getAttribute('data-operator-name') || '').trim();
-                        var rowSearchIndex = normalizeFilterValue(rowEl.getAttribute('data-search-index') || rowEl.textContent || '');
+                        var rowSearchIndex = normalizeFilterValue((rowEl.getAttribute('data-search-index') || '') + ' ' + (rowEl.textContent || ''));
 
                         var familyMatch = selectedFamily === 'all' || rowFamily === selectedFamily;
                         var countryMatch = selectedCountryRaw === 'all' || rowCountry === selectedCountry;
@@ -6720,6 +6904,7 @@ class DC_Recargas_Admin {
                     if (editSendCurrencyEl) editSendCurrencyEl.value = bundle.send_currency_iso || 'USD';
                     if (editPublicPriceEl) editPublicPriceEl.value = typeof bundle.public_price !== 'undefined' ? bundle.public_price : '';
                     if (editPublicPriceCurrencyEl) editPublicPriceCurrencyEl.value = bundle.public_price_currency || 'EUR';
+                    if (editProfitPercentEl) editProfitPercentEl.value = typeof bundle.profit_percent !== 'undefined' && bundle.profit_percent !== null ? bundle.profit_percent : '';
                     if (editPackageFamilyEl) editPackageFamilyEl.value = bundle.package_family || 'other';
                     if (editProductTypeRawEl) editProductTypeRawEl.value = bundle.product_type_raw || '';
                     if (editValidityRawEl) editValidityRawEl.value = bundle.validity_raw || '';
@@ -7060,52 +7245,6 @@ class DC_Recargas_Admin {
                         syncSelectedState();
                         syncToggleButtons();
                         applyRowFilters();
-                    });
-
-                    function openBundleEditorFromRow(rowEl) {
-                        if (!rowEl) {
-                            return;
-                        }
-
-                        var rawBundle = rowEl.getAttribute('data-edit-bundle') || '';
-                        if (!rawBundle) {
-                            return;
-                        }
-
-                        try {
-                            closeLandingEditModal();
-                            openEditModal(JSON.parse(rawBundle));
-                        } catch (e) {
-                            window.alert('No se pudo abrir el editor del producto seleccionado.');
-                        }
-                    }
-
-                    checklistEl.addEventListener('click', function (event) {
-                        var triggerEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundle-open-editor') : null;
-                        if (!triggerEl) {
-                            return;
-                        }
-
-                        if (event.target && event.target.closest && event.target.closest('a,button,input,select,textarea,label')) {
-                            return;
-                        }
-
-                        event.preventDefault();
-                        openBundleEditorFromRow(triggerEl.closest('.dc-landing-bundles-checklist__item'));
-                    });
-
-                    checklistEl.addEventListener('keydown', function (event) {
-                        if (event.key !== 'Enter' && event.key !== ' ') {
-                            return;
-                        }
-
-                        var triggerEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundle-open-editor') : null;
-                        if (!triggerEl) {
-                            return;
-                        }
-
-                        event.preventDefault();
-                        openBundleEditorFromRow(triggerEl.closest('.dc-landing-bundles-checklist__item'));
                     });
 
                     checklistEl.addEventListener('mousedown', function (event) {
@@ -7666,6 +7805,115 @@ class DC_Recargas_Admin {
                         });
                     });
                 }
+
+                // --- TABLE SORTING START ---
+                function makeTablesSortable() {
+                    var tables = document.querySelectorAll('table.dc-api-results-table, #dc-tab-saved table, .dc-landing-bundles-checklist');
+                    tables.forEach(function(table) {
+                        var headers = table.querySelectorAll('thead th');
+                        headers.forEach(function(th, colIndex) {
+                            // Skip check columns, empty headers, drag handles
+                            if (th.classList.contains('check-column') || th.querySelector('input[type="checkbox"]') || th.textContent.trim() === '' || th.style.width === '36px' || th.classList.contains('dc-saved-col-logo')) {
+                                return;
+                            }
+                            
+                            th.style.cursor = 'pointer';
+                            th.title = 'Clic para ordenar';
+                            th.classList.add('dc-sortable-th');
+                            
+                            th.addEventListener('click', function() {
+                                var isAsc = th.classList.contains('dc-sort-asc');
+                                var direction = isAsc ? -1 : 1;
+                                
+                                // Reset all headers in this table
+                                headers.forEach(function(h) {
+                                    h.classList.remove('dc-sort-asc', 'dc-sort-desc');
+                                });
+                                th.classList.add(direction === 1 ? 'dc-sort-asc' : 'dc-sort-desc');
+                                
+                                var tbody = table.querySelector('tbody');
+                                if (!tbody) return;
+                                
+                                var rows = Array.from(tbody.querySelectorAll('tr'));
+                                var hasGroups = rows.some(function(r) { return r.classList.contains('dc-api-group-row'); });
+                                
+                                function getCellValue(tr, idx) {
+                                    var cell = tr.children[idx];
+                                    if (!cell) return '';
+                                    return cell.textContent.trim();
+                                }
+                                
+                                function compareValues(v1, v2) {
+                                    var num1 = parseFloat(v1.replace(/[^0-9.-]+/g,""));
+                                    var num2 = parseFloat(v2.replace(/[^0-9.-]+/g,""));
+                                    var isNum1 = !isNaN(num1) && v1.match(/[0-9]/);
+                                    var isNum2 = !isNaN(num2) && v2.match(/[0-9]/);
+                                    
+                                    if (isNum1 && isNum2) {
+                                        return num1 - num2;
+                                    }
+                                    return v1.localeCompare(v2);
+                                }
+                                
+                                if (hasGroups) {
+                                    var groups = [];
+                                    var currentGroup = null;
+                                    rows.forEach(function(r) {
+                                        if (r.classList.contains('dc-api-group-row')) {
+                                            currentGroup = { header: r, rows: [] };
+                                            groups.push(currentGroup);
+                                        } else if (currentGroup) {
+                                            currentGroup.rows.push(r);
+                                        } else {
+                                            groups.push({ header: null, rows: [r] });
+                                        }
+                                    });
+                                    
+                                    groups.forEach(function(g) {
+                                        g.rows.sort(function(a, b) {
+                                            return compareValues(getCellValue(a, colIndex), getCellValue(b, colIndex)) * direction;
+                                        });
+                                    });
+                                    
+                                    tbody.innerHTML = '';
+                                    groups.forEach(function(g) {
+                                        if (g.header) tbody.appendChild(g.header);
+                                        g.rows.forEach(function(r) { tbody.appendChild(r); });
+                                    });
+                                } else {
+                                    rows.sort(function(a, b) {
+                                        // Ignore rows that might be placeholders like "No hay resultados"
+                                        if (a.children.length === 1 || b.children.length === 1) return 0;
+                                        return compareValues(getCellValue(a, colIndex), getCellValue(b, colIndex)) * direction;
+                                    });
+                                    tbody.innerHTML = '';
+                                    rows.forEach(function(r) { tbody.appendChild(r); });
+                                }
+                            });
+                        });
+
+                        var tbody = table.querySelector('tbody');
+                        if (tbody && window.MutationObserver) {
+                            var observer = new MutationObserver(function(mutations) {
+                                var isInternalSort = mutations.every(function(m) {
+                                    return m.type === 'childList' && Array.from(m.addedNodes).every(function(n) { return n.tagName === 'TR'; });
+                                });
+                                // If the tbody is cleared and re-rendered by an external script (like renderApiResults)
+                                // we clear the sort arrows to prevent mismatch.
+                                // An external render usually starts with innerHTML = '', which removes all nodes.
+                                var hasRemovals = mutations.some(function(m) { return m.removedNodes.length > 0; });
+                                if (hasRemovals && document.activeElement && !document.activeElement.classList.contains('dc-sortable-th')) {
+                                    headers.forEach(function(h) {
+                                        h.classList.remove('dc-sort-asc', 'dc-sort-desc');
+                                    });
+                                }
+                            });
+                            observer.observe(tbody, { childList: true });
+                        }
+                    });
+                }
+                makeTablesSortable();
+                // --- TABLE SORTING END ---
             })();
 
         </script>

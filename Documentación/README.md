@@ -14,6 +14,7 @@ Esta carpeta concentra el contexto técnico y funcional del proyecto para facili
 - Prioridades y próximos cambios: `BACKLOG_FUNCIONAL_TECNICO.md`.
 - API DingConnect (visión unificada, flujos, UAT, sign-off): `GUIA_TECNICA_DING_CONNECT.md`.
 - API DingConnect (detalle extendido por endpoint / modelo): `API_DING_CONNECT_V1.md` y `BASE_CONOCIMIENTO_API_DINGCONNECT_COMPLETA.md`.
+- Flujo completo front-to-back con diagrama Mermaid (visión end-to-end): `FLUJO_COMPLETO_FRONT_BACK.md`.
 - Webhook / Deferred SendTransfer (landings, propuesta técnica): `ANALISIS_WEBHOOK_LANDINGS_RENE_CUBAKILOS.md`.
 - SKUs verificados y hallazgos operativos: `HALLAZGOS_2026-04-14_DING_SKUS.md`.
 - Matriz de pruebas por proveedor real (GO/NO-GO): `MATRIZ_PRUEBAS_MANUALES_PROVEEDOR_REAL.md`.
@@ -27,6 +28,10 @@ Esta carpeta concentra el contexto técnico y funcional del proyecto para facili
 - `ANALISIS_WEBHOOK_LANDINGS_RENE_CUBAKILOS.md`: análisis específico de solicitud de René sobre shortcodes por landing, paquetes propios y estrategia de webhook.
 - `../HANDOFF_ESTADO_ACTUAL.md`: handoff histórico de continuidad de trabajo.
 - `../REPORTE_INTEGRACION_DING_CONNECT.md`: reporte histórico de validación inicial.
+
+### Flujo end-to-end
+
+- `FLUJO_COMPLETO_FRONT_BACK.md`: diagrama Mermaid completo del flujo front-to-back, desde la configuración admin hasta el voucher final, con indicaciones de backend y API DingConnect en cada paso.
 
 ### Referencia técnica de API
 

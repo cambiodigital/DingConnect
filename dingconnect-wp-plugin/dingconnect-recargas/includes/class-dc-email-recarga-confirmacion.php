@@ -66,6 +66,34 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
         if (class_exists('DC_Recargas_Voucher')) {
             $voucher_service = new DC_Recargas_Voucher();
             $this->recarga_data_v2 = $voucher_service->get_item_voucher_v2($item);
+            if (is_array($this->recarga_data_v2) && $item) {
+                $public_price = (float) $item->get_meta('_dc_public_price');
+                $public_currency = (string) $item->get_meta('_dc_public_currency_iso');
+                $send_value = (float) $item->get_meta('_dc_send_value');
+                $send_currency = (string) $item->get_meta('_dc_send_currency_iso');
+                if ($public_price <= 0) {
+                    $public_price = $send_value;
+                }
+                if ($public_currency === '') {
+                    $public_currency = $send_currency;
+                }
+
+                if (!isset($this->recarga_data_v2['public_price']) || (float) ($this->recarga_data_v2['public_price'] ?? 0) <= 0) {
+                    $this->recarga_data_v2['public_price'] = $public_price;
+                }
+                if (!isset($this->recarga_data_v2['public_currency']) || (string) ($this->recarga_data_v2['public_currency'] ?? '') === '') {
+                    $this->recarga_data_v2['public_currency'] = $public_currency;
+                }
+                if (!isset($this->recarga_data_v2['amount_sent_currency']) || (string) ($this->recarga_data_v2['amount_sent_currency'] ?? '') === '') {
+                    $this->recarga_data_v2['amount_sent_currency'] = $send_currency;
+                }
+                if (!isset($this->recarga_data_v2['country_iso']) || (string) ($this->recarga_data_v2['country_iso'] ?? '') === '') {
+                    $this->recarga_data_v2['country_iso'] = (string) $item->get_meta('_dc_country_iso');
+                }
+                if (!isset($this->recarga_data_v2['bundle']) || (string) ($this->recarga_data_v2['bundle'] ?? '') === '') {
+                    $this->recarga_data_v2['bundle'] = (string) $item->get_meta('_dc_bundle_label');
+                }
+            }
         }
 
         $this->recipient = $order->get_billing_email();

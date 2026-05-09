@@ -627,6 +627,33 @@ class DC_Recargas_REST {
             return $this->wp_error_to_rest_response($amount_validation);
         }
 
+        // Live validation contra DingConnect para evitar ParameterOutOfRange post-pago
+        $estimate_payload = [
+            [
+                'SkuCode'         => $sku_code,
+                'SendValue'       => $send_value,
+                'SendCurrencyIso' => $send_currency_iso,
+                'BatchItemRef'    => 'WP-VAL-' . wp_generate_password(6, false, false),
+            ]
+        ];
+
+        $estimate_response = $this->api->estimate_prices($estimate_payload);
+        if (is_wp_error($estimate_response)) {
+            return new WP_REST_Response([
+                'ok'      => false,
+                'message' => $estimate_response->get_error_message() ?: 'El proveedor rechazó este importe. Por favor, actualiza la página y vuelve a intentarlo.',
+            ], 400);
+        }
+
+        $estimate_items = $estimate_response['Result'] ?? $estimate_response['Items'] ?? [];
+        if (!empty($estimate_items[0]['ErrorCodes'])) {
+            $error_code    = $estimate_items[0]['ErrorCodes'][0]['Code'] ?? 'UnknownError';
+            return new WP_REST_Response([
+                'ok'      => false,
+                'message' => 'El importe no es válido para este proveedor (' . $error_code . '). Por favor, verifica el catálogo.',
+            ], 400);
+        }
+
         $matched_bundle = $this->find_saved_bundle_for_cart($bundle_id, $sku_code, $country_iso);
         if (is_array($matched_bundle)) {
             $resolved_benefit = $this->extract_bundle_benefit_for_checkout($matched_bundle);
@@ -651,6 +678,14 @@ class DC_Recargas_REST {
             $public_price = $resolved_public_price;
         } elseif ($public_price <= 0) {
             $public_price = $send_value;
+        }
+
+        // Salvaguarda financiera: Evitar que el cliente pague menos del Coste DIN
+        if ($public_price < $send_value) {
+            return new WP_REST_Response([
+                'ok'      => false,
+                'message' => 'Error de seguridad: El precio a pagar (' . $public_price . ') es inferior al coste de la recarga (' . $send_value . '). Transacción bloqueada.',
+            ], 400);
         }
 
         // Delegate to WooCommerce class via filter
@@ -1025,8 +1060,8 @@ class DC_Recargas_REST {
                 'TaxRate' => 0.0,
                 'TaxName' => sanitize_text_field((string) ($bundle['tax_name'] ?? '')),
                 'TaxCalculation' => sanitize_text_field((string) ($bundle['tax_calculation'] ?? '')),
-                'DefaultDisplayText' => sanitize_text_field((string) ($bundle['default_display_text'] ?? ($bundle['label'] ?? ''))),
-                'DisplayText' => sanitize_text_field((string) ($bundle['display_text'] ?? ($bundle['label'] ?? ''))),
+                'DefaultDisplayText' => sanitize_text_field((string) (!empty($bundle['label']) ? $bundle['label'] : ($bundle['default_display_text'] ?? ''))),
+                'DisplayText' => sanitize_text_field((string) (!empty($bundle['label']) ? $bundle['label'] : ($bundle['display_text'] ?? ''))),
                 'Description' => $bundle_description,
                 'DescriptionMarkdown' => sanitize_text_field((string) ($bundle['description_markdown'] ?? '')),
                 'ReadMoreMarkdown' => sanitize_text_field((string) ($bundle['read_more_markdown'] ?? '')),

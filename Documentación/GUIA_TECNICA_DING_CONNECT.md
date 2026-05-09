@@ -80,6 +80,7 @@ La guía oficial está estructurada en estas áreas:
 
 Para garantizar rendimiento en el checkout y prevenir cuellos de botella de SMTP, el envío de correos de confirmación (vouchers) utiliza un patrón de Outbox asíncrono (`DC_Recargas_Voucher_Outbox`). 
 Los metadatos se persisten en WooCommerce bajo `_dc_voucher_payload_v2` con un hash determinístico (`_dc_voucher_hash`) que garantiza la idempotencia y previene envíos duplicados causados por condiciones de carrera entre webhooks y hooks de pago. Adicionalmente se provee una acción manual para reenvío de vouchers desde el pedido.
+En UI/email orientado a cliente, el resumen usa `Ref` = `transfer_ref` y debe priorizar el `Importe pagado` (precio público) para no exponer costes internos del proveedor.
 
 ## 5. Endpoints críticos en una integración estándar
 
@@ -154,6 +155,7 @@ Nota operativa WooCommerce (abril 2026):
 - Operación manual desde admin (`Registros`): el monitor de pendientes soporta acciones de reintento por ítem (fila individual) y en lote (selección múltiple). Ambas rutas disparan el mismo mecanismo backend de reintento por ítem (`dc_recargas_retry_transfer`) y dejan nota explícita en el pedido para trazabilidad operativa.
 - Observabilidad en panel `Registros`: la tabla de logs incluye columna `Evento` y el resumen agrega tarjeta de `Pendientes`, para distinguir estados de despacho/transacción frente a eventos de control del flujo (carrito, pago, bloqueo de pasarela, reintentos).
 - Feedback al cliente: la pantalla de thank-you y el email de WooCommerce incorporan mensajes de "siguientes pasos" cuando hay recargas pendientes o con error, para evitar compras duplicadas y orientar contacto de soporte.
+- Hardening UX post-pago: en pedidos con recargas ya pagados, se suprimen acciones de cliente como `Pagar`/`Cancelar` en el detalle del pedido/thank-you para evitar confusión operativa.
 
 ### Nota operativa Wizard v2 (abril 2026)
 

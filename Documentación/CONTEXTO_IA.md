@@ -29,7 +29,7 @@ Implementar y operar recargas internacionales con DingConnect para Cubakilos, co
 - Componentes:
 	- `includes/class-dc-api.php`: cliente HTTP hacia DingConnect.
 	- `includes/class-dc-rest.php`: API REST pública del plugin.
-	- `includes/class-dc-admin.php`: panel de configuración y bundles curados.
+	- `includes/class-dc-admin.php`: panel de configuración y bundles curados con ordenamiento dinámico de tablas.
 	- `includes/class-dc-frontend.php`: shortcode y carga de assets.
 	- `includes/class-dc-woocommerce.php`: integración opcional con WooCommerce para carrito, checkout y despacho post-pago.
 	- `assets/js/frontend.js`: UI pública para buscar paquetes y enviar recarga.
@@ -100,6 +100,7 @@ Namespace actual: `dingconnect/v1`
 16. Experiencia de balance mejorada en admin: al activar la pestaña Credenciales se consulta el balance automáticamente y se muestra en tarjeta legible (monto, moneda y estado), evitando salida JSON cruda para operación diaria.
 17. Mejora visual en frontend público: la selección de operador ahora usa una grilla uniforme con tarjetas del mismo espacio y altura, para una lectura más organizada y consistente entre operadores.
 18. Mejora UX en panel admin de bundles: los campos País ISO, Nombre comercial, Moneda y Operador quedaron unificados con combobox de apertura inmediata al clic, lista posicionada bajo el input, filtrado por texto y sincronización de nuevas opciones entre formulario de alta y modal de edición.
+19. Personalización de UI de paquetes: el campo 'Nombre comercial' (label) editado por el usuario en el admin toma prioridad absoluta sobre el título original de DingConnect (DefaultDisplayText) en el frontend.
 19. Resiliencia del balance administrativo: el endpoint `/balance` normaliza múltiples formatos de respuesta de DingConnect (top-level, `Result` o `Items`) para exponer siempre `Balance`, `CurrencyIso` y `ResultCode` al panel.
 20. Diagnóstico operativo ampliado en transferencias: los errores `ProviderError` ahora incluyen contexto (`ding_error_context`) y referencias de la operación (`transfer_ref`, `distributor_ref`, `processing_state`) para soporte y trazabilidad.
 21. Operación de bundles más ágil en admin: los bundles guardados ya pueden eliminarse de forma masiva mediante checkboxes por fila y selección global en la tabla.
@@ -116,6 +117,7 @@ Namespace actual: `dingconnect/v1`
 32. Reintentos configurables para fallos transitorios: nuevas opciones `wizard_transfer_retry_attempts` y `wizard_transfer_retry_delay_minutes` con programación de retries vía `wp_schedule_single_event`.
 33. Reconciliación manual disponible en pedido WooCommerce: acción `dc_recargas_manual_reconcile` para reintentar items fallidos y dejar auditoría en notas del pedido.
 34. Voucher de confirmación integrado en WooCommerce: resumen visible en pantalla de thank-you y enriquecimiento de metadatos en email con referencias de transferencia.
+34.1. Marca blanca en WooCommerce (cliente): el nombre del producto base de recarga y el nombre visible de ítems en el pedido se muestran como `Cubakilos` (no `DingConnect`).
 35. Entorno de staging reproducible agregado en repositorio para verificación runtime: `staging/docker-compose.yml`, `staging/scripts/bootstrap-staging.sh`, `scripts/staging-up.ps1` y `scripts/run-matrix-6.ps1`.
 36. Matriz 6.1-6.7 preparada para ejecución automática tipo smoke sobre WordPress/WooCommerce local con gateways de prueba internos (BACS/Cheque/COD).
 37. Bloqueo actual de ejecución en esta estación: binario `docker` no disponible en PowerShell, impidiendo levantar contenedores y recolectar evidencia E2E runtime.
@@ -142,6 +144,7 @@ Namespace actual: `dingconnect/v1`
 58. Rediseño del modal `Editar shortcode dinámico`: la tabla de bundles en edición se compactó con cabecera sticky, menor densidad vertical, metadatos de país/tipo integrados por producto y chips de precio (`DIN`/`Público`) para mejorar legibilidad y operación en lotes sin perder drag and drop ni acciones `Añadir/Quitar`.
 59. Compactación de banda de filtros en modal de shortcodes: los filtros (`País`, `Tipo de producto`, `Buscar`, `Vista`) ahora ocupan una única fila con `flex-wrap: nowrap`, gap reducido a 6px, anchos fijos (110px selects, 160px buscador) y tipografía más pequeña (11px etiqueta, 12px campos) para maximizar espacio de tabla.
 60. Hardening de despacho WooCommerce: nuevo control por pasarela para elegir etapa de ejecución (`payment_complete`/`processing`/`completed`), bloqueo de envío real cuando el modo efectivo es `ValidateOnly`, y degradación a `pending_confirmation` cuando Ding responde `Complete` sin `TransferRef` confirmado (incluyendo `0`).
+61. Mejora UI en Editor shortcode dinámico: tabla de productos más compacta y legible al desglosar columnas y se eliminó la redirección automática al modal de edición de producto para no interrumpir el flujo de edición del shortcode.
 
 ## Hallazgos clave para futuras IA
 

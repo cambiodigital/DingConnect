@@ -49,6 +49,7 @@ class DC_Recargas_WooCommerce {
         add_action('woocommerce_before_calculate_totals', [$this, 'set_custom_price'], 20, 1);
         add_filter('woocommerce_get_item_data', [$this, 'display_cart_item_data'], 10, 2);
         add_filter('woocommerce_cart_item_name', [$this, 'custom_cart_item_name'], 10, 3);
+        add_filter('woocommerce_order_item_name', [$this, 'filter_order_item_name_branding'], 10, 3);
         add_filter('woocommerce_cart_item_thumbnail', [$this, 'suppress_recarga_cart_item_thumbnail'], 10, 3);
         add_filter('woocommerce_is_purchasable', [$this, 'force_recarga_product_purchasable'], 10, 2);
         add_filter('woocommerce_cart_item_is_purchasable', [$this, 'force_recarga_cart_item_purchasable'], 10, 3);
@@ -106,6 +107,9 @@ class DC_Recargas_WooCommerce {
         add_action('woocommerce_thankyou', [$this, 'render_thankyou_voucher_summary'], 25);
         add_filter('woocommerce_email_order_meta_fields', [$this, 'inject_voucher_meta_into_email'], 10, 3);
 
+        add_filter('woocommerce_customer_order_actions', [$this, 'filter_customer_order_actions'], 10, 2);
+        add_filter('woocommerce_my_account_my_orders_actions', [$this, 'filter_my_account_orders_actions'], 10, 2);
+
         // Admin order display
         add_action('woocommerce_after_order_itemmeta', [$this, 'display_order_item_recarga_meta'], 10, 3);
     }
@@ -115,17 +119,22 @@ class DC_Recargas_WooCommerce {
      * ------------------------------------------------------------- */
 
     private function get_or_create_base_product() {
+        $base_product_name = 'Recarga Internacional Cubakilos';
         $product_id = (int) get_option('dc_recargas_wc_product_id', 0);
 
         if ($product_id && get_post_status($product_id) === 'publish') {
             $existing = wc_get_product($product_id);
             if ($existing instanceof WC_Product_Simple) {
+                $current_name = (string) $existing->get_name();
+                if ($current_name === '' || stripos($current_name, 'DingConnect') !== false) {
+                    $existing->set_name($base_product_name);
+                }
                 // Keep base recarga product always purchasable for checkout/cart validation.
                 $existing->set_catalog_visibility('hidden');
                 $existing->set_virtual(true);
                 $existing->set_sold_individually(false);
                 $existing->set_regular_price('0');
-                $existing->save();
+                call_user_func([$existing, 'save']);
             }
 
             // Stock flags via meta to stay compatible with local WP stubs.
@@ -139,13 +148,13 @@ class DC_Recargas_WooCommerce {
         }
 
         $product = new WC_Product_Simple();
-        $product->set_name('Recarga Internacional DingConnect');
+        $product->set_name($base_product_name);
         $product->set_status('publish');
         $product->set_catalog_visibility('hidden');
         $product->set_regular_price('0');
         $product->set_virtual(true);
         $product->set_sold_individually(false);
-        $product_id = (int) $product->save();
+        $product_id = (int) call_user_func([$product, 'save']);
 
         update_post_meta($product_id, '_manage_stock', 'no');
         update_post_meta($product_id, '_stock_status', 'instock');
@@ -155,6 +164,23 @@ class DC_Recargas_WooCommerce {
 
         update_option('dc_recargas_wc_product_id', $product_id);
         return $product_id;
+    }
+
+    public function filter_order_item_name_branding($item_name, $item, $is_visible) {
+        $doing_ajax = function_exists('wp_doing_ajax') ? wp_doing_ajax() : (defined('DOING_AJAX') && DOING_AJAX);
+        if (is_admin() && !$doing_ajax) {
+            return $item_name;
+        }
+
+        if (!is_string($item_name) || $item_name === '') {
+            return $item_name;
+        }
+
+        if (stripos($item_name, 'DingConnect') === false) {
+            return $item_name;
+        }
+
+        return str_ireplace('DingConnect', 'Cubakilos', $item_name);
     }
 
     /* ---------------------------------------------------------------
@@ -533,7 +559,7 @@ class DC_Recargas_WooCommerce {
 
         $is_checkout_page = function_exists('is_checkout') && is_checkout();
         $wc_ajax = isset($_REQUEST['wc-ajax']) ? sanitize_key((string) wp_unslash($_REQUEST['wc-ajax'])) : '';
-        $is_checkout_ajax = in_array($wc_ajax, ['checkout', 'update_order_review'], true);
+        $is_checkout_ajax = ($wc_ajax === 'checkout');
 
         if (!$is_checkout_page && !$is_checkout_ajax) {
             return;
@@ -542,6 +568,9 @@ class DC_Recargas_WooCommerce {
         if (function_exists('session_status') && session_status() === PHP_SESSION_NONE) {
             @session_start();
             if (function_exists('session_status') && session_status() === PHP_SESSION_ACTIVE) {
+                if (function_exists('session_write_close')) {
+                    session_write_close();
+                }
                 $this->log_diagnostic('[DingConnect][checkout_env] php_session_iniciada_temprano_para_compatibilidad_checkout');
             }
         }
@@ -959,25 +988,25 @@ class DC_Recargas_WooCommerce {
     public function save_order_item_meta($item, $cart_item_key, $values, $order) {
         if (empty($values['dc_recarga'])) return;
 
-        $item->add_meta_data('_dc_recarga',           'yes', true);
-        $item->add_meta_data('_dc_account_number',    $values['dc_account_number'] ?? '', true);
-        $item->add_meta_data('_dc_country_iso',       $values['dc_country_iso'] ?? '', true);
-        $item->add_meta_data('_dc_sku_code',          $values['dc_sku_code'] ?? '', true);
-        $item->add_meta_data('_dc_send_value',        $values['dc_send_value'] ?? 0, true);
-        $item->add_meta_data('_dc_send_currency_iso', $values['dc_send_currency_iso'] ?? '', true);
-        $item->add_meta_data('_dc_public_price',      $values['dc_public_price'] ?? ($values['dc_send_value'] ?? 0), true);
-        $item->add_meta_data('_dc_public_currency_iso', $values['dc_public_currency_iso'] ?? ($values['dc_send_currency_iso'] ?? ''), true);
-        $item->add_meta_data('_dc_provider_name',     $values['dc_provider_name'] ?? '', true);
-        $item->add_meta_data('_dc_bundle_label',      $values['dc_bundle_label'] ?? '', true);
-        $item->add_meta_data('_dc_bundle_benefit',    $values['dc_bundle_benefit'] ?? '', true);
-        $item->add_meta_data('_dc_product_type',      $values['dc_product_type'] ?? '', true);
-        $item->add_meta_data('_dc_redemption_mechanism', $values['dc_redemption_mechanism'] ?? '', true);
-        $item->add_meta_data('_dc_lookup_bills_required', !empty($values['dc_lookup_bills_required']) ? 'yes' : '', true);
-        $item->add_meta_data('_dc_customer_care_number', $values['dc_customer_care_number'] ?? '', true);
-        $item->add_meta_data('_dc_is_range',          !empty($values['dc_is_range']) ? 'yes' : '', true);
-        $item->add_meta_data('_dc_flow_kind',         $values['dc_flow_kind'] ?? '', true);
-        $item->add_meta_data('_dc_bill_ref',          $values['dc_bill_ref'] ?? '', true);
-        $item->add_meta_data('_dc_settings',          !empty($values['dc_settings']) ? wp_json_encode($values['dc_settings']) : '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_recarga',           'yes', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_account_number',    $values['dc_account_number'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_country_iso',       $values['dc_country_iso'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_sku_code',          $values['dc_sku_code'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_send_value',        $values['dc_send_value'] ?? 0, true);
+        call_user_func([$item, 'add_meta_data'], '_dc_send_currency_iso', $values['dc_send_currency_iso'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_public_price',      $values['dc_public_price'] ?? ($values['dc_send_value'] ?? 0), true);
+        call_user_func([$item, 'add_meta_data'], '_dc_public_currency_iso', $values['dc_public_currency_iso'] ?? ($values['dc_send_currency_iso'] ?? ''), true);
+        call_user_func([$item, 'add_meta_data'], '_dc_provider_name',     $values['dc_provider_name'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_bundle_label',      $values['dc_bundle_label'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_bundle_benefit',    $values['dc_bundle_benefit'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_product_type',      $values['dc_product_type'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_redemption_mechanism', $values['dc_redemption_mechanism'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_lookup_bills_required', !empty($values['dc_lookup_bills_required']) ? 'yes' : '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_customer_care_number', $values['dc_customer_care_number'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_is_range',          !empty($values['dc_is_range']) ? 'yes' : '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_flow_kind',         $values['dc_flow_kind'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_bill_ref',          $values['dc_bill_ref'] ?? '', true);
+        call_user_func([$item, 'add_meta_data'], '_dc_settings',          !empty($values['dc_settings']) ? wp_json_encode($values['dc_settings']) : '', true);
     }
 
     /* ---------------------------------------------------------------
@@ -1072,7 +1101,7 @@ class DC_Recargas_WooCommerce {
             $available_ids = array_map('sanitize_key', array_keys($gateways));
             $this->log_diagnostic('[DingConnect][checkout_gateways] bloqueo: allowed_gateways sin coincidencias disponibles. allowed=' . implode(',', $allowed) . ' available=' . implode(',', $available_ids), true);
             if (function_exists('wc_add_notice')) {
-                $notice = __('No hay pasarelas habilitadas para completar recargas DingConnect. Contacta soporte antes de pagar.', 'dingconnect-recargas');
+                $notice = __('No hay pasarelas habilitadas para completar recargas. Contacta soporte antes de pagar.', 'dingconnect-recargas');
                 if (!function_exists('wc_has_notice') || !wc_has_notice($notice, 'error')) {
                     wc_add_notice($notice, 'error');
                 }
@@ -1396,7 +1425,7 @@ class DC_Recargas_WooCommerce {
             $this->api->log_operational_event('payment_stage_skipped', [
                 'status' => 'pending',
                 'order_id' => (int) $order->get_id(),
-                'payment_method' => (string) $order->get_payment_method(),
+                'payment_method' => (string) call_user_func([$order, 'get_payment_method']),
                 'raw_response' => [
                     'trigger_stage' => $trigger_stage,
                     'selected_stage' => $this->get_dispatch_stage_for_order($order),
@@ -1411,7 +1440,7 @@ class DC_Recargas_WooCommerce {
             $this->api->log_operational_event('payment_not_effective', [
                 'status' => 'pending',
                 'order_id' => (int) $order->get_id(),
-                'payment_method' => (string) $order->get_payment_method(),
+                'payment_method' => (string) call_user_func([$order, 'get_payment_method']),
                 'raw_response' => ['reason' => 'order_not_paid'],
             ]);
             return;
@@ -1420,7 +1449,7 @@ class DC_Recargas_WooCommerce {
         $this->api->log_operational_event('payment_status_changed', [
             'status' => 'success',
             'order_id' => (int) $order->get_id(),
-            'payment_method' => (string) $order->get_payment_method(),
+            'payment_method' => (string) call_user_func([$order, 'get_payment_method']),
             'raw_response' => [
                 'hook' => sanitize_key((string) $trigger_stage),
                 'order_status' => $this->get_order_status_slug($order),
@@ -1471,10 +1500,10 @@ class DC_Recargas_WooCommerce {
 
         if ($has_recargas) {
             if ($all_success && !$has_pending_retry) {
-                $order->update_meta_data('_dc_recargas_processed', current_time('mysql'));
-                $order->delete_meta_data('_dc_recargas_has_errors');
+                call_user_func([$order, 'update_meta_data'], '_dc_recargas_processed', current_time('mysql'));
+                call_user_func([$order, 'delete_meta_data'], '_dc_recargas_has_errors');
             } else {
-                $order->update_meta_data('_dc_recargas_has_errors', 'yes');
+                call_user_func([$order, 'update_meta_data'], '_dc_recargas_has_errors', 'yes');
             }
 
             if ($has_pending_retry) {
@@ -1484,7 +1513,7 @@ class DC_Recargas_WooCommerce {
             }
 
             $this->sync_order_status_with_recarga_outcome($order, sanitize_key((string) $trigger_stage));
-            $order->save();
+            call_user_func([$order, 'save']);
         }
     }
 
@@ -1519,20 +1548,20 @@ class DC_Recargas_WooCommerce {
         $sync_result = $this->sync_item_with_ding_status($order, $item);
         if (!empty($sync_result['success'])) {
             $this->sync_order_status_with_recarga_outcome($order, 'retry_sync_success');
-            $order->save();
+            call_user_func([$order, 'save']);
             return;
         }
 
         if (!empty($sync_result['pending'])) {
             $this->schedule_submitted_retry($order, $item, 'sync_on_retry');
             $this->sync_order_status_with_recarga_outcome($order, 'retry_sync_pending');
-            $order->save();
+            call_user_func([$order, 'save']);
             return;
         }
 
         $this->attempt_transfer_for_item($order, $item, false);
         $this->sync_order_status_with_recarga_outcome($order, 'retry_send_transfer');
-        $order->save();
+        call_user_func([$order, 'save']);
     }
 
     public function handle_order_terminal_failure($order_id) {
@@ -1573,7 +1602,7 @@ class DC_Recargas_WooCommerce {
 
         if ($updated) {
             $order->add_order_note('DingConnect: reintentos cancelados para recargas pendientes por cambio de estado del pedido a failed/cancelled/refunded.');
-            $order->save();
+            call_user_func([$order, 'save']);
         }
     }
 
@@ -1648,7 +1677,7 @@ class DC_Recargas_WooCommerce {
         if ($processed > 0) {
             $order->add_order_note(sprintf('Reconciliacion manual ejecutada para %d item(s) DingConnect.', $processed));
             $this->sync_order_status_with_recarga_outcome($order, 'manual_reconcile');
-            $order->save();
+            call_user_func([$order, 'save']);
         } else {
             $order->add_order_note('DingConnect: reconciliacion manual sin items pendientes para procesar.');
         }
@@ -1744,64 +1773,197 @@ class DC_Recargas_WooCommerce {
         $options = $this->api->get_options();
         $voucher_v2_enabled = !empty($options['voucher_v2_enabled']);
 
-        if ($voucher_v2_enabled) {
-            $has_dc_items = false;
-            $has_pending = $this->order_has_pending_recargas($order);
-            $has_errors = $this->order_has_error_recargas($order);
+        $has_pending = $this->order_has_pending_recargas($order);
+        $has_errors = $this->order_has_error_recargas($order);
+        $has_dc_items = false;
 
-            ob_start();
-            echo '<section class="woocommerce-order-details" style="margin-top:22px;">';
-            echo '<h2>Resumen final de tu compra DingConnect</h2>';
-            if ($has_pending) {
-                echo '<p style="margin:0 0 14px;color:#7c2d12;">Tu pedido contiene operaciones pendientes en DingConnect. No repitas la compra mientras el estado siga Submitted o Pending; el sistema seguira conciliando segun la politica configurada.</p>';
-            }
-            if ($has_errors) {
-                echo '<p style="margin:0 0 14px;color:#991b1b;">Una o más recargas no pudieron confirmarse. No repitas la compra de inmediato: revisa tu correo y, si el problema persiste, contacta soporte indicando tu número de pedido.</p>';
-            }
-            
+        ob_start();
+        
+        // Contenedor del Modal
+        echo '<div id="dc-voucher-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:99999; align-items:center; justify-content:center;">';
+        echo '<div class="dc-voucher-modal-content" style="background:#fff; padding:25px; border-radius:12px; max-width:500px; width:90%; max-height:90vh; overflow-y:auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position:relative;">';
+        echo '<button onclick="document.getElementById(\'dc-voucher-modal\').style.display=\'none\'" style="position:absolute; top:15px; right:15px; background:none; border:none; font-size:24px; cursor:pointer; color:#64748b;">&times;</button>';
+        
+        echo '<div class="dc-voucher-modal-title" style="text-align:center; margin-bottom:20px;">';
+        echo '<h2 style="margin:0; color:#1e293b; font-size:1.5em;">Resumen final de tu compra Cubakilos</h2>';
+        echo '</div>';
+
+        if ($has_pending) {
+            echo '<p class="dc-voucher-modal-warning" style="margin:0 0 14px;color:#7c2d12;background:#ffedd5;padding:10px;border-radius:6px;">Tu pedido contiene operaciones pendientes. No repitas la compra mientras el estado siga Submitted o Pending; el sistema seguirá conciliando según la política configurada.</p>';
+        }
+        if ($has_errors) {
+            echo '<p class="dc-voucher-modal-warning" style="margin:0 0 14px;color:#991b1b;background:#fee2e2;padding:10px;border-radius:6px;">Una o más recargas no pudieron confirmarse. No repitas la compra de inmediato: revisa tu correo y, si el problema persiste, contacta soporte indicando tu número de pedido.</p>';
+        }
+
+        if ($voucher_v2_enabled) {
             foreach ($order->get_items() as $item) {
                 if ($item->get_meta('_dc_recarga') === 'yes') {
                     $has_dc_items = true;
                     $voucher = $this->voucher_service->get_item_voucher_v2($item);
                     if ($voucher) {
+                        if (!isset($voucher['transaction_id']) || (string) ($voucher['transaction_id'] ?? '') === '') {
+                            $voucher['transaction_id'] = (string) ($voucher['transfer_ref'] ?? $item->get_meta('_dc_transfer_ref'));
+                        }
+                        if (!isset($voucher['public_price']) || (float) ($voucher['public_price'] ?? 0) <= 0) {
+                            $voucher['public_price'] = (float) $item->get_meta('_dc_public_price');
+                        }
+                        if (!isset($voucher['public_currency']) || (string) ($voucher['public_currency'] ?? '') === '') {
+                            $voucher['public_currency'] = (string) $item->get_meta('_dc_public_currency_iso');
+                        }
+                        if (!isset($voucher['amount_sent_currency']) || (string) ($voucher['amount_sent_currency'] ?? '') === '') {
+                            $voucher['amount_sent_currency'] = (string) $item->get_meta('_dc_send_currency_iso');
+                        }
+                        if (!isset($voucher['country_iso']) || (string) ($voucher['country_iso'] ?? '') === '') {
+                            $voucher['country_iso'] = (string) $item->get_meta('_dc_country_iso');
+                        }
+                        if (!isset($voucher['bundle']) || (string) ($voucher['bundle'] ?? '') === '') {
+                            $voucher['bundle'] = (string) $item->get_meta('_dc_bundle_label');
+                        }
                         echo $this->voucher_renderer->render_html($voucher);
                     }
                 }
             }
-            echo '</section>';
-            
-            if ($has_dc_items) {
-                echo ob_get_clean();
-            } else {
-                ob_end_clean();
+        } else {
+            foreach ($order->get_items() as $item) {
+                if ($item->get_meta('_dc_recarga') !== 'yes') {
+                    continue;
+                }
+                $payload = $this->get_item_voucher_payload($item);
+                $public_price = (float) $item->get_meta('_dc_public_price');
+                $public_currency = (string) $item->get_meta('_dc_public_currency_iso');
+                $send_currency = (string) $item->get_meta('_dc_send_currency_iso');
+                if ($public_price <= 0) {
+                    $public_price = (float) $item->get_meta('_dc_send_value');
+                }
+                if ($public_currency === '') {
+                    $public_currency = $send_currency;
+                }
+                $voucher = [
+                    'contract_version' => 'voucher.legacy',
+                    'transaction_id' => (string) ($payload['transaction_id'] ?? $item->get_meta('_dc_transfer_ref')),
+                    'status' => (string) ($payload['status'] ?? $item->get_meta('_dc_transfer_status')),
+                    'operator' => (string) ($payload['operator'] ?? $item->get_meta('_dc_provider_name')),
+                    'beneficiary' => (string) ($payload['beneficiary_phone'] ?? $item->get_meta('_dc_account_number')),
+                    'public_price' => $public_price,
+                    'public_currency' => $public_currency,
+                    'amount_sent' => (float) $item->get_meta('_dc_send_value'),
+                    'amount_sent_currency' => $send_currency,
+                    'amount_received' => (float) ($payload['amount_received'] ?? 0),
+                    'country_iso' => (string) $item->get_meta('_dc_country_iso'),
+                    'bundle' => (string) $item->get_meta('_dc_bundle_label'),
+                    'timestamp' => (string) ($payload['timestamp'] ?? current_time('mysql')),
+                    'receipt_text' => (string) ($payload['receipt_text'] ?? ''),
+                    'receipt_params' => (array) ($payload['receipt_params'] ?? []),
+                    'bill_ref' => (string) ($payload['bill_ref'] ?? $item->get_meta('_dc_bill_ref')),
+                ];
+
+                $has_dc_items = true;
+                echo $this->voucher_renderer->render_html($voucher);
             }
-            return;
         }
 
-        $voucher_rows = $this->collect_order_voucher_rows($order);
-        if (empty($voucher_rows)) {
-            return;
+        echo '<div class="dc-voucher-modal-actions" style="text-align:center; margin-top:20px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">';
+        echo '<button onclick="document.getElementById(\'dc-voucher-modal\').style.display=\'none\'" style="background:#2563eb; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:600; cursor:pointer;">Cerrar</button>';
+        echo '<button onclick="window.print()" style="background:#475569; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:600; cursor:pointer;">Guardar PDF</button>';
+        echo '</div>';
+
+        echo '</div></div>';
+
+        // Estilos para la impresión del modal como PDF
+        echo '<style>
+        @media print {
+            @page { size: A6 portrait; margin: 8mm; }
+
+            html, body { height: auto !important; }
+            body { margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+            body * { visibility: hidden; }
+            #dc-voucher-modal, #dc-voucher-modal * { visibility: visible; }
+
+            #dc-voucher-modal {
+                position: static !important;
+                left: auto !important;
+                top: auto !important;
+                width: auto !important;
+                height: auto !important;
+                background: transparent !important;
+                display: block !important;
+                padding: 0 !important;
+            }
+
+            .dc-voucher-modal-content {
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                max-height: none !important;
+                overflow: visible !important;
+                padding: 0 !important;
+
+                width: 89mm !important;
+                max-width: 89mm !important;
+                margin: 0 auto !important;
+            }
+
+            .dc-voucher-modal-title,
+            .dc-voucher-modal-warning,
+            .dc-voucher-modal-actions,
+            #dc-voucher-modal button {
+                display: none !important;
+            }
+
+            .dc-voucher-container {
+                margin-top: 0 !important;
+                padding: 0 !important;
+                border: none !important;
+                background: #fff !important;
+                border-radius: 0 !important;
+                break-after: page;
+                page-break-after: always;
+            }
+            .dc-voucher-container:last-of-type {
+                break-after: auto;
+                page-break-after: auto;
+            }
+
+            .dc-voucher-container h3 {
+                margin: 0 0 8px 0 !important;
+                font-size: 14px !important;
+                letter-spacing: 0 !important;
+            }
+
+            .dc-voucher-container table { font-size: 12px !important; }
+            .dc-voucher-container th {
+                width: 45% !important;
+                padding: 6px 0 !important;
+                color: #475569 !important;
+                border-bottom: 1px solid #e2e8f0 !important;
+            }
+            .dc-voucher-container td {
+                padding: 6px 0 !important;
+                border-bottom: 1px solid #e2e8f0 !important;
+            }
         }
+        </style>';
 
-        $has_pending = $this->order_has_pending_recargas($order);
-        $has_errors = $this->order_has_error_recargas($order);
+        // Script para abrir automáticamente
+        echo '<script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var modal = document.getElementById("dc-voucher-modal");
+            if (modal) {
+                modal.style.display = "flex";
+            }
+        });
+        </script>';
 
+        // Botón en la página para reabrir
         echo '<section class="woocommerce-order-details" style="margin-top:22px;">';
-        echo '<h2>Resumen final de tu compra DingConnect</h2>';
-        if ($has_pending) {
-            echo '<p style="margin:0 0 14px;color:#7c2d12;">Tu pedido contiene operaciones pendientes en DingConnect. No repitas la compra mientras el estado siga Submitted o Pending; el sistema seguira conciliando segun la politica configurada.</p>';
-        }
-        if ($has_errors) {
-            echo '<p style="margin:0 0 14px;color:#991b1b;">Una o más recargas no pudieron confirmarse. No repitas la compra de inmediato: revisa tu correo y, si el problema persiste, contacta soporte indicando tu número de pedido.</p>';
-        }
-        echo '<ul class="woocommerce-order-overview woocommerce-thankyou-order-details order_details">';
-        foreach ($voucher_rows as $row) {
-            echo '<li class="woocommerce-order-overview__item">';
-            echo esc_html($row);
-            echo '</li>';
-        }
-        echo '</ul>';
+        echo '<button onclick="document.getElementById(\'dc-voucher-modal\').style.display=\'flex\'" class="button alt" style="width:100%; padding:15px; font-size:1.1em; border-radius:8px;">Ver Resumen de Compra Cubakilos</button>';
         echo '</section>';
+
+        $html = ob_get_clean();
+
+        if ($has_dc_items) {
+            echo $html;
+        }
     }
 
     public function inject_voucher_meta_into_email($fields, $sent_to_admin, $order) {
@@ -1886,7 +2048,7 @@ class DC_Recargas_WooCommerce {
             $fingerprint['error_code'] = (string) ($err_data['code'] ?? 'validation_failed');
         }
         if (is_object($item) && method_exists($item, 'update_meta_data')) {
-            $item->update_meta_data('_dc_validation_fingerprint', wp_json_encode($fingerprint));
+            call_user_func([$item, 'update_meta_data'], '_dc_validation_fingerprint', wp_json_encode($fingerprint));
         }
 
         return $result;
@@ -1940,13 +2102,13 @@ class DC_Recargas_WooCommerce {
 
         $existing_original = $item->get_meta('_dc_send_value_original');
         if ((string) $existing_original === '') {
-            $item->update_meta_data('_dc_send_value_original', $original_send_value);
+            call_user_func([$item, 'update_meta_data'], '_dc_send_value_original', $original_send_value);
         }
-        $item->update_meta_data('_dc_send_value', $bundle_send_value);
+        call_user_func([$item, 'update_meta_data'], '_dc_send_value', $bundle_send_value);
         if ($normalized_currency !== '') {
-            $item->update_meta_data('_dc_send_currency_iso', $normalized_currency);
+            call_user_func([$item, 'update_meta_data'], '_dc_send_currency_iso', $normalized_currency);
         }
-        $item->save();
+        call_user_func([$item, 'save']);
 
         $order->add_order_note(sprintf(
             'DingConnect: normalización de monto fijo aplicada en item #%d (SKU: %s). Monto pedido: %.2f -> Monto enviado a Ding: %.2f.',
@@ -2049,8 +2211,10 @@ class DC_Recargas_WooCommerce {
 
         $attempt = (int) $item->get_meta('_dc_retry_attempts');
         $attempt++;
-        $item->update_meta_data('_dc_retry_attempts', $attempt);
-        $item->update_meta_data('_dc_last_attempt_at', current_time('mysql'));
+        call_user_func([$item, 'update_meta_data'], '_dc_retry_attempts', $attempt);
+        call_user_func([$item, 'update_meta_data'], '_dc_last_attempt_at', current_time('mysql'));
+        call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'processing');
+        call_user_func([$item, 'save']);
 
         $order->add_order_note(sprintf(
             'DingConnect: intento #%d para item #%d (telefono: %s, sku: %s).',
@@ -2076,13 +2240,13 @@ class DC_Recargas_WooCommerce {
         if (is_wp_error($pre_validation)) {
             $val_data    = $pre_validation->get_error_data();
             $val_code    = (string) ($val_data['code'] ?? 'amount_validation_failed');
-            $item->update_meta_data('_dc_transfer_status', 'failed_permanent');
-            $item->update_meta_data('_dc_transfer_error', $pre_validation->get_error_message());
-            $item->update_meta_data('_dc_transfer_error_code', $val_code);
-            $item->update_meta_data('_dc_transfer_http_status', '400');
-            $item->update_meta_data('_dc_transfer_error_context', 'local_validation');
-            $item->delete_meta_data('_dc_next_retry_at');
-            $item->save();
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'failed_permanent');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', $pre_validation->get_error_message());
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code', $val_code);
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_http_status', '400');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_context', 'local_validation');
+            call_user_func([$item, 'delete_meta_data'], '_dc_next_retry_at');
+            call_user_func([$item, 'save']);
 
             $order->add_order_note(sprintf(
                 'Recarga BLOQUEADA localmente para %s (SKU: %s), intento %d — Monto inválido, no se contactó al proveedor. %s | Valor: %.2f | Código: %s [sin reintento automático]',
@@ -2125,13 +2289,13 @@ class DC_Recargas_WooCommerce {
         ];
 
         if ($this->api->is_effective_validate_only($payload)) {
-            $item->update_meta_data('_dc_transfer_status', 'validate_only');
-            $item->update_meta_data('_dc_transfer_error', 'Despacho omitido: el plugin está configurado en modo ValidateOnly y no ejecuta recargas reales.');
-            $item->update_meta_data('_dc_transfer_error_code', 'validate_only_mode');
-            $item->update_meta_data('_dc_transfer_error_context', 'local_policy');
-            $item->update_meta_data('_dc_distributor_ref', $distributor_ref);
-            $item->delete_meta_data('_dc_next_retry_at');
-            $item->save();
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'validate_only');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', 'Despacho omitido: el plugin está configurado en modo ValidateOnly y no ejecuta recargas reales.');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code', 'validate_only_mode');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_context', 'local_policy');
+            call_user_func([$item, 'update_meta_data'], '_dc_distributor_ref', $distributor_ref);
+            call_user_func([$item, 'delete_meta_data'], '_dc_next_retry_at');
+            call_user_func([$item, 'save']);
 
             $order->add_order_note(sprintf(
                 'Recarga OMITIDA para %s (SKU: %s), intento %d: modo ValidateOnly activo. No se envió recarga real a DingConnect.',
@@ -2163,9 +2327,9 @@ class DC_Recargas_WooCommerce {
 
         if (is_wp_error($response)) {
             $is_non_retryable = $this->is_non_retryable_error($response);
-            $item->update_meta_data('_dc_transfer_status', 'error');
-            $item->update_meta_data('_dc_transfer_error', $response->get_error_message());
-            $item->update_meta_data('_dc_distributor_ref', $distributor_ref);
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'error');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', $response->get_error_message());
+            call_user_func([$item, 'update_meta_data'], '_dc_distributor_ref', $distributor_ref);
 
             // Fase 1: Enriquecer metadatos con información diagnóstica del error del proveedor
             $error_data          = $response->get_error_data();
@@ -2173,11 +2337,11 @@ class DC_Recargas_WooCommerce {
             $ding_error_code     = sanitize_text_field((string) ($error_data['ding_error_code'] ?? ''));
             $ding_error_context  = sanitize_text_field((string) ($error_data['ding_error_context'] ?? ''));
             $error_transfer_ref  = sanitize_text_field((string) ($error_data['transfer_ref'] ?? ''));
-            $item->update_meta_data('_dc_transfer_http_status',    $http_status_code > 0 ? (string) $http_status_code : '');
-            $item->update_meta_data('_dc_transfer_error_code',     $ding_error_code);
-            $item->update_meta_data('_dc_transfer_error_context',  $ding_error_context);
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_http_status',    $http_status_code > 0 ? (string) $http_status_code : '');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code',     $ding_error_code);
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_context',  $ding_error_context);
             if ($error_transfer_ref !== '') {
-                $item->update_meta_data('_dc_transfer_ref', $error_transfer_ref);
+                call_user_func([$item, 'update_meta_data'], '_dc_transfer_ref', $error_transfer_ref);
             }
 
             $retry_budget = $this->get_retry_attempt_limit();
@@ -2185,16 +2349,16 @@ class DC_Recargas_WooCommerce {
 
             if ($can_schedule_retry) {
                 $retry_ts = time() + (60 * $this->get_retry_delay_minutes($attempt));
-                $item->update_meta_data('_dc_transfer_status', 'pending_retry');
-                $item->update_meta_data('_dc_next_retry_at', gmdate('Y-m-d H:i:s', $retry_ts));
+                call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'pending_retry');
+                call_user_func([$item, 'update_meta_data'], '_dc_next_retry_at', gmdate('Y-m-d H:i:s', $retry_ts));
                 wp_clear_scheduled_hook('dc_recargas_retry_transfer', [(int) $order->get_id(), (int) $item->get_id()]);
                 wp_schedule_single_event($retry_ts, 'dc_recargas_retry_transfer', [(int) $order->get_id(), (int) $item->get_id()]);
             } elseif ($is_non_retryable) {
-                $item->update_meta_data('_dc_transfer_status', 'failed_permanent');
-                $item->delete_meta_data('_dc_next_retry_at');
+                call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'failed_permanent');
+                call_user_func([$item, 'delete_meta_data'], '_dc_next_retry_at');
             }
 
-            $item->save();
+            call_user_func([$item, 'save']);
             $order->add_order_note(sprintf(
                 'Recarga FALLIDA para %s (SKU: %s), intento %d: %s | HTTP=%s | Code=%s | Context=%s | DistRef=%s | TransRef=%s%s',
                 $account_number,
@@ -2249,11 +2413,11 @@ class DC_Recargas_WooCommerce {
         $is_pending = $this->is_pending_transfer_status($snapshot['status']) || ($is_status_success && !$has_confirmed_ref);
 
         if ($is_status_success && !$has_confirmed_ref) {
-            $item->update_meta_data('_dc_transfer_status', 'pending_confirmation');
-            $item->update_meta_data('_dc_transfer_error', 'Estado exitoso sin referencia de transferencia confirmada. Se requiere conciliación por ListTransferRecords.');
-            $item->update_meta_data('_dc_transfer_error_code', 'missing_confirmed_transfer_ref');
-            $item->update_meta_data('_dc_transfer_error_context', 'post_dispatch_validation');
-            $item->save();
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'pending_confirmation');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', 'Estado exitoso sin referencia de transferencia confirmada. Se requiere conciliación por ListTransferRecords.');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code', 'missing_confirmed_transfer_ref');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_context', 'post_dispatch_validation');
+            call_user_func([$item, 'save']);
         }
 
         if ($is_pending && !$manual) {
@@ -2374,11 +2538,11 @@ class DC_Recargas_WooCommerce {
         $is_now_pending = $this->is_pending_transfer_status($snapshot['status']) || ($is_status_success && !$has_confirmed_ref);
 
         if ($is_status_success && !$has_confirmed_ref) {
-            $item->update_meta_data('_dc_transfer_status', 'pending_confirmation');
-            $item->update_meta_data('_dc_transfer_error', 'Estado exitoso sin referencia de transferencia confirmada. Se requiere conciliación por ListTransferRecords.');
-            $item->update_meta_data('_dc_transfer_error_code', 'missing_confirmed_transfer_ref');
-            $item->update_meta_data('_dc_transfer_error_context', 'sync_validation');
-            $item->save();
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'pending_confirmation');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error', 'Estado exitoso sin referencia de transferencia confirmada. Se requiere conciliación por ListTransferRecords.');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_code', 'missing_confirmed_transfer_ref');
+            call_user_func([$item, 'update_meta_data'], '_dc_transfer_error_context', 'sync_validation');
+            call_user_func([$item, 'save']);
         }
 
         if ($snapshot['status'] !== $previous_status || $applied) {
@@ -2442,9 +2606,9 @@ class DC_Recargas_WooCommerce {
             $this->format_recarga_summary_text($summary)
         );
 
-        $order->update_meta_data('_dc_recargas_status_summary', wp_json_encode($summary));
-        $order->update_meta_data('_dc_recargas_status_context', sanitize_text_field((string) $context));
-        $order->update_meta_data('_dc_recargas_status_synced_at', current_time('mysql'));
+        call_user_func([$order, 'update_meta_data'], '_dc_recargas_status_summary', wp_json_encode($summary));
+        call_user_func([$order, 'update_meta_data'], '_dc_recargas_status_context', sanitize_text_field((string) $context));
+        call_user_func([$order, 'update_meta_data'], '_dc_recargas_status_synced_at', current_time('mysql'));
 
         if ($current_status !== $target_status) {
             $this->update_order_status_slug($order, $target_status, $reason);
@@ -2544,7 +2708,7 @@ class DC_Recargas_WooCommerce {
         $options = $this->api->get_options();
         $fallback = $this->sanitize_dispatch_stage((string) ($options['woo_dispatch_stage_default'] ?? 'payment_complete'));
         $map = (array) ($options['woo_dispatch_stage_by_gateway'] ?? []);
-        $payment_method = sanitize_key((string) ($order instanceof WC_Order ? $order->get_payment_method() : ''));
+        $payment_method = sanitize_key((string) ($order instanceof WC_Order ? call_user_func([$order, 'get_payment_method']) : ''));
         if ($payment_method === '') {
             return $fallback;
         }
@@ -2650,10 +2814,10 @@ class DC_Recargas_WooCommerce {
                     'customer_care_number' => (string) $item->get_meta('_dc_customer_care_number'),
                 ];
                 
-                $item->update_meta_data('_dc_voucher_payload', wp_json_encode($voucher_payload));
-                $item->update_meta_data('_dc_voucher_payload_v2', wp_json_encode($voucher_v2));
-                $item->update_meta_data('_dc_voucher_hash', $new_hash);
-                $item->save();
+                call_user_func([$item, 'update_meta_data'], '_dc_voucher_payload', wp_json_encode($voucher_payload));
+                call_user_func([$item, 'update_meta_data'], '_dc_voucher_payload_v2', wp_json_encode($voucher_v2));
+                call_user_func([$item, 'update_meta_data'], '_dc_voucher_hash', $new_hash);
+                call_user_func([$item, 'save']);
                 
                 return true;
             } finally {
@@ -2748,7 +2912,7 @@ class DC_Recargas_WooCommerce {
                 }
             }
 
-            $order->save();
+            call_user_func([$order, 'save']);
             $processed++;
         }
 
@@ -2818,7 +2982,7 @@ class DC_Recargas_WooCommerce {
               AND (" . implode(' OR ', $conditions) . ')';
 
         $prepared = $wpdb->prepare($sql, $params);
-        $rows = $wpdb->get_results($prepared, ARRAY_A);
+        $rows = $wpdb->get_results($prepared, 'ARRAY_A');
 
         $normalized = [];
         foreach ((array) $rows as $row) {
@@ -2998,9 +3162,9 @@ class DC_Recargas_WooCommerce {
     }
 
     private function escalate_submitted_item($order, $item, $reason = '') {
-        $item->update_meta_data('_dc_transfer_status', 'escalado_soporte');
-        $item->delete_meta_data('_dc_next_retry_at');
-        $item->save();
+        call_user_func([$item, 'update_meta_data'], '_dc_transfer_status', 'escalado_soporte');
+        call_user_func([$item, 'delete_meta_data'], '_dc_next_retry_at');
+        call_user_func([$item, 'save']);
 
         wp_clear_scheduled_hook('dc_recargas_retry_transfer', [(int) $order->get_id(), (int) $item->get_id()]);
 
@@ -3081,10 +3245,11 @@ class DC_Recargas_WooCommerce {
     }
 
     private function get_item_copy_title($flow_kind, $status) {
+        $status = strtolower(trim((string) $status));
         $state_key = 'error';
         if ($this->is_successful_transfer_status($status)) {
             $state_key = 'success';
-        } elseif ($this->is_pending_transfer_status($status) || in_array($status, ['pending_retry', 'escalado_soporte'], true)) {
+        } elseif ($this->is_pending_transfer_status($status) || in_array($status, ['pending_retry', 'escalado_soporte', 'not_started', ''], true)) {
             $state_key = 'pending';
         }
 
@@ -3133,6 +3298,56 @@ class DC_Recargas_WooCommerce {
         return '';
     }
 
+    public function filter_customer_order_actions($actions, $order) {
+        if (!is_array($actions) || empty($actions) || !($order instanceof WC_Order)) {
+            return $actions;
+        }
+
+        if (!$order->is_paid()) {
+            return $actions;
+        }
+
+        if (!$this->order_has_recargas($order)) {
+            return $actions;
+        }
+
+        return [];
+    }
+
+    public function filter_my_account_orders_actions($actions, $order) {
+        if (!is_array($actions) || empty($actions) || !($order instanceof WC_Order)) {
+            return $actions;
+        }
+
+        if (!$order->is_paid()) {
+            return $actions;
+        }
+
+        if (!$this->order_has_recargas($order)) {
+            return $actions;
+        }
+
+        return [];
+    }
+
+    private function order_has_recargas($order) {
+        if (!($order instanceof WC_Order)) {
+            return false;
+        }
+
+        foreach ($order->get_items() as $item) {
+            if (!($item instanceof WC_Order_Item_Product)) {
+                continue;
+            }
+
+            if ($item->get_meta('_dc_recarga') === 'yes') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function order_has_pending_recargas($order) {
         foreach ($order->get_items() as $item) {
             if ($item->get_meta('_dc_recarga') !== 'yes') {
@@ -3175,12 +3390,12 @@ class DC_Recargas_WooCommerce {
             $provider_ref = $this->get_item_receipt_param($payload, 'providerRef');
             $bill_ref = sanitize_text_field((string) ($payload['bill_ref'] ?? ''));
             $title = $this->get_item_copy_title($flow_kind, strtolower($status));
+            $display_status = $status !== '' ? $status : 'PROCESANDO';
             $parts = [
                 $title . ': ' . trim($provider . ' ' . $phone),
                 (string) $item->get_meta('_dc_bundle_label'),
-                $status !== '' ? $status : 'PENDING',
+                $display_status,
                 sprintf('Precio %s %.2f', $public_currency !== '' ? $public_currency : $send_currency, $public_amount > 0 ? $public_amount : $send_amount),
-                sprintf('Operación %s %.2f', $send_currency, $send_amount),
             ];
 
             if ($bill_ref !== '') {

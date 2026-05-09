@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
     if (typeof DC_RECARGAS_DATA === 'undefined') return;
 
     function initApp(app) {
@@ -414,7 +414,7 @@
         }
 
         var mapped = {
-            InsufficientBalance: 'No hay saldo suficiente en DingConnect para completar esta operación.',
+            InsufficientBalance: 'Saldo insuficiente para completar esta operación.',
             AccountNumberInvalid: 'El número no es válido para este producto.',
             RechargeNotAllowed: 'La recarga no está permitida para esta cuenta o producto.',
             ProviderError: 'El proveedor rechazó temporalmente la solicitud. Intenta de nuevo en unos minutos.',
@@ -925,7 +925,7 @@
                     + '<label class="dc-dynamic-label" for="dc-setting-' + escapeHtml(String(definition.Name)) + '">' + escapeHtml(label) + (definition.IsMandatory ? ' *' : '') + '</label>'
                     + '<input id="dc-setting-' + escapeHtml(String(definition.Name)) + '" class="dc-dynamic-input" type="text" data-setting-name="' + escapeHtml(String(definition.Name)) + '" placeholder="' + escapeHtml(label) + '">';
             });
-            html += '<div class="dc-dynamic-hint">Usaremos estos datos exactamente como los exige DingConnect para el producto seleccionado.</div></div>';
+            html += '<div class="dc-dynamic-hint">Usaremos estos datos exactamente como los requiere el proveedor para el producto seleccionado.</div></div>';
         }
 
         if (bundle.LookupBillsRequired) {
@@ -1077,7 +1077,7 @@
             state.lastSearchAt = Date.now();
 
             if (!res.ok) {
-                setFeedback('⚠️ Sin conexión a DingConnect. Mostrando catálogo guardado.', 'warning');
+                setFeedback('⚠️ Sin conexión al proveedor. Mostrando catálogo guardado.', 'warning');
             }
 
             showPackageStage();
@@ -1085,7 +1085,7 @@
         } catch (err) {
             state.bundles = [];
             resetPackageStage(true);
-            setFeedback(err.message || 'No se pudo consultar DingConnect.', 'error');
+            setFeedback(err.message || 'No se pudo consultar el servicio de recarga.', 'error');
         } finally {
             state.inFlightSearchKey = '';
             loadingEl.hidden = true;
@@ -1365,7 +1365,7 @@
                     nextTitle: 'Siguiente paso',
                     nextBody: 'No repitas la compra mientras el estado siga pendiente. Espera la conciliacion final porque el importe ya fue enviado al proveedor.',
                     confirmLabel: 'Importe',
-                    confirmValue: 'El valor estimado puede quedar pendiente hasta que DingConnect cierre la operacion con el proveedor.',
+                    confirmValue: 'El valor estimado puede quedar pendiente hasta que el proveedor cierre la operación.',
                 },
                 error: {
                     title: 'Recarga movil no confirmada',
@@ -1740,7 +1740,7 @@
         };
 
         confirmBtn.textContent = 'Procesando...';
-        setFeedbackConfirm('Enviando operación a DingConnect...', 'info');
+        setFeedbackConfirm('Enviando operación de recarga...', 'info');
 
         try {
             var transferRes = await fetchJson('/transfer', {

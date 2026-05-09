@@ -129,6 +129,8 @@ if (!class_exists('WP_REST_Request')) {
     class WP_REST_Request {
         public function get_param($key) { return null; }
         public function get_json_params() { return []; }
+        public function get_header($key) { return null; }
+        public function get_body() { return ''; }
     }
 }
 
@@ -206,6 +208,7 @@ if (!class_exists('WC_Customer')) {
 
 if (!class_exists('WC_Order_Item_Product')) {
     class WC_Order_Item_Product {
+        public function get_id() { return 0; }
         public function get_product_id() { return 0; }
         public function get_meta($key = '', $single = true) { return null; }
         public function add_meta_data($key, $value, $unique = false) {}

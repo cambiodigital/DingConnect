@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voucher PDF — Opciones de Layout</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --panel: #111a2b;
+        --muted: #8aa0c7;
+        --text: #e8f0ff;
+        --border: rgba(255, 255, 255, 0.14);
+        --accent: #59ffa1;
+        --accent2: #7db2ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif;
+        background: radial-gradient(1200px 800px at 30% 10%, #102046, var(--bg));
+        color: var(--text);
+      }
+      header {
+        padding: 24px 18px 10px;
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      p.subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.35;
+      }
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 14px 18px 28px;
+      }
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      @media (max-width: 1060px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: rgba(17, 26, 43, 0.72);
+        backdrop-filter: blur(8px);
+        border-radius: 14px;
+        overflow: hidden;
+      }
+      .card header {
+        padding: 14px 14px 10px;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        padding: 6px 10px;
+        border-radius: 999px;
+        color: #d8e6ff;
+        font-size: 12px;
+      }
+      .tag strong {
+        color: var(--accent);
+      }
+      .card .content {
+        display: grid;
+        grid-template-columns: 1fr;
+        padding: 0 14px 14px;
+        gap: 10px;
+      }
+      .desc {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .mock {
+        border: 1px dashed rgba(255, 255, 255, 0.18);
+        background: rgba(0, 0, 0, 0.18);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .mock .paper {
+        background: #fff;
+        color: #101010;
+        border-radius: 10px;
+        padding: 12px;
+        margin: 0 auto;
+        box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+      }
+      .paper .muted {
+        color: rgba(16, 16, 16, 0.65);
+      }
+      .paper .hr {
+        border-top: 1px dashed rgba(16, 16, 16, 0.35);
+        margin: 10px 0;
+      }
+      .paper h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 12px;
+        line-height: 1.35;
+        margin: 6px 0;
+      }
+      .row strong {
+        font-weight: 700;
+      }
+      .qr {
+        width: 82px;
+        height: 82px;
+        border: 1px solid rgba(16, 16, 16, 0.35);
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-size: 10px;
+        color: rgba(16, 16, 16, 0.7);
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.2);
+        color: var(--text);
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .btn.primary {
+        border-color: rgba(89, 255, 161, 0.45);
+        background: rgba(89, 255, 161, 0.12);
+      }
+      .selected {
+        outline: 2px solid rgba(89, 255, 161, 0.6);
+        outline-offset: 2px;
+      }
+      footer {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 18px 28px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      code {
+        color: #d8e6ff;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Voucher “Guardar PDF” — opciones de layout</h1>
+      <p class="subtitle">
+        Selecciona el formato que prefieres para que el PDF salga como un voucher pequeño, bien organizado y fácil de imprimir.
+      </p>
+    </header>
+
+    <main>
+      <div class="grid" id="grid">
+        <section class="card" data-choice="A">
+          <header>
+            <span class="tag"><strong>A</strong> Ticket térmico 80&nbsp;mm (recomendado)</span>
+          </header>
+          <div class="content">
+            <p class="desc">
+              Diseño tipo “voucher real” (como impresora térmica). Muy compacto, jerarquía clara, ideal para guardar como PDF y enviar/archivar.
+            </p>
+            <div class="mock">
+              <div class="paper" style="max-width: 320px; border-radius: 6px">
+                <h3>Recarga Internacional</h3>
+                <div class="row"><span class="muted">Pedido</span><strong>#12345</strong></div>
+                <div class="row"><span class="muted">Fecha</span><strong>2026-05-08</strong></div>
+                <div class="hr"></div>
+                <div class="row"><span class="muted">Destino</span><strong>+53 5xx xxx xxx</strong></div>
+                <div class="row"><span class="muted">Producto</span><strong>Mobile Topup</strong></div>
+                <div class="row"><span class="muted">Monto</span><strong>10.00</strong></div>
+                <div class="hr"></div>
+                <div class="row"><span class="muted">Total pagado</span><strong>12.90 €</strong></div>
+                <div class="row"><span class="muted">Estado</span><strong>Completado</strong></div>
+                <div class="hr"></div>
+                <div class="row"><span class="muted">Referencia</span><strong>TRX-XXXXXX</strong></div>
+                <div class="row"><span class="muted">Soporte</span><strong>info@cubakilos.com</strong></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" data-choice="B">
+          <header>
+            <span class="tag"><strong>B</strong> A6 / media hoja (más “formal”)</span>
+          </header>
+          <div class="content">
+            <p class="desc">
+              Más aire y mejor lectura; útil si quieres incluir disclaimer, instrucciones y detalles del pedido sin apretar tanto.
+            </p>
+            <div class="mock">
+              <div class="paper" style="max-width: 420px">
+                <h3>Recarga Internacional</h3>
+                <div class="row"><span class="muted">Pedido</span><strong>#12345</strong></div>
+                <div class="row"><span class="muted">Cliente</span><strong>Nombre Apellido</strong></div>
+                <div class="hr"></div>
+                <div class="row"><span class="muted">Destino</span><strong>+53 5xx xxx xxx</strong></div>
+                <div class="row"><span class="muted">Producto</span><strong>Mobile Topup</strong></div>
+                <div class="row"><span class="muted">Monto</span><strong>10.00</strong></div>
+                <div class="hr"></div>
+                <div class="row"><span class="muted">Total pagado</span><strong>12.90 €</strong></div>
+                <div class="row"><span class="muted">Estado</span><strong>Completado</strong></div>
+                <div class="hr"></div>
+                <p class="muted" style="margin: 0; font-size: 11px; line-height: 1.35">
+                  Guarda este comprobante. Si tu recarga no llega en el tiempo estimado, contacta con soporte indicando el número de pedido y la referencia.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card" data-choice="C">
+          <header>
+            <span class="tag"><strong>C</strong> Ticket + QR (para verificación rápida)</span>
+          </header>
+          <div class="content">
+            <p class="desc">
+              Igual de compacto, pero incluye un QR que puede apuntar a una página interna de verificación del pedido/voucher.
+            </p>
+            <div class="mock">
+              <div class="paper" style="max-width: 360px; display: grid; grid-template-columns: 1fr 92px; gap: 10px">
+                <div>
+                  <h3>Recarga Internacional</h3>
+                  <div class="row"><span class="muted">Pedido</span><strong>#12345</strong></div>
+                  <div class="row"><span class="muted">Fecha</span><strong>2026-05-08</strong></div>
+                  <div class="hr"></div>
+                  <div class="row"><span class="muted">Destino</span><strong>+53 5xx xxx xxx</strong></div>
+                  <div class="row"><span class="muted">Total</span><strong>12.90 €</strong></div>
+                  <div class="row"><span class="muted">Ref</span><strong>TRX-XXXXXX</strong></div>
+                </div>
+                <div class="qr">QR<br /><span class="muted">verificar</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div style="margin-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+        <div style="color: var(--muted); font-size: 13px">
+          Selección actual: <strong id="choice" style="color: var(--accent2)">ninguna</strong>
+        </div>
+        <div class="actions">
+          <button class="btn" id="clear" type="button">Quitar selección</button>
+          <button class="btn primary" id="copy" type="button">Copiar selección</button>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div>
+        Responde en el chat con <code>A</code>, <code>B</code> o <code>C</code> (o pega lo que te copie el botón). Si además quieres cambiar campos,
+        dime qué debe salir y qué no (p.ej., si mostramos nombre del cliente, email, teléfono completo/enmascarado, etc.).
+      </div>
+    </footer>
+
+    <script>
+      const grid = document.getElementById("grid");
+      const choiceEl = document.getElementById("choice");
+      const clearBtn = document.getElementById("clear");
+      const copyBtn = document.getElementById("copy");
+
+      let selected = null;
+
+      function setSelected(value) {
+        selected = value;
+        choiceEl.textContent = selected ?? "ninguna";
+        for (const card of grid.querySelectorAll(".card")) {
+          card.classList.toggle("selected", card.dataset.choice === selected);
+        }
+      }
+
+      grid.addEventListener("click", (e) => {
+        const card = e.target.closest(".card");
+        if (!card) return;
+        setSelected(card.dataset.choice);
+      });
+
+      clearBtn.addEventListener("click", () => setSelected(null));
+
+      copyBtn.addEventListener("click", async () => {
+        const text = selected ? `Elegí layout ${selected} para el voucher PDF.` : "No hay selección.";
+        try {
+          await navigator.clipboard.writeText(text);
+          copyBtn.textContent = "Copiado";
+          setTimeout(() => (copyBtn.textContent = "Copiar selección"), 900);
+        } catch (err) {
+          alert(text);
+        }
+      });
+    </script>
+  </body>
+</html>
