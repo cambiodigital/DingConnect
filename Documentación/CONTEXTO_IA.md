@@ -72,7 +72,7 @@ Namespace actual: `dingconnect/v1`
 1. Usuario selecciona bundle.
 2. El frontend muestra una confirmación previa con país, número, operador y precio.
 3. Si WooCommerce no está activo, el frontend envía `account_number`, `sku_code`, `send_value`, `send_currency_iso` al endpoint `/transfer`.
-4. Si WooCommerce está activo, el frontend llama a `/add-to-cart`, redirige al checkout y la recarga real se ejecuta cuando el pedido pasa a `processing` o `completed`.
+4. Si WooCommerce está activo, el frontend llama a `/add-to-cart`. El plugin usa la técnica de "Cart swap" (hace snapshot del carrito original en sesión, lo vacía, añade la recarga y redirige al checkout simplificado), permitiendo una recarga aislada. Tras pagar o abandonar el checkout, se restaura silenciosamente el carrito original del cliente.
 5. Backend aplica política de `validate_only` y `allow_real_recharge`.
 6. Toda operación queda registrada en un log interno.
 
@@ -145,6 +145,7 @@ Namespace actual: `dingconnect/v1`
 59. Compactación de banda de filtros en modal de shortcodes: los filtros (`País`, `Tipo de producto`, `Buscar`, `Vista`) ahora ocupan una única fila con `flex-wrap: nowrap`, gap reducido a 6px, anchos fijos (110px selects, 160px buscador) y tipografía más pequeña (11px etiqueta, 12px campos) para maximizar espacio de tabla.
 60. Hardening de despacho WooCommerce: nuevo control por pasarela para elegir etapa de ejecución (`payment_complete`/`processing`/`completed`), bloqueo de envío real cuando el modo efectivo es `ValidateOnly`, y degradación a `pending_confirmation` cuando Ding responde `Complete` sin `TransferRef` confirmado (incluyendo `0`).
 61. Mejora UI en Editor shortcode dinámico: tabla de productos más compacta y legible al desglosar columnas, y modal de edición ensanchado al 85% para mayor comodidad visual con alineación vertical centrada. Además se restableció la edición contextual de productos sin perder el modal de shortcodes original al guardar o cancelar.
+62. Checkout independiente de recargas con "Cart Swap": el flujo en WooCommerce ahora aisla la recarga sin perder el carrito original del usuario, mediante snapshot en sesión y hooks de restauración automática post-pago o por cancelación/abandono de página. v2.8.16.
 
 ## Hallazgos clave para futuras IA
 

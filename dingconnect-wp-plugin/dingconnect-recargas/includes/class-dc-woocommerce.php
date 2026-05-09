@@ -65,8 +65,14 @@ class DC_Recargas_WooCommerce {
         // Order meta
         add_action('woocommerce_checkout_create_order_line_item', [$this, 'save_order_item_meta'], 10, 4);
 
+        // Cart restoration fallback (silent and explicit)
+        add_action('template_redirect', [$this, 'handle_cart_restoration_fallback'], 4);
+
         // Redirect DC-only cart directly to checkout (skip cart page)
         add_action('template_redirect', [$this, 'redirect_dc_only_cart_to_checkout'], 5);
+
+        // Explicit cancel button for isolated recharges
+        add_action('woocommerce_checkout_before_customer_details', [$this, 'render_cancel_recharge_button']);
 
         // Mandatory registration (only when cart is mixed DC + regular products)
         add_filter('woocommerce_checkout_registration_required', [$this, 'force_registration']);
@@ -256,6 +262,16 @@ class DC_Recargas_WooCommerce {
             $is_range,
             (string) ($data['bundle_label'] ?? '')
         );
+
+        // Snapshot existing cart if it has regular products
+        if (WC()->cart && !WC()->cart->is_empty() && !$this->cart_has_only_recargas()) {
+            $snapshot = [
+                'cart' => WC()->session->get('cart'),
+                'applied_coupons' => WC()->session->get('applied_coupons'),
+            ];
+            WC()->session->set('dc_cart_snapshot', $snapshot);
+            WC()->cart->empty_cart();
+        }
 
         $product_id = $this->get_or_create_base_product();
         if (!$product_id) {
@@ -1042,6 +1058,67 @@ class DC_Recargas_WooCommerce {
         exit;
     }
 
+    public function handle_cart_restoration_fallback() {
+        if (!WC()->session) return;
+        
+        $snapshot = WC()->session->get('dc_cart_snapshot');
+        if (empty($snapshot)) return;
+
+        $is_explicit_cancel = isset($_GET['dc_cancel_recharge']) && $_GET['dc_cancel_recharge'] === '1';
+        
+        if (!$is_explicit_cancel) {
+            // Do not restore if we are in checkout or doing wc-ajax
+            $is_checkout_page = function_exists('is_checkout') && is_checkout();
+            $doing_ajax = function_exists('wp_doing_ajax') ? wp_doing_ajax() : (defined('DOING_AJAX') && DOING_AJAX);
+            if ($is_checkout_page || $doing_ajax || isset($_GET['wc-ajax'])) {
+                // Except if we are on the order-received page, the order is complete, we should restore it so they can continue shopping.
+                $is_order_received = function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received');
+                if ($is_order_received) {
+                    $this->restore_cart_snapshot($snapshot);
+                }
+                return;
+            }
+        }
+
+        // Proceed to restore
+        $this->restore_cart_snapshot($snapshot);
+
+        if ($is_explicit_cancel) {
+            wp_safe_redirect(wc_get_cart_url());
+            exit;
+        }
+    }
+
+    private function restore_cart_snapshot($snapshot) {
+        if (WC()->cart) {
+            WC()->cart->empty_cart();
+            if (!empty($snapshot['cart'])) {
+                WC()->session->set('cart', $snapshot['cart']);
+            }
+            if (!empty($snapshot['applied_coupons'])) {
+                WC()->session->set('applied_coupons', $snapshot['applied_coupons']);
+            }
+            // WooCommerce doesn't automatically re-load the cart contents from the session just by calling set() on the session.
+            // By clearing cart_contents, the next calculate_totals or get_cart call will re-hydrate from session.
+            WC()->cart->cart_contents = [];
+            // Calling this directly forces the class to reload the cart from the session.
+            if (method_exists(WC()->cart, 'get_cart_from_session')) {
+                WC()->cart->get_cart_from_session();
+            }
+            WC()->cart->calculate_totals();
+        }
+        WC()->session->set('dc_cart_snapshot', null);
+    }
+
+    public function render_cancel_recharge_button() {
+        if ($this->cart_has_only_recargas() && WC()->session && WC()->session->get('dc_cart_snapshot')) {
+            $cancel_url = add_query_arg('dc_cancel_recharge', '1', wc_get_checkout_url());
+            echo '<div class="dc-cancel-recharge-wrapper" style="margin-bottom: 20px;">';
+            echo '<a href="' . esc_url($cancel_url) . '" class="button alt" style="background-color: #d9534f; color: #fff; text-align: center; display: block; padding: 10px;">' . esc_html__('Cancelar recarga y volver a la tienda', 'dingconnect-recargas') . '</a>';
+            echo '</div>';
+        }
+    }
+
     private function cart_has_recargas() {
         if (!WC()->cart) return false;
         foreach (WC()->cart->get_cart() as $cart_item) {
@@ -1770,9 +1847,13 @@ class DC_Recargas_WooCommerce {
             return;
         }
 
+        $status_synced = $this->force_sync_order_status_on_thankyou($order);
+
         $options = $this->api->get_options();
         $voucher_v2_enabled = !empty($options['voucher_v2_enabled']);
 
+        $summary = $this->build_recarga_status_summary($order);
+        $all_success = ($summary['total'] > 0 && $summary['success'] === $summary['total']);
         $has_pending = $this->order_has_pending_recargas($order);
         $has_errors = $this->order_has_error_recargas($order);
         $has_dc_items = false;
@@ -1788,7 +1869,10 @@ class DC_Recargas_WooCommerce {
         echo '<h2 style="margin:0; color:#1e293b; font-size:1.5em;">Resumen final de tu compra Cubakilos</h2>';
         echo '</div>';
 
-        if ($has_pending) {
+        if ($all_success) {
+            echo '<p class="dc-voucher-modal-success" style="margin:0 0 14px;color:#166534;background:#dcfce7;padding:10px;border-radius:6px;text-align:center;font-weight:600;">Tu recarga fue exitosa. Guarda este comprobante con el ID de transacción como referencia.</p>';
+        }
+        if ($has_pending && !$all_success) {
             echo '<p class="dc-voucher-modal-warning" style="margin:0 0 14px;color:#7c2d12;background:#ffedd5;padding:10px;border-radius:6px;">Tu pedido contiene operaciones pendientes. No repitas la compra mientras el estado siga Submitted o Pending; el sistema seguirá conciliando según la política configurada.</p>';
         }
         if ($has_errors) {
@@ -1803,6 +1887,12 @@ class DC_Recargas_WooCommerce {
                     if ($voucher) {
                         if (!isset($voucher['transaction_id']) || (string) ($voucher['transaction_id'] ?? '') === '') {
                             $voucher['transaction_id'] = (string) ($voucher['transfer_ref'] ?? $item->get_meta('_dc_transfer_ref'));
+                        }
+                        if (!isset($voucher['status']) || (string) ($voucher['status'] ?? '') === '') {
+                            $voucher['status'] = (string) $item->get_meta('_dc_transfer_status');
+                        }
+                        if (!isset($voucher['beneficiary']) || (string) ($voucher['beneficiary'] ?? '') === '') {
+                            $voucher['beneficiary'] = (string) $item->get_meta('_dc_account_number');
                         }
                         if (!isset($voucher['public_price']) || (float) ($voucher['public_price'] ?? 0) <= 0) {
                             $voucher['public_price'] = (float) $item->get_meta('_dc_public_price');
@@ -2618,6 +2708,50 @@ class DC_Recargas_WooCommerce {
         $order->add_order_note($reason);
     }
 
+    private function force_sync_order_status_on_thankyou($order) {
+        if (!$order instanceof WC_Order) {
+            return false;
+        }
+
+        $blocked_statuses = ['cancelled', 'refunded', 'failed'];
+        $current_status = $this->get_order_status_slug($order);
+        if (in_array($current_status, $blocked_statuses, true)) {
+            return false;
+        }
+
+        $synced = false;
+        foreach ($order->get_items() as $item) {
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            $transfer_ref = (string) $item->get_meta('_dc_transfer_ref');
+            $item_status = strtolower((string) $item->get_meta('_dc_transfer_status'));
+
+            if ($this->is_successful_transfer_status($item_status) && $this->api->is_confirmed_transfer_reference($transfer_ref)) {
+                continue;
+            }
+
+            if ($transfer_ref === '' && $item_status === '') {
+                continue;
+            }
+
+            $sync_result = $this->sync_item_with_ding_status($order, $item);
+            if (!empty($sync_result['synced'])) {
+                $synced = true;
+            }
+        }
+
+        if ($synced) {
+            call_user_func([$order, 'save']);
+        }
+
+        $this->sync_order_status_with_recarga_outcome($order, 'thankyou_safety_net');
+        call_user_func([$order, 'save']);
+
+        return true;
+    }
+
     private function build_recarga_status_summary($order) {
         $summary = [
             'total' => 0,
@@ -2849,6 +2983,7 @@ class DC_Recargas_WooCommerce {
         $processed = 0;
         $updated = 0;
         $emailed = 0;
+        $synced_order_ids = [];
 
         foreach ($matches as $match) {
             $order_id = (int) ($match['order_id'] ?? 0);
@@ -2914,6 +3049,18 @@ class DC_Recargas_WooCommerce {
 
             call_user_func([$order, 'save']);
             $processed++;
+
+            if (!in_array($order_id, $synced_order_ids, true)) {
+                $synced_order_ids[] = $order_id;
+            }
+        }
+
+        foreach ($synced_order_ids as $order_id) {
+            $order = wc_get_order($order_id);
+            if ($order instanceof WC_Order) {
+                $this->sync_order_status_with_recarga_outcome($order, 'webhook');
+                call_user_func([$order, 'save']);
+            }
         }
 
         if (empty($matches)) {
