@@ -995,11 +995,19 @@ class DC_Recargas_Admin {
         $bundles[$index] = $bundle;
         update_option('dc_recargas_bundles', $bundles);
 
-        wp_safe_redirect(add_query_arg([
+        $redirect_args = [
             'page' => 'dc-recargas',
             'dc_tab' => 'tab_saved',
             'dc_msg' => 'bundle_updated',
-        ], admin_url('admin.php')));
+        ];
+
+        if (!empty($_POST['return_to_landing_edit'])) {
+            $redirect_args['dc_tab'] = 'tab_landings';
+            $redirect_args['dc_landings_subtab'] = 'shortcodes';
+            $redirect_args['dc_edit_landing'] = sanitize_text_field(wp_unslash($_POST['return_to_landing_edit']));
+        }
+
+        wp_safe_redirect(add_query_arg($redirect_args, admin_url('admin.php')));
         exit;
     }
 
@@ -2768,6 +2776,11 @@ class DC_Recargas_Admin {
                     color: #1d4ed8 !important;
                 }
 
+                #dc-edit-landing-modal .dc-edit-modal__dialog {
+                    width: 85%;
+                    max-width: 1400px;
+                }
+
                 #dc-edit-landing-modal .dc-landing-bundles-table-wrap {
                     border: 1px solid #d9e3f0;
                     border-radius: 10px;
@@ -2793,14 +2806,30 @@ class DC_Recargas_Admin {
                     padding: 7px 8px;
                 }
 
+                .dc-landing-bundles-checklist tbody td {
+                    padding: 6px 8px;
+                    border-bottom: 1px solid #edf2f9;
+                    vertical-align: middle !important;
+                }
+
                 #dc-edit-landing-modal .dc-landing-bundles-checklist tbody td {
                     padding: 6px 8px;
                     border-bottom: 1px solid #edf2f9;
-                    vertical-align: middle;
+                    vertical-align: middle !important;
                 }
 
                 #dc-edit-landing-modal .dc-landing-bundles-checklist tbody tr:nth-child(even) > td {
                     background: #fbfdff;
+                }
+
+                .dc-landing-bundle-open-editor {
+                    cursor: pointer;
+                    color: var(--dc-primary);
+                    text-decoration: underline;
+                }
+
+                .dc-landing-bundle-open-editor:hover {
+                    color: #0f172a;
                 }
 
                 #dc-edit-landing-modal .dc-landing-bundle-product {
@@ -4052,7 +4081,7 @@ class DC_Recargas_Admin {
                                         <td class="dc-saved-col-logo"><?php if (!empty($bundle['logo_url'])) : ?><img src="<?php echo esc_url($bundle['logo_url']); ?>" alt="<?php echo esc_attr($bundle_operator); ?>" width="28" height="28"><?php endif; ?></td>
                                         <td><?php echo esc_html($bundle_country); ?></td>
                                         <td><?php echo esc_html($bundle_fam_label); ?></td>
-                                        <td>
+                                        <td class="dc-landing-bundle-product dc-landing-bundle-open-editor" role="button" tabindex="0" title="Abrir editor del producto">
                                             <?php echo esc_html($bundle_label); ?>
                                             <input type="checkbox" class="dc-edit-landing-bundle-checkbox" name="bundle_ids[]" value="<?php echo esc_attr($bundle_id); ?>" aria-label="Seleccionar <?php echo esc_attr($bundle_label); ?>" hidden>
                                         </td>
@@ -5257,6 +5286,7 @@ class DC_Recargas_Admin {
                         <input type="hidden" id="dc_edit_package_family" name="package_family" value="<?php echo esc_attr($editing_bundle['package_family'] ?? 'other'); ?>">
                         <input type="hidden" id="dc_edit_product_type_raw" name="product_type_raw" value="<?php echo esc_attr($editing_bundle['product_type_raw'] ?? ''); ?>">
                         <input type="hidden" id="dc_edit_validity_raw" name="validity_raw" value="<?php echo esc_attr($editing_bundle['validity_raw'] ?? ''); ?>">
+                        <input type="hidden" id="dc_edit_return_to_landing" name="return_to_landing_edit" value="">
 
                         <table class="form-table" role="presentation">
                             <tr>
@@ -6922,12 +6952,18 @@ class DC_Recargas_Admin {
                     updateEditProfitDisplay();
                 }
 
-                function openEditModal(bundle) {
+                function openEditModal(bundle, returnLandingId) {
                     if (!editModalEl || !bundle) {
                         return;
                     }
 
                     populateEditForm(bundle);
+
+                    var returnToLandingEl = document.getElementById('dc_edit_return_to_landing');
+                    if (returnToLandingEl) {
+                        returnToLandingEl.value = returnLandingId || '';
+                    }
+
                     editModalEl.hidden = false;
                     document.body.classList.add('modal-open');
                     updateEditParam(bundle.id || '');
@@ -6946,6 +6982,19 @@ class DC_Recargas_Admin {
                     editModalEl.hidden = true;
                     document.body.classList.remove('modal-open');
                     updateEditParam('');
+
+                    var returnToLandingEl = document.getElementById('dc_edit_return_to_landing');
+                    if (returnToLandingEl && returnToLandingEl.value) {
+                        var landingId = returnToLandingEl.value;
+                        returnToLandingEl.value = '';
+
+                        var landingRow = document.querySelector('tr[data-edit-landing*="\\"id\\":\\"' + landingId + '\\""]');
+                        if (landingRow) {
+                            try {
+                                openLandingEditModal(JSON.parse(landingRow.getAttribute('data-edit-landing') || '{}'));
+                            } catch (e) {}
+                        }
+                    }
                 }
 
                 [editSendValueEl, editSendCurrencyEl, editPublicPriceEl, editPublicPriceCurrencyEl].forEach(function (fieldEl) {
@@ -7245,6 +7294,54 @@ class DC_Recargas_Admin {
                         syncSelectedState();
                         syncToggleButtons();
                         applyRowFilters();
+                    });
+
+                    function openBundleEditorFromRow(rowEl) {
+                        if (!rowEl) {
+                            return;
+                        }
+
+                        var rawBundle = rowEl.getAttribute('data-edit-bundle') || '';
+                        if (!rawBundle) {
+                            return;
+                        }
+
+                        var returnLandingId = landingEditIdEl ? landingEditIdEl.value : '';
+
+                        try {
+                            closeLandingEditModal();
+                            openEditModal(JSON.parse(rawBundle), returnLandingId);
+                        } catch (e) {
+                            window.alert('No se pudo abrir el editor del producto seleccionado.');
+                        }
+                    }
+
+                    checklistEl.addEventListener('click', function (event) {
+                        var triggerEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundle-open-editor') : null;
+                        if (!triggerEl) {
+                            return;
+                        }
+
+                        if (event.target && event.target.closest && event.target.closest('a,button,input,select,textarea,label')) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        openBundleEditorFromRow(triggerEl.closest('.dc-landing-bundles-checklist__item'));
+                    });
+
+                    checklistEl.addEventListener('keydown', function (event) {
+                        if (event.key !== 'Enter' && event.key !== ' ') {
+                            return;
+                        }
+
+                        var triggerEl = event.target && event.target.closest ? event.target.closest('.dc-landing-bundle-open-editor') : null;
+                        if (!triggerEl) {
+                            return;
+                        }
+
+                        event.preventDefault();
+                        openBundleEditorFromRow(triggerEl.closest('.dc-landing-bundles-checklist__item'));
                     });
 
                     checklistEl.addEventListener('mousedown', function (event) {

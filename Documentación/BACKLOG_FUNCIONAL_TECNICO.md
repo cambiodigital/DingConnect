@@ -86,7 +86,7 @@ Una iniciativa se considera lista cuando cumple:
 
 ## Avances implementados (09-05-2026)
 
-1. Mejora de UI en el modal de edición de shortcodes dinámicos: Se desglosó la columna consolidada de Producto en columnas individuales (País, Tipo, Nombre, SKU, Operador) para hacer la tabla más compacta y legible. Además, se eliminó la redirección al modal de edición de producto al hacer clic en un bundle desde este listado, evitando sacar al usuario del editor de shortcode.
+1. Mejora de UI en el modal de edición de shortcodes dinámicos: Se desglosó la columna consolidada de Producto en columnas individuales (País, Tipo, Nombre, SKU, Operador) para hacer la tabla más compacta y legible. El modal ahora ocupa el 85% del ancho de la pantalla y la tabla alinea su contenido verticalmente al centro. Se restableció la opción de abrir el producto al hacer clic, con la mejora de regresar automáticamente al modal de shortcode tras guardar o cancelar.
 
 ## Avances implementados (23-04-2026)
 

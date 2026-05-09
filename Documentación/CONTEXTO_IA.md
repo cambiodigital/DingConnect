@@ -144,7 +144,7 @@ Namespace actual: `dingconnect/v1`
 58. Rediseño del modal `Editar shortcode dinámico`: la tabla de bundles en edición se compactó con cabecera sticky, menor densidad vertical, metadatos de país/tipo integrados por producto y chips de precio (`DIN`/`Público`) para mejorar legibilidad y operación en lotes sin perder drag and drop ni acciones `Añadir/Quitar`.
 59. Compactación de banda de filtros en modal de shortcodes: los filtros (`País`, `Tipo de producto`, `Buscar`, `Vista`) ahora ocupan una única fila con `flex-wrap: nowrap`, gap reducido a 6px, anchos fijos (110px selects, 160px buscador) y tipografía más pequeña (11px etiqueta, 12px campos) para maximizar espacio de tabla.
 60. Hardening de despacho WooCommerce: nuevo control por pasarela para elegir etapa de ejecución (`payment_complete`/`processing`/`completed`), bloqueo de envío real cuando el modo efectivo es `ValidateOnly`, y degradación a `pending_confirmation` cuando Ding responde `Complete` sin `TransferRef` confirmado (incluyendo `0`).
-61. Mejora UI en Editor shortcode dinámico: tabla de productos más compacta y legible al desglosar columnas y se eliminó la redirección automática al modal de edición de producto para no interrumpir el flujo de edición del shortcode.
+61. Mejora UI en Editor shortcode dinámico: tabla de productos más compacta y legible al desglosar columnas, y modal de edición ensanchado al 85% para mayor comodidad visual con alineación vertical centrada. Además se restableció la edición contextual de productos sin perder el modal de shortcodes original al guardar o cancelar.
 
 ## Hallazgos clave para futuras IA
 
