@@ -6,8 +6,12 @@ if (!defined('ABSPATH')) {
 
 class DC_Recargas_Voucher_Renderer {
     public function render_html(array $voucher): string {
-        $html = '<div class="dc-voucher-container" style="margin-top: 20px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc;">';
-        $html .= '<h3 style="margin-top: 0; margin-bottom: 14px; color: #0f172a; font-size: 1.05em; letter-spacing: -0.2px;">Detalle de la recarga</h3>';
+        $html = '<div class="dc-voucher-container" style="margin-top: 20px; padding: 16px; border: 1px solid #e2e8f0; border-radius: 10px; background: #ffffff; break-inside: avoid; page-break-inside: avoid;">';
+        
+        $html .= '<div class="dc-voucher-brand" style="display:flex; align-items:center; justify-content:center; gap:10px; padding:0 0 14px; margin-bottom:14px; border-bottom:1px solid #e2e8f0;">';
+        $html .= '<img src="https://cubakilos.com/wp-content/uploads/2023/08/logo-cubakilos-color.png.webp" alt="Cubakilos" style="height:34px; width:auto; object-fit:contain;">';
+        $html .= '<div style="font-weight:800; color:#0f172a; letter-spacing:-0.2px;">Comprobante de recarga</div>';
+        $html .= '</div>';
         
         $html .= '<table style="width: 100%; border-collapse: collapse; text-align: left;">';
         $html .= '<tbody>';

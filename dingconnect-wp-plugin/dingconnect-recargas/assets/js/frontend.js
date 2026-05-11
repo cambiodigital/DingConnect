@@ -1196,7 +1196,6 @@
     function getBundleOptionLabel(bundle) {
         var parts = [];
         var title = String(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
-        var provider = getProviderLabel(bundle);
         var displayPrice = getDisplayPrice(bundle);
         var amount = formatMoney(displayPrice.amount || 0, displayPrice.currency || 'USD');
 
@@ -1204,7 +1203,6 @@
             parts.push('⭐ Destacado');
         }
         parts.push(title);
-        if (provider) parts.push(provider);
         parts.push(amount);
 
         return parts.join(' · ');

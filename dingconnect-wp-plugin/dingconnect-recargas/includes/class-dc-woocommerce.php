@@ -1933,10 +1933,6 @@ class DC_Recargas_WooCommerce {
         echo '<button onclick="document.getElementById(\'dc-voucher-modal\').style.display=\'none\'" style="position:absolute; top:15px; right:15px; background:none; border:none; font-size:24px; cursor:pointer; color:#64748b;">&times;</button>';
 
         echo '<div id="dc-voucher-print-root">';
-        echo '<div class="dc-voucher-brand" style="display:flex; align-items:center; justify-content:center; gap:10px; padding:0 0 14px; margin-bottom:14px; border-bottom:1px solid #e2e8f0;">';
-        echo '<img src="https://cubakilos.com/wp-content/uploads/2023/08/logo-cubakilos-color.png.webp" alt="Cubakilos" style="height:34px; width:auto; object-fit:contain;">';
-        echo '<div style="font-weight:800; color:#0f172a; letter-spacing:-0.2px;">Comprobante de recarga</div>';
-        echo '</div>';
         
         echo '<div class="dc-voucher-modal-title" style="text-align:center; margin-bottom:20px;">';
         echo '<h2 style="margin:0; color:#1e293b; font-size:1.5em;">Resumen final de tu compra Cubakilos</h2>';
@@ -2037,7 +2033,7 @@ class DC_Recargas_WooCommerce {
         // Estilos para la impresión del modal como PDF
         echo '<style>
         @media print {
-            @page { size: A6 portrait; margin: 8mm; }
+            @page { size: A6 portrait; margin: 5mm; }
 
             html, body { height: auto !important; }
             body { margin: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -2081,12 +2077,8 @@ class DC_Recargas_WooCommerce {
                 border: none !important;
                 background: #fff !important;
                 border-radius: 0 !important;
-                break-after: page;
-                page-break-after: always;
-            }
-            .dc-voucher-container:last-of-type {
-                break-after: auto;
-                page-break-after: auto;
+                break-inside: avoid;
+                page-break-inside: avoid;
             }
 
             .dc-voucher-container h3 {
@@ -2125,14 +2117,14 @@ class DC_Recargas_WooCommerce {
             }
 
             var styles = ""
-                + "@page{size:A6 portrait;margin:8mm;}"
+                + "@page{size:A6 portrait;margin:5mm;}"
                 + "html,body{height:auto!important;}"
                 + "body{margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:-apple-system,BlinkMacSystemFont,\\\"Segoe UI\\\",Roboto,\\\"Helvetica Neue\\\",Arial,sans-serif;}"
                 + ".dc-voucher-print-root{width:89mm;max-width:89mm;margin:0 auto;}"
                 + ".dc-voucher-brand{display:flex;align-items:center;justify-content:center;gap:10px;padding:0 0 12px;margin:0 0 12px;border-bottom:1px solid #e2e8f0;}"
                 + ".dc-voucher-brand img{height:34px;width:auto;object-fit:contain;}"
                 + ".dc-voucher-modal-title,.dc-voucher-modal-warning,.dc-voucher-modal-success,.dc-voucher-modal-actions,button{display:none!important;}"
-                + ".dc-voucher-container{margin-top:0!important;padding:0!important;border:none!important;border-radius:0!important;background:#fff!important;}"
+                + ".dc-voucher-container{margin-top:0!important;padding:0!important;border:none!important;border-radius:0!important;background:#fff!important;break-inside:avoid;page-break-inside:avoid;}"
                 + ".dc-voucher-container h3{margin:0 0 8px 0!important;font-size:14px!important;letter-spacing:0!important;}"
                 + ".dc-voucher-container table{font-size:12px!important;}"
                 + ".dc-voucher-container th{width:45%!important;padding:6px 8px!important;color:#475569!important;border-bottom:1px solid #e2e8f0!important;background:#f8fafc!important;}"
@@ -2810,6 +2802,19 @@ class DC_Recargas_WooCommerce {
         if ($summary['success'] === $summary['total']) {
             $target_status = 'completed';
             $decision = 'Todas las recargas DingConnect quedaron confirmadas como exitosas.';
+            
+            $existing_tx_id = (string) call_user_func([$order, 'get_transaction_id']);
+            if ($existing_tx_id === '') {
+                foreach ($order->get_items() as $item) {
+                    if ($item->get_meta('_dc_recarga') === 'yes') {
+                        $transfer_ref = (string) $item->get_meta('_dc_transfer_ref');
+                        if ($this->api->is_confirmed_transfer_reference($transfer_ref)) {
+                            call_user_func([$order, 'set_transaction_id'], $transfer_ref);
+                            break;
+                        }
+                    }
+                }
+            }
         } elseif ($summary['error'] > 0) {
             $target_status = 'on-hold';
             $decision = 'Existen recargas con error definitivo o escaladas a soporte.';

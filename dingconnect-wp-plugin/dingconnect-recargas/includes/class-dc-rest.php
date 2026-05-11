@@ -680,14 +680,6 @@ class DC_Recargas_REST {
             $public_price = $send_value;
         }
 
-        // Salvaguarda financiera: Evitar que el cliente pague menos del Coste DIN
-        if ($public_price < $send_value) {
-            return new WP_REST_Response([
-                'ok'      => false,
-                'message' => 'Error de seguridad: El precio a pagar (' . $public_price . ') es inferior al coste de la recarga (' . $send_value . '). Transacción bloqueada.',
-            ], 400);
-        }
-
         // Delegate to WooCommerce class via filter
         $result = apply_filters('dc_recargas_add_to_cart', null, [
             'account_number' => $account_number,
