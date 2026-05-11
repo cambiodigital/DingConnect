@@ -1095,7 +1095,7 @@ class DC_Recargas_WooCommerce {
         if ($should_force_restore) {
             $this->restore_cart_snapshot($snapshot);
 
-            if ($is_checkout_page || $is_explicit_cancel || $is_explicit_expired) {
+            if (!$is_order_received && ($is_checkout_page || $is_explicit_cancel || $is_explicit_expired)) {
                 wp_safe_redirect($shop_url);
                 exit;
             }
@@ -1176,7 +1176,7 @@ class DC_Recargas_WooCommerce {
             'msRemaining' => $ms_remaining,
         ];
 
-        echo '<script>(function(){try{var cfg=' . wp_json_encode($payload) . ';var hasMarker=!!sessionStorage.getItem("dc_cart_swap_active");if(!hasMarker){window.location.replace(cfg.cancelUrl);return;}var ms=Number(cfg.msRemaining||0);if(ms<=0){window.location.replace(cfg.expiredUrl);return;}window.setTimeout(function(){window.location.replace(cfg.expiredUrl);},ms);}catch(e){}})();</script>';
+        echo '<script>(function(){try{var cfg=' . wp_json_encode($payload) . ';var href=String(window.location.href||"");if(href.indexOf("order-received")!==-1){try{sessionStorage.removeItem("dc_cart_swap_active");sessionStorage.removeItem("dc_cart_swap_started_at");sessionStorage.removeItem("dc_cart_swap_payment_submitted");}catch(e){}return;}var hasMarker=!!sessionStorage.getItem("dc_cart_swap_active");if(!hasMarker){window.location.replace(cfg.cancelUrl);return;}var paymentSubmitted=!!sessionStorage.getItem("dc_cart_swap_payment_submitted");if(paymentSubmitted){return;}var form=document.querySelector("form.checkout");if(form){form.addEventListener("submit",function(){try{sessionStorage.setItem("dc_cart_swap_payment_submitted","1");}catch(e){}}, { once:true });}var ms=Number(cfg.msRemaining||0);if(ms<=0){window.location.replace(cfg.expiredUrl);return;}window.setTimeout(function(){var paymentSubmitted2=!!sessionStorage.getItem("dc_cart_swap_payment_submitted");if(paymentSubmitted2){return;}window.location.replace(cfg.expiredUrl);},ms);}catch(e){}})();</script>';
     }
 
     private function cart_has_recargas() {
