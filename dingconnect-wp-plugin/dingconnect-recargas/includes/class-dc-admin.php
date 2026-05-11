@@ -32,6 +32,7 @@ class DC_Recargas_Admin {
         add_action('admin_post_dc_clone_landing_shortcode', [$this, 'handle_clone_landing_shortcode']);
         add_action('admin_post_dc_update_landing_shortcode', [$this, 'handle_update_landing_shortcode']);
         add_action('admin_post_dc_delete_landing_shortcode', [$this, 'handle_delete_landing_shortcode']);
+        add_action('admin_post_dc_bulk_delete_landing_shortcodes', [$this, 'handle_bulk_delete_landing_shortcodes']);
         add_action('admin_post_dc_save_section_ticket', [$this, 'handle_save_section_ticket']);
         add_action('admin_post_dc_delete_section_ticket', [$this, 'handle_delete_section_ticket']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -240,6 +241,62 @@ class DC_Recargas_Admin {
         wp_safe_redirect(add_query_arg([
             'page' => 'dc-recargas',
             'dc_msg' => 'landing_shortcode_deleted',
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    public function handle_bulk_delete_landing_shortcodes() {
+        if (!current_user_can('manage_options')) {
+            wp_die('No tienes permisos para realizar esta acción.');
+        }
+
+        check_admin_referer('dc_bulk_delete_landing_shortcodes');
+
+        $raw_ids = wp_unslash($_POST['landing_ids'] ?? []);
+        $ids = [];
+
+        if (is_array($raw_ids)) {
+            foreach ($raw_ids as $id) {
+                $clean_id = sanitize_text_field((string) $id);
+                if ($clean_id !== '') {
+                    $ids[] = $clean_id;
+                }
+            }
+        }
+
+        $ids = array_values(array_unique($ids));
+
+        if (empty($ids)) {
+            wp_safe_redirect(add_query_arg([
+                'page' => 'dc-recargas',
+                'dc_tab' => 'tab_landings',
+                'dc_landings_subtab' => 'shortcodes',
+                'dc_msg' => 'landing_bulk_empty',
+            ], admin_url('admin.php')));
+            exit;
+        }
+
+        $shortcodes = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($shortcodes)) {
+            $shortcodes = [];
+        }
+        $total_before = count($shortcodes);
+
+        $shortcodes = array_values(array_filter($shortcodes, function ($item) use ($ids) {
+            $landing_id = sanitize_text_field((string) ($item['id'] ?? ''));
+            return !in_array($landing_id, $ids, true);
+        }));
+
+        $deleted_count = $total_before - count($shortcodes);
+
+        update_option('dc_recargas_landing_shortcodes', $shortcodes);
+
+        wp_safe_redirect(add_query_arg([
+            'page' => 'dc-recargas',
+            'dc_tab' => 'tab_landings',
+            'dc_landings_subtab' => 'shortcodes',
+            'dc_msg' => 'landing_bulk_deleted',
+            'dc_count' => $deleted_count,
         ], admin_url('admin.php')));
         exit;
     }
@@ -1316,6 +1373,7 @@ class DC_Recargas_Admin {
             $is_range = abs($maximum_send_value - $minimum_send_value) > 0.00001;
 
             $package_group = $this->classify_api_package_group(
+                $country_iso,
                 $product,
                 $receive,
                 $label
@@ -1389,17 +1447,26 @@ class DC_Recargas_Admin {
             'saldo' => 'Saldo / top-up',
             'data' => 'Datos',
             'combo' => 'Combo / voz + datos',
+            'giftcard' => 'Tarjetas/Gifcards',
             'other' => 'Otros',
         ];
     }
 
-    private function classify_api_package_group($product, $receive = '', $label = '') {
+    private function classify_api_package_group($country_iso, $product, $receive = '', $label = '') {
+        $country_iso = strtoupper(trim((string) $country_iso));
         $product_type = strtolower(trim((string) ($product['ProductType'] ?? '')));
         $benefit_types = [];
 
         if (!empty($product['Benefits']) && is_array($product['Benefits'])) {
             foreach ($product['Benefits'] as $benefit) {
                 $benefit_types[] = strtolower(trim((string) ($benefit['BenefitType'] ?? '')));
+            }
+        }
+
+        if ($country_iso === 'CU') {
+            $provider_text = strtolower(trim((string) (($product['ProviderName'] ?? '') !== '' ? ($product['ProviderName'] ?? '') : ($product['ProviderCode'] ?? ''))));
+            if ($provider_text !== '' && strpos($provider_text, 'cubacel') === false) {
+                return 'giftcard';
             }
         }
 
@@ -1473,6 +1540,9 @@ class DC_Recargas_Admin {
             'voucher' => 'voucher',
             'pin' => 'voucher',
             'dth' => 'dth',
+            'giftcard' => 'giftcard',
+            'giftcards' => 'giftcard',
+            'tarjetas' => 'giftcard',
             'other' => 'other',
         ];
 
@@ -1929,7 +1999,7 @@ class DC_Recargas_Admin {
             $active_tab = 'tab_saved';
         }
 
-        if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error'], true)) {
+        if (in_array($msg, ['landing_shortcode_added', 'landing_shortcode_updated', 'landing_shortcode_cloned', 'landing_shortcode_deleted', 'landing_shortcode_error', 'landing_bulk_deleted', 'landing_bulk_empty'], true)) {
             $active_tab = 'tab_landings';
         }
 
@@ -3896,7 +3966,7 @@ class DC_Recargas_Admin {
                         </thead>
                         <tbody id="dc_landing_bundle_ids" role="group" aria-label="Bundles disponibles para la landing">
                         <?php
-                        $lnd_family_labels_create = ['topup' => 'Top-up', 'data' => 'Data', 'combo' => 'Combo', 'voucher' => 'Voucher', 'dth' => 'DTH', 'other' => 'Otros'];
+                        $lnd_family_labels_create = ['topup' => 'Top-up', 'data' => 'Data', 'combo' => 'Combo', 'voucher' => 'Voucher', 'dth' => 'DTH', 'giftcard' => 'Tarjetas/Gifcards', 'other' => 'Otros'];
                         foreach ($bundles as $bundle) :
                             $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
                             if ($bundle_id === '') { continue; }
@@ -3938,50 +4008,59 @@ class DC_Recargas_Admin {
             <div class="dc-landings-subtab-panel" data-dc-landings-subtab-panel="shortcodes">
 
             <h3>Shortcodes creados</h3>
-            <table class="widefat striped">
-                <thead>
-                    <tr>
-                        <th>Objetivo</th>
-                        <th>Clave</th>
-                        <th>Bundles</th>
-                        <th>Shortcode</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($landing_shortcodes)) : ?>
-                        <tr><td colspan="5">No hay shortcodes dinámicos creados todavía.</td></tr>
-                    <?php else : ?>
-                        <?php foreach ($landing_shortcodes as $landing_cfg) : ?>
-                            <?php
-                                $landing_id = sanitize_text_field((string) ($landing_cfg['id'] ?? ''));
-                                $landing_key = sanitize_key((string) ($landing_cfg['key'] ?? ''));
-                                $landing_name = sanitize_text_field((string) ($landing_cfg['name'] ?? 'Landing'));
-                                $landing_bundles = is_array($landing_cfg['bundle_ids'] ?? null) ? $landing_cfg['bundle_ids'] : [];
-                                $shortcode_text = '[dingconnect_recargas landing_key="' . $landing_key . '"]';
-                            ?>
-                            <tr class="dc-row-editable" tabindex="0" role="button" data-edit-landing="<?php echo esc_attr(wp_json_encode($landing_cfg)); ?>" aria-label="Editar shortcode <?php echo esc_attr($landing_name); ?>">
-                                <td><?php echo esc_html($landing_name); ?></td>
-                                <td><code><?php echo esc_html($landing_key); ?></code></td>
-                                <td><?php echo esc_html((string) count($landing_bundles)); ?></td>
-                                <td><code><?php echo esc_html($shortcode_text); ?></code></td>
-                                <td>
-                                    <div class="dc-table-actions">
-                                    <a class="button dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
-                                        'action' => 'dc_clone_landing_shortcode',
-                                        'landing_id' => $landing_id,
-                                    ], admin_url('admin-post.php')), 'dc_clone_landing_shortcode')); ?>" title="Duplicar shortcode" aria-label="Duplicar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-controls-repeat" aria-hidden="true"></span></a>
-                                    <a class="button button-secondary dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
-                                        'action' => 'dc_delete_landing_shortcode',
-                                        'landing_id' => $landing_id,
-                                    ], admin_url('admin-post.php')), 'dc_delete_landing_shortcode')); ?>" onclick="return confirm('¿Eliminar shortcode de landing?');" title="Eliminar shortcode" aria-label="Eliminar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-trash" aria-hidden="true"></span></a>
-                                    </div>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" id="dc_bulk_delete_landing_shortcodes_form">
+                <input type="hidden" name="action" value="dc_bulk_delete_landing_shortcodes">
+                <?php wp_nonce_field('dc_bulk_delete_landing_shortcodes'); ?>
+                <p style="margin: 8px 0 12px;">
+                    <button type="submit" class="button button-secondary">Eliminar seleccionados</button>
+                </p>
+                <table class="widefat striped">
+                    <thead>
+                        <tr>
+                            <th class="check-column"><input type="checkbox" id="dc-landings-select-all" aria-label="Seleccionar todos"></th>
+                            <th>Objetivo</th>
+                            <th>Clave</th>
+                            <th>Bundles</th>
+                            <th>Shortcode</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($landing_shortcodes)) : ?>
+                            <tr><td colspan="6">No hay shortcodes dinámicos creados todavía.</td></tr>
+                        <?php else : ?>
+                            <?php foreach ($landing_shortcodes as $landing_cfg) : ?>
+                                <?php
+                                    $landing_id = sanitize_text_field((string) ($landing_cfg['id'] ?? ''));
+                                    $landing_key = sanitize_key((string) ($landing_cfg['key'] ?? ''));
+                                    $landing_name = sanitize_text_field((string) ($landing_cfg['name'] ?? 'Landing'));
+                                    $landing_bundles = is_array($landing_cfg['bundle_ids'] ?? null) ? $landing_cfg['bundle_ids'] : [];
+                                    $shortcode_text = '[dingconnect_recargas landing_key="' . $landing_key . '"]';
+                                ?>
+                                <tr class="dc-row-editable" tabindex="0" role="button" data-edit-landing="<?php echo esc_attr(wp_json_encode($landing_cfg)); ?>" aria-label="Editar shortcode <?php echo esc_attr($landing_name); ?>">
+                                    <td class="check-column"><input type="checkbox" class="dc-landing-shortcode-checkbox" name="landing_ids[]" value="<?php echo esc_attr($landing_id); ?>" aria-label="Seleccionar <?php echo esc_attr($landing_name); ?>"></td>
+                                    <td><?php echo esc_html($landing_name); ?></td>
+                                    <td><code><?php echo esc_html($landing_key); ?></code></td>
+                                    <td><?php echo esc_html((string) count($landing_bundles)); ?></td>
+                                    <td><code><?php echo esc_html($shortcode_text); ?></code></td>
+                                    <td>
+                                        <div class="dc-table-actions">
+                                        <a class="button dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
+                                            'action' => 'dc_clone_landing_shortcode',
+                                            'landing_id' => $landing_id,
+                                        ], admin_url('admin-post.php')), 'dc_clone_landing_shortcode')); ?>" title="Duplicar shortcode" aria-label="Duplicar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-controls-repeat" aria-hidden="true"></span></a>
+                                        <a class="button button-secondary dc-table-icon-btn" href="<?php echo esc_url(wp_nonce_url(add_query_arg([
+                                            'action' => 'dc_delete_landing_shortcode',
+                                            'landing_id' => $landing_id,
+                                        ], admin_url('admin-post.php')), 'dc_delete_landing_shortcode')); ?>" onclick="return confirm('¿Eliminar shortcode de landing?');" title="Eliminar shortcode" aria-label="Eliminar shortcode <?php echo esc_attr($landing_name); ?>"><span class="dashicons dashicons-trash" aria-hidden="true"></span></a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </form>
 
             <div id="dc-edit-landing-modal" class="dc-edit-modal" role="dialog" aria-modal="true" aria-labelledby="dc-edit-landing-modal-title" hidden>
                 <div class="dc-edit-modal__backdrop" data-dc-landing-edit-close></div>
@@ -4065,7 +4144,7 @@ class DC_Recargas_Admin {
                                 </thead>
                                 <tbody id="dc_edit_landing_bundle_ids" role="group" aria-label="Bundles disponibles para editar la landing">
                                 <?php
-                                $lnd_family_labels_edit = ['topup' => 'Top-up', 'data' => 'Data', 'combo' => 'Combo', 'voucher' => 'Voucher', 'dth' => 'DTH', 'other' => 'Otros'];
+                                $lnd_family_labels_edit = ['topup' => 'Top-up', 'data' => 'Data', 'combo' => 'Combo', 'voucher' => 'Voucher', 'dth' => 'DTH', 'giftcard' => 'Tarjetas/Gifcards', 'other' => 'Otros'];
                                 foreach ($bundles as $bundle) :
                                     $bundle_id = sanitize_text_field((string) ($bundle['id'] ?? ''));
                                     if ($bundle_id === '') { continue; }
@@ -4229,11 +4308,12 @@ class DC_Recargas_Admin {
                     saldo: 'Saldo / top-up',
                     data: 'Datos',
                     combo: 'Combo / voz + datos',
+                    giftcard: 'Tarjetas/Gifcards',
                     other: 'Otros'
                 };
 
                 function apiGroupOrder(group) {
-                    var order = { combo: 1, data: 2, saldo: 3, other: 4 };
+                    var order = { combo: 1, data: 2, saldo: 3, giftcard: 4, other: 5 };
                     return order[group] || 99;
                 }
 
@@ -4325,7 +4405,7 @@ class DC_Recargas_Admin {
 
                 function syncApiFilterOptions() {
                     var current = apiFilterEl ? String(apiFilterEl.value || 'all') : 'all';
-                    var order = ['combo', 'data', 'saldo', 'other'];
+                    var order = ['combo', 'data', 'saldo', 'giftcard', 'other'];
 
                     if (!apiFilterEl) {
                         return;
@@ -4549,7 +4629,7 @@ class DC_Recargas_Admin {
                     if (allowManualAmountEl) {
                         var itemAllowManualAmount = Object.prototype.hasOwnProperty.call(item, 'allow_manual_amount')
                             ? !!item.allow_manual_amount
-                            : !!item.is_range;
+                            : false;
                         allowManualAmountEl.checked = itemAllowManualAmount;
                     }
                     if (rangeMinVisibleEl) rangeMinVisibleEl.value = item.minimum_send_value != null ? item.minimum_send_value : (item.send_value != null ? item.send_value : '');
@@ -4923,34 +5003,34 @@ class DC_Recargas_Admin {
                     var sendValue = Number(sendValueEl.value || 0);
                     var minValue = Number(visibleMinEl.value || 0);
                     var maxValue = Number(visibleMaxEl.value || 0);
-                    var wantsRange = !!allowManualAmountToggleEl.checked;
+                    var wantsManualAmount = !!allowManualAmountToggleEl.checked;
 
                     if (!isFinite(sendValue) || sendValue <= 0) {
                         return false;
                     }
 
-                    if (!wantsRange) {
+                    if (!wantsManualAmount && (!isFinite(minValue) || minValue <= 0) && (!isFinite(maxValue) || maxValue <= 0)) {
                         minValue = sendValue;
                         maxValue = sendValue;
-                    } else {
-                        if (!isFinite(minValue) || minValue <= 0) {
-                            minValue = sendValue;
-                        }
-                        if (!isFinite(maxValue) || maxValue <= 0) {
-                            maxValue = minValue;
-                        }
-                        if (maxValue < minValue) {
-                            var tmp = maxValue;
-                            maxValue = minValue;
-                            minValue = tmp;
-                        }
+                    }
+
+                    if (!isFinite(minValue) || minValue <= 0) {
+                        minValue = sendValue;
+                    }
+                    if (!isFinite(maxValue) || maxValue <= 0) {
+                        maxValue = minValue;
+                    }
+                    if (maxValue < minValue) {
+                        var tmp = maxValue;
+                        maxValue = minValue;
+                        minValue = tmp;
                     }
 
                     visibleMinEl.value = String(minValue);
                     visibleMaxEl.value = String(maxValue);
                     hiddenMinEl.value = String(minValue);
                     hiddenMaxEl.value = String(maxValue);
-                    hiddenIsRangeEl.value = (wantsRange && Math.abs(maxValue - minValue) > 0.00001) ? '1' : '0';
+                    hiddenIsRangeEl.value = Math.abs(maxValue - minValue) > 0.00001 ? '1' : '0';
 
                     return true;
                 }
@@ -5069,7 +5149,7 @@ class DC_Recargas_Admin {
                         <th scope="row"><label for="dc_allow_manual_amount_toggle">Monto variable</label></th>
                         <td>
                             <label>
-                                <input type="checkbox" id="dc_allow_manual_amount_toggle" name="allow_manual_amount" value="1" checked>
+                                <input type="checkbox" id="dc_allow_manual_amount_toggle" name="allow_manual_amount" value="1">
                                 El cliente elige el importe dentro del rango
                             </label>
                             <p class="description">Activa para que el cliente pueda introducir un importe libre entre el mínimo y máximo. Desactiva para enviar siempre el coste DIN fijo del bundle.</p>
@@ -5143,6 +5223,7 @@ class DC_Recargas_Admin {
                     'combo' => 'Combo',
                     'voucher' => 'Voucher',
                     'dth' => 'DTH',
+                    'giftcard' => 'Tarjetas/Gifcards',
                     'other' => 'Otros',
                 ];
             ?>
@@ -6444,6 +6525,9 @@ class DC_Recargas_Admin {
                 var selectAllBundlesEl = document.getElementById('dc_bundles_select_all');
                 var bulkDeleteFormEl = document.getElementById('dc_bulk_delete_bundles_form');
                 var bundleCheckboxEls = document.querySelectorAll('.dc-bundle-checkbox');
+                var selectAllLandingsEl = document.getElementById('dc-landings-select-all');
+                var landingBulkDeleteFormEl = document.getElementById('dc_bulk_delete_landing_shortcodes_form');
+                var landingCheckboxEls = document.querySelectorAll('.dc-landing-shortcode-checkbox');
                 var savedSearchEl = document.getElementById('dc_saved_products_search');
                 var savedFamilyFilterEl = document.getElementById('dc_saved_products_filter_family');
                 var savedCountryFilterEl = document.getElementById('dc_saved_products_filter_country');
@@ -6550,6 +6634,56 @@ class DC_Recargas_Admin {
                     });
                 }
 
+                function getSelectedLandingShortcodeCount() {
+                    var count = 0;
+                    landingCheckboxEls.forEach(function (checkboxEl) {
+                        if (checkboxEl.checked) {
+                            count++;
+                        }
+                    });
+                    return count;
+                }
+
+                function syncLandingsSelectAllState() {
+                    if (!selectAllLandingsEl || landingCheckboxEls.length === 0) {
+                        return;
+                    }
+
+                    var selectedCount = getSelectedLandingShortcodeCount();
+                    selectAllLandingsEl.checked = selectedCount > 0 && selectedCount === landingCheckboxEls.length;
+                    selectAllLandingsEl.indeterminate = selectedCount > 0 && selectedCount < landingCheckboxEls.length;
+                }
+
+                if (selectAllLandingsEl && landingCheckboxEls.length > 0) {
+                    selectAllLandingsEl.addEventListener('change', function () {
+                        landingCheckboxEls.forEach(function (checkboxEl) {
+                            checkboxEl.checked = selectAllLandingsEl.checked;
+                        });
+                        syncLandingsSelectAllState();
+                    });
+
+                    landingCheckboxEls.forEach(function (checkboxEl) {
+                        checkboxEl.addEventListener('change', syncLandingsSelectAllState);
+                    });
+
+                    syncLandingsSelectAllState();
+                }
+
+                if (landingBulkDeleteFormEl) {
+                    landingBulkDeleteFormEl.addEventListener('submit', function (event) {
+                        var selectedCount = getSelectedLandingShortcodeCount();
+                        if (selectedCount === 0) {
+                            event.preventDefault();
+                            window.alert('Selecciona al menos un shortcode para eliminar.');
+                            return;
+                        }
+
+                        if (!window.confirm('¿Eliminar ' + selectedCount + ' shortcode(s) seleccionado(s)?')) {
+                            event.preventDefault();
+                        }
+                    });
+                }
+
                 function normalizeFilterValue(value) {
                     return String(value || '').trim().toLowerCase();
                 }
@@ -6561,6 +6695,7 @@ class DC_Recargas_Admin {
                         combo: 'Combo',
                         voucher: 'Voucher',
                         dth: 'DTH',
+                        giftcard: 'Tarjetas/Gifcards',
                         other: 'Otros'
                     };
                     return familyLabels[family] || family || 'Otros';
@@ -7105,6 +7240,7 @@ class DC_Recargas_Admin {
                             combo: 'Combo',
                             voucher: 'Voucher',
                             dth: 'DTH',
+                            giftcard: 'Tarjetas/Gifcards',
                             other: 'Otros'
                         };
                         return labels[family] || family;
@@ -8033,6 +8169,8 @@ class DC_Recargas_Admin {
             'landing_shortcode_cloned' => ['success', 'Landing duplicada correctamente.'],
             'landing_shortcode_deleted' => ['success', 'Shortcode dinámico eliminado correctamente.'],
             'landing_shortcode_error' => ['error', 'Completa nombre y selecciona al menos un bundle válido para crear el shortcode dinámico.'],
+            'landing_bulk_deleted' => ['success', sprintf('Shortcodes eliminados correctamente: %d.', $count)],
+            'landing_bulk_empty' => ['error', 'Selecciona al menos un shortcode para eliminar.'],
             'ticket_saved' => ['success', 'Soporte creado correctamente en esta sección.'],
             'ticket_deleted' => ['success', 'Soporte eliminado correctamente.'],
             'ticket_error' => ['error', 'El soporte debe incluir al menos un título.'],

@@ -1,5 +1,5 @@
 (function () {
-    if (typeof DC_RECARGAS_DATA === 'undefined') return;
+    var DC_GLOBAL = (typeof DC_RECARGAS_DATA !== 'undefined' && DC_RECARGAS_DATA) ? DC_RECARGAS_DATA : {};
 
     function initApp(app) {
 
@@ -61,10 +61,21 @@
         try { return JSON.parse(raw); } catch (e) { return null; }
     }
 
+    var runtime = {
+        restBase: String(app.getAttribute('data-rest-base') || DC_GLOBAL.restBase || '').trim(),
+        nonce: String(app.getAttribute('data-nonce') || DC_GLOBAL.nonce || '').trim(),
+        flagBaseUrl: String(app.getAttribute('data-flag-base-url') || DC_GLOBAL.flagBaseUrl || 'https://flagcdn.com/24x18/').trim(),
+        woocommerceActive: !!DC_GLOBAL.woocommerce_active,
+    };
+
+    if (!runtime.restBase) {
+        runtime.restBase = '/wp-json/dingconnect/v1';
+    }
+
     var appCountries = parseJsonAttr('data-available-countries');
     var allCountries = Array.isArray(appCountries) && appCountries.length
         ? appCountries
-        : (Array.isArray(DC_RECARGAS_DATA.countries) ? DC_RECARGAS_DATA.countries : []);
+        : (Array.isArray(DC_GLOBAL.countries) ? DC_GLOBAL.countries : []);
     var defaultCountryIso = String(app.getAttribute('data-default-country-iso') || '').toUpperCase();
     var landingKey = String(app.getAttribute('data-landing-key') || '').trim();
     var featuredBundleId = String(app.getAttribute('data-featured-bundle-id') || '').trim();
@@ -597,9 +608,50 @@
     }
 
     /* ===== Country picker ===== */
+    function getFlagUrl(countryIso) {
+        var iso = String(countryIso || '').trim().toLowerCase();
+        if (!/^[a-z]{2}$/.test(iso)) return '';
+        var base = String(runtime.flagBaseUrl || '').trim();
+        if (!base) return '';
+        if (base.indexOf('{iso}') !== -1) {
+            return base.replace('{iso}', iso);
+        }
+        if (!/\/$/.test(base)) base += '/';
+        return base + iso + '.png';
+    }
+
+    function renderCountryFlag(container, country) {
+        if (!container) return;
+
+        while (container.firstChild) {
+            container.removeChild(container.firstChild);
+        }
+
+        var iso = country && country.iso ? String(country.iso) : '';
+        var url = getFlagUrl(iso);
+        if (url) {
+            var img = document.createElement('img');
+            img.className = 'dc-flag-img';
+            img.alt = '';
+            img.decoding = 'async';
+            img.loading = 'lazy';
+            img.src = url;
+            img.addEventListener('error', function () {
+                while (container.firstChild) {
+                    container.removeChild(container.firstChild);
+                }
+                container.textContent = String(iso || '').toUpperCase();
+            });
+            container.appendChild(img);
+            return;
+        }
+
+        container.textContent = String(iso || '').toUpperCase();
+    }
+
     function selectCountry(c) {
         state.country = c;
-        countryFlag.textContent = isoToFlag(c.iso);
+        renderCountryFlag(countryFlag, c);
         countryDial.textContent = '+' + c.dial;
         resetPackageStage(true);
         closeOverlay();
@@ -638,9 +690,22 @@
         matches.forEach(function (c) {
             var opt = document.createElement('div');
             opt.className = 'dc-country-option' + (state.country && state.country.iso === c.iso ? ' active' : '');
-            opt.innerHTML = '<span class="dc-country-option-flag">' + isoToFlag(c.iso) + '</span>'
-                + '<span class="dc-country-option-name">' + escapeHtml(c.name) + '</span>'
-                + '<span class="dc-country-option-dial">' + (c.dial ? '+' + escapeHtml(c.dial) : escapeHtml(c.iso)) + '</span>';
+
+            var flagEl = document.createElement('span');
+            flagEl.className = 'dc-country-option-flag';
+            renderCountryFlag(flagEl, c);
+
+            var nameEl = document.createElement('span');
+            nameEl.className = 'dc-country-option-name';
+            nameEl.textContent = String(c.name || c.iso || '');
+
+            var dialEl = document.createElement('span');
+            dialEl.className = 'dc-country-option-dial';
+            dialEl.textContent = c.dial ? ('+' + String(c.dial)) : String(c.iso || '');
+
+            opt.appendChild(flagEl);
+            opt.appendChild(nameEl);
+            opt.appendChild(dialEl);
             opt.addEventListener('click', function () {
                 selectCountry(c);
                 phoneEl.focus();
@@ -650,14 +715,20 @@
         });
     }
 
-    countryBtn.addEventListener('click', openOverlay);
-    countryClose.addEventListener('click', closeOverlay);
-    overlay.addEventListener('click', function (e) {
-        if (e.target === overlay) closeOverlay();
-    });
-    countrySearch.addEventListener('input', function () {
-        renderCountryList(countrySearch.value);
-    });
+    var hasSingleCountry = Array.isArray(allCountries) && allCountries.length === 1;
+    if (!hasSingleCountry) {
+        countryBtn.addEventListener('click', openOverlay);
+        countryClose.addEventListener('click', closeOverlay);
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) closeOverlay();
+        });
+        countrySearch.addEventListener('input', function () {
+            renderCountryList(countrySearch.value);
+        });
+    } else {
+        countryBtn.disabled = true;
+        closeOverlay();
+    }
 
     /* ===== Phone helpers ===== */
     function normalizePhone() {
@@ -685,11 +756,11 @@
 
     /* ===== API ===== */
     async function fetchJson(path, options) {
-        var url = DC_RECARGAS_DATA.restBase.replace(/\/$/, '') + path;
+        var url = String(runtime.restBase || '').replace(/\/$/, '') + path;
         var opts = options || {};
-        if (DC_RECARGAS_DATA.nonce) {
+        if (runtime.nonce) {
             opts.headers = Object.assign({}, opts.headers || {}, {
-                'X-WP-Nonce': DC_RECARGAS_DATA.nonce,
+                'X-WP-Nonce': runtime.nonce,
             });
         }
         var response = await fetch(url, opts);
@@ -1101,11 +1172,19 @@
         }
 
         if (contextPhone) {
-            var flag = state.country ? isoToFlag(state.country.iso) : '';
             var dial = state.country ? '+' + state.country.dial : '';
-            contextPhone.innerHTML = '<span class="dc-ctx-flag">' + flag + '</span>'
-                + '<strong>' + escapeHtml(dial + ' ' + (phoneEl.value || '')) + '</strong>'
-                + '&nbsp;· ' + escapeHtml(state.country ? state.country.name : '');
+            contextPhone.innerHTML = '';
+
+            var flagEl = document.createElement('span');
+            flagEl.className = 'dc-ctx-flag';
+            renderCountryFlag(flagEl, state.country);
+
+            var strongEl = document.createElement('strong');
+            strongEl.textContent = dial + ' ' + (phoneEl.value || '');
+
+            contextPhone.appendChild(flagEl);
+            contextPhone.appendChild(strongEl);
+            contextPhone.appendChild(document.createTextNode(' · ' + String(state.country ? state.country.name : '')));
         }
 
         setFeedback('', '');
@@ -1442,7 +1521,7 @@
         }
 
         var providerLabel = getProviderLabel(bundle);
-        var benefit = String(bundle.Description || bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
+        var benefit = getBundleBenefitText(bundle) || 'Paquete disponible';
         var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
         var displayPrice = getDisplayPrice(bundle);
         var amount = formatMoney(displayPrice.amount || 0, displayPrice.currency || 'USD');
@@ -1463,14 +1542,16 @@
             +     '<div class="dc-package-copy-label">Beneficios recibidos</div>'
             +     featuredBadge
             +     '<div class="dc-package-copy-title">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete') + '</div>'
-            +     '<div class="dc-package-copy-description">' + escapeHtml(benefit) + '</div>'
-            +     rangeHint
             +   '</div>'
             +   '<div class="dc-package-price-block">'
-            +     '<span class="dc-package-price-label">Precio al público</span>'
+            +     '<span class="dc-package-price-label">Precio</span>'
             +     '<strong>' + escapeHtml(amount) + '</strong>'
             +   '</div>'
             +   '<div class="dc-package-iso-chip">' + escapeHtml(countryIso || 'N/A') + '</div>'
+            + '</div>'
+            + '<div class="dc-package-benefit">'
+            +   '<div class="dc-package-benefit-text">' + escapeHtml(benefit) + '</div>'
+            +   rangeHint
             + '</div>'
             + '<div class="dc-package-card-meta">'
             +   '<span class="dc-package-meta-label">Operador</span>'
@@ -1483,13 +1564,7 @@
     }
 
     function buildConfirmStep(bundle) {
-        var providerLabel = getProviderLabel(bundle);
-        var benefit = String(bundle.Description || bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete disponible');
-        var countryName = state.country ? state.country.name : '';
-        var countryIso = String(bundle.CountryIso || (state.country ? state.country.iso : '') || '').toUpperCase();
-        var dial = state.country ? '+' + state.country.dial : '';
-        var phone = phoneEl.value || '';
-        var currentSendValue = getCurrentSendValue(bundle);
+        var benefit = getBundleBenefitText(bundle) || 'Paquete disponible';
         var currentReceive = getCurrentReceiveValue(bundle);
         var displayPrice = getDisplayPrice(bundle);
         var price = formatMoney(displayPrice.amount || 0, displayPrice.currency || 'USD');
@@ -1502,10 +1577,7 @@
         var confirmCopy = getFlowCopy(flowKind, 'pending');
 
         if (contextBundle) {
-            var flag = state.country ? isoToFlag(state.country.iso) : '';
-            contextBundle.innerHTML = '<span class="dc-ctx-flag">' + flag + '</span>'
-                + '<strong>' + escapeHtml(dial + ' ' + phone) + '</strong>'
-                + '&nbsp;· ' + escapeHtml(providerLabel);
+            contextBundle.innerHTML = '';
         }
 
         confirmCard.innerHTML = ''
@@ -1514,25 +1586,12 @@
             +     '<div class="dc-confirm-kicker">Beneficios recibidos</div>'
             +     featuredBadge
             +     '<div class="dc-confirm-title">' + escapeHtml(bundle.DefaultDisplayText || bundle.SkuCode || 'Paquete') + '</div>'
-            +     '<div class="dc-confirm-benefit">' + escapeHtml(benefit) + '</div>'
             +   '</div>'
             +   '<div class="dc-confirm-hero-side">'
-            +     '<span class="dc-confirm-iso">' + escapeHtml(countryIso || 'N/A') + '</span>'
             +     '<strong class="dc-confirm-amount">' + escapeHtml(price) + '</strong>'
             +   '</div>'
             + '</div>'
-            + '<div class="dc-confirm-row">'
-            +   '<span class="dc-confirm-row-label">Operador</span>'
-            +   '<span class="dc-confirm-row-value">' + escapeHtml(providerLabel) + '</span>'
-            + '</div>'
-            + '<div class="dc-confirm-row">'
-            +   '<span class="dc-confirm-row-label">Número</span>'
-            +   '<span class="dc-confirm-row-value">' + escapeHtml(dial + ' ' + phone) + '</span>'
-            + '</div>'
-            + '<div class="dc-confirm-row">'
-            +   '<span class="dc-confirm-row-label">País</span>'
-            +   '<span class="dc-confirm-row-value">' + escapeHtml(countryName + (countryIso ? ' (' + countryIso + ')' : '')) + '</span>'
-            + '</div>';
+            + '<div class="dc-confirm-benefit-wide">' + escapeHtml(benefit) + '</div>';
 
         if (isRangeBundle(bundle)) {
             confirmCard.innerHTML += ''
@@ -1598,7 +1657,7 @@
             + '</div>';
         }
 
-        if (DC_RECARGAS_DATA.woocommerce_active) {
+        if (runtime.woocommerceActive) {
             confirmBtn.textContent = 'Proceder al pago';
         } else {
             confirmBtn.textContent = 'Confirmar recarga';
@@ -1666,7 +1725,7 @@
 
         confirmBtn.disabled = true;
 
-        if (DC_RECARGAS_DATA.woocommerce_active) {
+        if (runtime.woocommerceActive) {
             await addToCart(state.selected);
         } else {
             await processDirectTransfer(state.selected);
@@ -1714,6 +1773,10 @@
             });
             if (res.ok && res.redirect) {
                 setFeedbackConfirm('Redirigiendo al checkout...', 'success');
+                try {
+                    sessionStorage.setItem('dc_cart_swap_started_at', String(Date.now()));
+                    sessionStorage.setItem('dc_cart_swap_active', '1');
+                } catch (e) {}
                 window.location.href = res.redirect;
             } else {
                 setFeedbackConfirm(res.message || 'Error al procesar el pago.', 'error');

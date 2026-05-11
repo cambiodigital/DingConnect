@@ -17,8 +17,8 @@ class DC_Recargas_Voucher_Renderer {
                 continue;
             }
             $html .= '<tr>';
-            $html .= '<th style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; color: #64748b; font-weight: normal; width: 40%;">' . esc_html($label) . '</th>';
-            $html .= '<td style="padding: 8px 0; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">' . esc_html($value) . '</td>';
+            $html .= '<th style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-weight: normal; width: 42%;">' . esc_html($label) . '</th>';
+            $html .= '<td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0; color: #0f172a; font-weight: 500;">' . esc_html($value) . '</td>';
             $html .= '</tr>';
         }
         

@@ -55,6 +55,7 @@ class DC_Recargas_Frontend {
             'restBase' => esc_url_raw(rest_url('dingconnect/v1')),
             'nonce' => wp_create_nonce('wp_rest'),
             'countries' => self::get_country_reference_list(),
+            'flagBaseUrl' => esc_url_raw('https://flagcdn.com/24x18/'),
             'woocommerce_active' => (($opts['payment_mode'] ?? 'direct') === 'woocommerce') && class_exists('WooCommerce'),
             'cartUrl' => class_exists('WooCommerce') ? wc_get_cart_url() : '',
             'checkoutUrl' => class_exists('WooCommerce') ? wc_get_checkout_url() : '',
@@ -117,7 +118,7 @@ class DC_Recargas_Frontend {
 
         ob_start();
         ?>
-        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-landing-key="<?php echo esc_attr($landing_key); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-featured-bundle-id="<?php echo esc_attr($featured_bundle_id); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>">
+        <div class="dc-recargas dc-recargas-app" id="<?php echo esc_attr($instance_id); ?>" data-landing-key="<?php echo esc_attr($landing_key); ?>" data-allowed-bundle-ids="<?php echo esc_attr($bundle_attr); ?>" data-featured-bundle-id="<?php echo esc_attr($featured_bundle_id); ?>" data-default-country-iso="<?php echo esc_attr($default_country_iso); ?>" data-available-countries="<?php echo esc_attr(wp_json_encode($available_countries)); ?>" data-rest-base="<?php echo esc_attr(rest_url('dingconnect/v1')); ?>" data-nonce="<?php echo esc_attr(wp_create_nonce('wp_rest')); ?>" data-flag-base-url="https://flagcdn.com/24x18/">
             <div class="dc-card">
 
                 <!-- Viewport del wizard -->

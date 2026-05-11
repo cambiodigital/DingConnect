@@ -1,4 +1,4 @@
-﻿/* ===== Base ===== */
+/* ===== Base ===== */
 .dc-recargas {
     max-width: 480px;
     margin: 24px auto;
@@ -183,8 +183,15 @@
 }
 
 .dc-context-strip .dc-ctx-flag {
+    display: inline-flex;
+    align-items: center;
     font-size: 18px;
     line-height: 1;
+}
+
+.dc-context-strip .dc-flag-img {
+    width: 20px;
+    height: 14px;
 }
 
 /* ===== Phone row ===== */
@@ -222,9 +229,39 @@
     background: #f1f5f9;
 }
 
+.dc-country-btn:disabled {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.dc-country-btn:disabled:hover {
+    background: #f8fafc;
+}
+
+.dc-country-btn:disabled .dc-chevron-icon {
+    display: none;
+}
+
 .dc-country-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 22px;
     line-height: 1;
+}
+
+.dc-flag-img {
+    display: block;
+    width: 22px;
+    height: 16px;
+    border-radius: 3px;
+    object-fit: cover;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.dc-country-option-flag .dc-flag-img {
+    width: 24px;
+    height: 18px;
 }
 
 .dc-country-dial {
@@ -552,8 +589,13 @@
     color: #0f172a;
 }
 
-.dc-package-copy-description {
-    margin-top: 8px;
+.dc-package-benefit {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.dc-package-benefit-text {
     font-size: 14px;
     line-height: 1.5;
     color: #334155;
@@ -667,6 +709,11 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dc-pane-nav--split > * {
+    min-width: 0;
 }
 
 .dc-pane-nav--center {
@@ -683,6 +730,8 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
+    flex: 1;
+    box-sizing: border-box;
     background: none;
     border: 1.5px solid #e2e8f0;
     border-radius: 8px;
@@ -817,6 +866,9 @@
 }
 
 .dc-country-option-flag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     font-size: 22px;
     line-height: 1;
 }
@@ -1119,8 +1171,9 @@
     color: #0f172a;
 }
 
-.dc-confirm-benefit {
-    margin-top: 8px;
+.dc-confirm-benefit-wide {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
     font-size: 14px;
     line-height: 1.5;
     color: #334155;
@@ -1131,22 +1184,6 @@
     flex-direction: column;
     align-items: flex-end;
     gap: 10px;
-}
-
-.dc-confirm-iso {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 40px;
-    height: 28px;
-    padding: 0 10px;
-    border-radius: 999px;
-    background: #e0ecff;
-    color: #1d4ed8;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
 }
 
 .dc-confirm-amount {
@@ -1195,6 +1232,7 @@
 
 .dc-confirm-btn {
     flex: 1;
+    box-sizing: border-box;
     padding: 12px 20px;
     border: none;
     border-radius: 10px;
@@ -1208,6 +1246,18 @@
 
 .dc-confirm-btn:hover { background: #047857; }
 .dc-confirm-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@media (max-width: 420px) {
+    .dc-pane-nav--split {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .dc-pane-nav--split .dc-nav-back-btn,
+    .dc-pane-nav--split .dc-confirm-btn {
+        width: 100%;
+    }
+}
 
 /* ===== Feedback ===== */
 .dc-feedback:empty { display: none; }

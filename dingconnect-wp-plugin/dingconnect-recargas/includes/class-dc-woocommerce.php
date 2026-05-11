@@ -80,6 +80,7 @@ class DC_Recargas_WooCommerce {
 
         // Checkout fields + address validation bypass for DC-only
         add_filter('woocommerce_checkout_fields', [$this, 'customize_checkout_fields']);
+        add_filter('woocommerce_checkout_cart_item_quantity', [$this, 'suppress_dc_checkout_item_quantity'], 10, 3);
         add_filter('woocommerce_new_customer_data', [$this, 'prefill_customer_phone']);
         add_action('woocommerce_after_checkout_validation', [$this, 'clear_address_validation_errors_for_dc'], 10, 2);
 
@@ -105,6 +106,7 @@ class DC_Recargas_WooCommerce {
 
         // Optional UI guard: hide Advanced Coupons store credit block in DC-only checkout
         add_action('wp_footer', [$this, 'maybe_hide_acfw_store_credit_ui'], 99);
+        add_action('wp_footer', [$this, 'maybe_render_cart_swap_checkout_guard'], 98);
 
         // Manual reconciliation + voucher rendering
         add_filter('woocommerce_order_actions', [$this, 'register_manual_reconcile_action']);
@@ -263,13 +265,25 @@ class DC_Recargas_WooCommerce {
             (string) ($data['bundle_label'] ?? '')
         );
 
-        // Snapshot existing cart if it has regular products
-        if (WC()->cart && !WC()->cart->is_empty() && !$this->cart_has_only_recargas()) {
+        $now = time();
+        $ttl_seconds = 300;
+
+        $session = WC()->session;
+        $swap_active = $session ? (bool) $session->get('dc_cart_swap_active') : false;
+
+        if (!$swap_active && $session) {
             $snapshot = [
-                'cart' => WC()->session->get('cart'),
-                'applied_coupons' => WC()->session->get('applied_coupons'),
+                'cart' => $session->get('cart'),
+                'applied_coupons' => $session->get('applied_coupons'),
             ];
-            WC()->session->set('dc_cart_snapshot', $snapshot);
+
+            $session->set('dc_cart_snapshot', $snapshot);
+            $session->set('dc_cart_swap_active', true);
+            $session->set('dc_cart_swap_started_at', $now);
+            $session->set('dc_cart_swap_expires_at', $now + $ttl_seconds);
+        }
+
+        if (WC()->cart && !WC()->cart->is_empty() && !$this->cart_has_only_recargas()) {
             WC()->cart->empty_cart();
         }
 
@@ -781,7 +795,7 @@ class DC_Recargas_WooCommerce {
         $public_price = isset($cart_item['dc_public_price']) ? (float) $cart_item['dc_public_price'] : 0.0;
         $public_currency = (string) ($cart_item['dc_public_currency_iso'] ?? ($cart_item['dc_send_currency_iso'] ?? ''));
         if ($public_price > 0) {
-            $item_data[] = ['key' => 'Precio al público', 'value' => sprintf('%s %.2f', $public_currency, $public_price)];
+            $item_data[] = ['key' => 'Precio', 'value' => sprintf('%s %.2f', $public_currency, $public_price)];
         }
 
         $item_data[] = ['key' => 'Moneda operación', 'value' => $cart_item['dc_send_currency_iso'] ?? ''];
@@ -1064,29 +1078,40 @@ class DC_Recargas_WooCommerce {
         $snapshot = WC()->session->get('dc_cart_snapshot');
         if (empty($snapshot)) return;
 
+        $shop_url = function_exists('wc_get_page_permalink') ? wc_get_page_permalink('shop') : home_url('/');
+
         $is_explicit_cancel = isset($_GET['dc_cancel_recharge']) && $_GET['dc_cancel_recharge'] === '1';
+        $is_explicit_expired = isset($_GET['dc_checkout_expired']) && $_GET['dc_checkout_expired'] === '1';
+
+        $expires_at = (int) WC()->session->get('dc_cart_swap_expires_at');
+        $is_expired = $expires_at > 0 && time() > $expires_at;
+        $should_force_restore = $is_explicit_cancel || $is_explicit_expired || $is_expired;
         
-        if (!$is_explicit_cancel) {
-            // Do not restore if we are in checkout or doing wc-ajax
-            $is_checkout_page = function_exists('is_checkout') && is_checkout();
-            $doing_ajax = function_exists('wp_doing_ajax') ? wp_doing_ajax() : (defined('DOING_AJAX') && DOING_AJAX);
-            if ($is_checkout_page || $doing_ajax || isset($_GET['wc-ajax'])) {
-                // Except if we are on the order-received page, the order is complete, we should restore it so they can continue shopping.
-                $is_order_received = function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received');
-                if ($is_order_received) {
-                    $this->restore_cart_snapshot($snapshot);
-                }
-                return;
+        $is_checkout_page = function_exists('is_checkout') && is_checkout();
+        $doing_ajax = function_exists('wp_doing_ajax') ? wp_doing_ajax() : (defined('DOING_AJAX') && DOING_AJAX);
+        $is_wc_ajax = isset($_GET['wc-ajax']);
+        $is_order_received = function_exists('is_wc_endpoint_url') && is_wc_endpoint_url('order-received');
+
+        if ($should_force_restore) {
+            $this->restore_cart_snapshot($snapshot);
+
+            if ($is_checkout_page || $is_explicit_cancel || $is_explicit_expired) {
+                wp_safe_redirect($shop_url);
+                exit;
             }
+
+            return;
+        }
+
+        if ($is_checkout_page || $doing_ajax || $is_wc_ajax) {
+            if ($is_order_received) {
+                $this->restore_cart_snapshot($snapshot);
+            }
+            return;
         }
 
         // Proceed to restore
         $this->restore_cart_snapshot($snapshot);
-
-        if ($is_explicit_cancel) {
-            wp_safe_redirect(wc_get_cart_url());
-            exit;
-        }
     }
 
     private function restore_cart_snapshot($snapshot) {
@@ -1108,15 +1133,50 @@ class DC_Recargas_WooCommerce {
             WC()->cart->calculate_totals();
         }
         WC()->session->set('dc_cart_snapshot', null);
+        WC()->session->set('dc_cart_swap_active', null);
+        WC()->session->set('dc_cart_swap_started_at', null);
+        WC()->session->set('dc_cart_swap_expires_at', null);
     }
 
     public function render_cancel_recharge_button() {
         if ($this->cart_has_only_recargas() && WC()->session && WC()->session->get('dc_cart_snapshot')) {
-            $cancel_url = add_query_arg('dc_cancel_recharge', '1', wc_get_checkout_url());
-            echo '<div class="dc-cancel-recharge-wrapper" style="margin-bottom: 20px;">';
-            echo '<a href="' . esc_url($cancel_url) . '" class="button alt" style="background-color: #d9534f; color: #fff; text-align: center; display: block; padding: 10px;">' . esc_html__('Cancelar recarga y volver a la tienda', 'dingconnect-recargas') . '</a>';
+            $shop_url = function_exists('wc_get_page_permalink') ? wc_get_page_permalink('shop') : home_url('/');
+            $cancel_url = add_query_arg('dc_cancel_recharge', '1', $shop_url);
+            echo '<div class="dc-cancel-recharge-wrapper">';
+            echo '<a href="' . esc_url($cancel_url) . '" class="button alt">' . esc_html__('Volver a la tienda', 'dingconnect-recargas') . '</a>';
             echo '</div>';
         }
+    }
+
+    public function maybe_render_cart_swap_checkout_guard() {
+        if (!function_exists('is_checkout') || !is_checkout()) return;
+        if (!WC()->session) return;
+
+        $shop_url = function_exists('wc_get_page_permalink') ? wc_get_page_permalink('shop') : home_url('/');
+        $cancel_url = add_query_arg('dc_cancel_recharge', '1', $shop_url);
+        $expired_url = add_query_arg('dc_checkout_expired', '1', $shop_url);
+
+        $swap_active = (bool) WC()->session->get('dc_cart_swap_active');
+        $snapshot = WC()->session->get('dc_cart_snapshot');
+        $expires_at = (int) WC()->session->get('dc_cart_swap_expires_at');
+
+        if (!$swap_active || empty($snapshot) || !$this->cart_has_only_recargas()) {
+            echo '<script>(function(){try{sessionStorage.removeItem("dc_cart_swap_active");sessionStorage.removeItem("dc_cart_swap_started_at");}catch(e){}})();</script>';
+            return;
+        }
+
+        $ms_remaining = 0;
+        if ($expires_at > 0) {
+            $ms_remaining = max(0, ($expires_at - time()) * 1000);
+        }
+
+        $payload = [
+            'cancelUrl' => $cancel_url,
+            'expiredUrl' => $expired_url,
+            'msRemaining' => $ms_remaining,
+        ];
+
+        echo '<script>(function(){try{var cfg=' . wp_json_encode($payload) . ';var hasMarker=!!sessionStorage.getItem("dc_cart_swap_active");if(!hasMarker){window.location.replace(cfg.cancelUrl);return;}var ms=Number(cfg.msRemaining||0);if(ms<=0){window.location.replace(cfg.expiredUrl);return;}window.setTimeout(function(){window.location.replace(cfg.expiredUrl);},ms);}catch(e){}})();</script>';
     }
 
     private function cart_has_recargas() {
@@ -1403,11 +1463,18 @@ class DC_Recargas_WooCommerce {
         if (isset($fields['billing']['billing_phone'])) {
             $fields['billing']['billing_phone']['required']    = true;
             $fields['billing']['billing_phone']['priority']    = 30;
-            $fields['billing']['billing_phone']['label']       = 'Tu número de teléfono';
-            $fields['billing']['billing_phone']['placeholder'] = 'Ej: +34 600 000 000';
+            $fields['billing']['billing_phone']['label']       = 'Tu teléfono';
+            $fields['billing']['billing_phone']['placeholder'] = 'Tu teléfono';
         }
 
         return $fields;
+    }
+
+    public function suppress_dc_checkout_item_quantity($quantity_html, $cart_item, $cart_item_key) {
+        if (!empty($cart_item['dc_recarga'])) {
+            return '';
+        }
+        return $quantity_html;
     }
 
     /**
@@ -1774,7 +1841,7 @@ class DC_Recargas_WooCommerce {
             '_dc_provider_name'   => 'Operador',
             '_dc_bundle_benefit'  => 'Beneficios',
             '_dc_bundle_label'    => 'Paquete',
-            '_dc_public_price'    => 'Precio al público',
+            '_dc_public_price'    => 'Precio',
             '_dc_public_currency_iso' => 'Moneda precio público',
             '_dc_send_value'      => 'Coste Ding',
             '_dc_send_currency_iso' => 'Moneda operación',
@@ -1864,6 +1931,12 @@ class DC_Recargas_WooCommerce {
         echo '<div id="dc-voucher-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:99999; align-items:center; justify-content:center;">';
         echo '<div class="dc-voucher-modal-content" style="background:#fff; padding:25px; border-radius:12px; max-width:500px; width:90%; max-height:90vh; overflow-y:auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position:relative;">';
         echo '<button onclick="document.getElementById(\'dc-voucher-modal\').style.display=\'none\'" style="position:absolute; top:15px; right:15px; background:none; border:none; font-size:24px; cursor:pointer; color:#64748b;">&times;</button>';
+
+        echo '<div id="dc-voucher-print-root">';
+        echo '<div class="dc-voucher-brand" style="display:flex; align-items:center; justify-content:center; gap:10px; padding:0 0 14px; margin-bottom:14px; border-bottom:1px solid #e2e8f0;">';
+        echo '<img src="https://cubakilos.com/wp-content/uploads/2023/08/logo-cubakilos-color.png.webp" alt="Cubakilos" style="height:34px; width:auto; object-fit:contain;">';
+        echo '<div style="font-weight:800; color:#0f172a; letter-spacing:-0.2px;">Comprobante de recarga</div>';
+        echo '</div>';
         
         echo '<div class="dc-voucher-modal-title" style="text-align:center; margin-bottom:20px;">';
         echo '<h2 style="margin:0; color:#1e293b; font-size:1.5em;">Resumen final de tu compra Cubakilos</h2>';
@@ -1952,9 +2025,11 @@ class DC_Recargas_WooCommerce {
             }
         }
 
+        echo '</div>';
+
         echo '<div class="dc-voucher-modal-actions" style="text-align:center; margin-top:20px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">';
         echo '<button onclick="document.getElementById(\'dc-voucher-modal\').style.display=\'none\'" style="background:#2563eb; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:600; cursor:pointer;">Cerrar</button>';
-        echo '<button onclick="window.print()" style="background:#475569; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:600; cursor:pointer;">Guardar PDF</button>';
+        echo '<button onclick="dcPrintVoucher()" style="background:#475569; color:#fff; border:none; padding:10px 20px; border-radius:6px; font-weight:600; cursor:pointer;">Guardar PDF</button>';
         echo '</div>';
 
         echo '</div></div>';
@@ -2023,12 +2098,12 @@ class DC_Recargas_WooCommerce {
             .dc-voucher-container table { font-size: 12px !important; }
             .dc-voucher-container th {
                 width: 45% !important;
-                padding: 6px 0 !important;
+                padding: 6px 8px !important;
                 color: #475569 !important;
                 border-bottom: 1px solid #e2e8f0 !important;
             }
             .dc-voucher-container td {
-                padding: 6px 0 !important;
+                padding: 6px 8px !important;
                 border-bottom: 1px solid #e2e8f0 !important;
             }
         }
@@ -2036,6 +2111,44 @@ class DC_Recargas_WooCommerce {
 
         // Script para abrir automáticamente
         echo '<script>
+        function dcPrintVoucher() {
+            var root = document.getElementById("dc-voucher-print-root");
+            if (!root) {
+                window.print();
+                return;
+            }
+
+            var w = window.open("", "_blank");
+            if (!w) {
+                window.print();
+                return;
+            }
+
+            var styles = ""
+                + "@page{size:A6 portrait;margin:8mm;}"
+                + "html,body{height:auto!important;}"
+                + "body{margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:-apple-system,BlinkMacSystemFont,\\\"Segoe UI\\\",Roboto,\\\"Helvetica Neue\\\",Arial,sans-serif;}"
+                + ".dc-voucher-print-root{width:89mm;max-width:89mm;margin:0 auto;}"
+                + ".dc-voucher-brand{display:flex;align-items:center;justify-content:center;gap:10px;padding:0 0 12px;margin:0 0 12px;border-bottom:1px solid #e2e8f0;}"
+                + ".dc-voucher-brand img{height:34px;width:auto;object-fit:contain;}"
+                + ".dc-voucher-modal-title,.dc-voucher-modal-warning,.dc-voucher-modal-success,.dc-voucher-modal-actions,button{display:none!important;}"
+                + ".dc-voucher-container{margin-top:0!important;padding:0!important;border:none!important;border-radius:0!important;background:#fff!important;}"
+                + ".dc-voucher-container h3{margin:0 0 8px 0!important;font-size:14px!important;letter-spacing:0!important;}"
+                + ".dc-voucher-container table{font-size:12px!important;}"
+                + ".dc-voucher-container th{width:45%!important;padding:6px 8px!important;color:#475569!important;border-bottom:1px solid #e2e8f0!important;background:#f8fafc!important;}"
+                + ".dc-voucher-container td{padding:6px 8px!important;border-bottom:1px solid #e2e8f0!important;}";
+
+            w.document.open();
+            w.document.write("<!doctype html><html lang=\\\"es\\\"><head><meta charset=\\\"utf-8\\\"><title>Comprobante de recarga</title><style>" + styles + "</style></head><body><div class=\\\"dc-voucher-print-root\\\">" + root.innerHTML + "</div></body></html>");
+            w.document.close();
+
+            w.addEventListener("load", function () {
+                w.focus();
+                w.print();
+                w.close();
+            });
+        }
+
         document.addEventListener("DOMContentLoaded", function() {
             var modal = document.getElementById("dc-voucher-modal");
             if (modal) {
@@ -2231,8 +2344,21 @@ class DC_Recargas_WooCommerce {
     }
 
     private function is_item_already_successful($item) {
+        return $this->is_item_confirmed_success($item);
+    }
+
+    private function is_item_confirmed_success($item) {
+        if (!($item instanceof WC_Order_Item_Product)) {
+            return false;
+        }
+
         $status = strtolower((string) $item->get_meta('_dc_transfer_status'));
-        return $this->is_successful_transfer_status($status);
+        if (!$this->is_successful_transfer_status($status)) {
+            return false;
+        }
+
+        $transfer_ref = (string) $item->get_meta('_dc_transfer_ref');
+        return $this->api->is_confirmed_transfer_reference($transfer_ref);
     }
 
     /**
@@ -2778,8 +2904,14 @@ class DC_Recargas_WooCommerce {
             }
             $summary['status_map'][$status]++;
 
-            if ($this->is_successful_transfer_status($status)) {
+            $is_confirmed_success = $this->is_item_confirmed_success($item);
+            if ($is_confirmed_success) {
                 $summary['success']++;
+                continue;
+            }
+
+            if ($this->is_successful_transfer_status($status)) {
+                $summary['pending']++;
                 continue;
             }
 
@@ -2801,7 +2933,7 @@ class DC_Recargas_WooCommerce {
             return true;
         }
 
-        return in_array(strtolower((string) $status), ['pending_retry', 'not_started'], true);
+        return in_array(strtolower((string) $status), ['pending_retry', 'not_started', 'pending_confirmation'], true);
     }
 
     private function format_recarga_summary_text(array $summary) {
@@ -2880,23 +3012,13 @@ class DC_Recargas_WooCommerce {
             return false;
         }
 
-        $updated = call_user_func('wp_update_post', [
-            'ID' => (int) $order->get_id(),
-            'post_status' => 'wc-' . $target_status,
-        ], true);
-
-        if (is_wp_error($updated)) {
-            $order->add_order_note(sprintf(
-                'DingConnect: no se pudo actualizar estado de orden a %s. Motivo: %s',
-                strtoupper($target_status),
-                $updated->get_error_message()
-            ));
-            return false;
+        $lock_key = 'dc_order_status_lock_' . md5((string) $order->get_id() . ':' . $target_status);
+        if (get_transient($lock_key)) {
+            return true;
         }
+        set_transient($lock_key, 1, 45);
 
-        if ($reason !== '') {
-            $order->add_order_note($reason);
-        }
+        call_user_func([$order, 'update_status'], $target_status, (string) $reason);
 
         return true;
     }

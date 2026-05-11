@@ -275,7 +275,7 @@ flowchart TB
 |------|-------------------|------------------------------|
 | 5.1 | Click en "Proceder al pago" | `POST /add-to-cart` con payload completo; crea producto virtual; guarda metadatos en carrito |
 | 5.2 | **Redirige a checkout** | — |
-| 5.3 | Checkout **minimalista** (solo recargas): nombre, email, teléfono. Sin dirección. | Filtra pasarelas; oculta créditos tienda opcional |
+| 5.3 | Checkout **minimalista** (solo recargas): nombre, email, teléfono (UI "Tu teléfono"). Sin dirección. Resumen sin indicador de cantidad (`× 1`). | Filtra pasarelas; oculta créditos tienda opcional |
 | 5.4 | Usuario ingresa **datos básicos** y selecciona **método de pago** | — |
 | 5.5 | **Realizar pedido** | WooCommerce procesa pago según pasarela |
 | 5.6 | Pago exitoso → orden pasa a `processing` o `completed` | — |
