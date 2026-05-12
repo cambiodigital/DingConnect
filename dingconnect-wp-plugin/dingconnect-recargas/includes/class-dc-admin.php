@@ -6616,6 +6616,10 @@ class DC_Recargas_Admin {
                 var landingEditKeyEl = document.getElementById('dc_edit_landing_key');
                 var landingEditTitleEl = document.getElementById('dc_edit_landing_title');
                 var landingEditSubtitleEl = document.getElementById('dc_edit_landing_subtitle');
+                var landingEditPackageStageTitleEl = document.getElementById('dc_edit_landing_package_stage_title');
+                var landingEditPackageStageSubtitleEl = document.getElementById('dc_edit_landing_package_stage_subtitle');
+                var landingEditConfirmStageTitleEl = document.getElementById('dc_edit_landing_confirm_stage_title');
+                var landingEditConfirmStageSubtitleEl = document.getElementById('dc_edit_landing_confirm_stage_subtitle');
                 var landingCreateFormEl = document.getElementById('dc_create_landing_form');
                 var landingEditFormEl = document.getElementById('dc_edit_landing_form');
                 var landingCreateChecklistEl = document.getElementById('dc_landing_bundle_ids');

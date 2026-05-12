@@ -1627,6 +1627,8 @@
                 + '</div>';
         }
 
+        // Se omiten "Recibe estimado" y "Recibe sin impuestos" porque ya se muestra en el benefit-wide
+        /*
         if (currentReceive.amount > 0) {
             confirmCard.innerHTML += ''
                 + '<div class="dc-confirm-row">'
@@ -1642,6 +1644,7 @@
                 +   '<span class="dc-confirm-row-value is-price">' + escapeHtml(formatMoney(currentReceive.excludingTax, currentReceive.currency || '')) + '</span>'
                 + '</div>';
         }
+        */
 
         if (state.selectedBillRef) {
             confirmCard.innerHTML += ''

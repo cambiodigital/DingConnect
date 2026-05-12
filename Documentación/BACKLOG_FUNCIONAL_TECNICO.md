@@ -5,6 +5,7 @@
 Priorizar próximos proyectos y funcionalidades sobre la base actual del plugin WordPress de DingConnect.
 
 ## Cambios recientes (Completado)
+- **12 Mayo 2026:** Se eliminaron las indicaciones "Recibe estimado" y "Recibe sin impuestos" del paso de confirmación en el frontend público, ya que esa información ya está cubierta por el campo de beneficio (benefit).
 - **12 Mayo 2026:** Se agregaron 4 campos personalizables para los textos del frontend de la landing: `package_stage_title`, `package_stage_subtitle`, `confirm_stage_title` y `confirm_stage_subtitle`. Configurables independientemente por cada shortcode desde el panel admin.
 
 ## Prioridad P0 (crítico)
@@ -506,3 +507,20 @@ Dos escenarios contribuyentes:
 - `includes/class-dc-woocommerce.php` — corrección de sintaxis JS/CSS para voucher.
 - `dingconnect-recargas.php` — bump de versión a 2.8.30.
 - `Documentación/HALLAZGOS_PRODUCCION_CHECKOUT.md` — archivo creado con la explicación detallada para posterior ajuste y solución definitiva.
+
+## Corrección de ReferenceError en modal de Shortcodes (v2.8.37, 12-05-2026)
+
+**Problema detectado**: Al intentar abrir o duplicar una landing shortcode desde el admin (pestaña Landings), la interfaz se bloqueaba con un error de consola `Uncaught ReferenceError: landingEditPackageStageTitleEl is not defined en openLandingEditModal`.
+
+### Causa raíz
+
+Las variables `landingEditPackageStageTitleEl`, `landingEditPackageStageSubtitleEl`, `landingEditConfirmStageTitleEl` y `landingEditConfirmStageSubtitleEl` se utilizaban dentro de la función `openLandingEditModal`, pero nunca se habían declarado en el bloque principal de variables DOM en `class-dc-admin.php`.
+
+### Correcciones aplicadas
+
+1. Se declararon las variables faltantes apuntando a sus respectivos IDs del DOM (`dc_edit_landing_package_stage_title`, etc.) en el scope principal del bloque JavaScript en `includes/class-dc-admin.php`.
+2. Se incrementó la versión del plugin en `dingconnect-recargas.php`.
+
+**Archivos modificados**:
+- `includes/class-dc-admin.php` — Se agregaron las declaraciones de variables faltantes.
+- `dingconnect-recargas.php` — bump de versión a 2.8.37.
