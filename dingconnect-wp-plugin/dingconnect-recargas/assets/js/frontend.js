@@ -109,6 +109,8 @@
         selectedEstimate: null,
         selectedEstimateError: '',
         selectedSendValue: 0,
+        precheckToken: '',
+        precheckKey: '',
         wizardStep: 'phone',  // phone | confirm | result
     };
 
@@ -247,6 +249,11 @@
         feedbackConfirmEl.textContent = msg || '';
     }
 
+    function clearPrecheck() {
+        state.precheckToken = '';
+        state.precheckKey = '';
+    }
+
     function resetPackageStage(clearBundles) {
         state.selected = null;
         state.visibleBundles = [];
@@ -255,6 +262,7 @@
         state.selectedBillOptions = [];
         state.selectedEstimate = null;
         state.selectedSendValue = 0;
+        clearPrecheck();
         if (clearBundles) {
             state.bundles = [];
         }
@@ -415,13 +423,13 @@
 
         var errorCodes = normalizeErrorCodes(item.ErrorCodes);
         var resultCode = Number(item.ResultCode || 0);
-        if (!resultCode && !errorCodes.length) {
+        if ((resultCode === 0 || resultCode === 1) && !errorCodes.length) {
             return '';
         }
 
         var firstError = errorCodes[0] || null;
         if (!firstError) {
-            return fallback;
+            return resultCode === 2 ? '' : fallback;
         }
 
         var mapped = {
@@ -471,6 +479,37 @@
                 Name: name,
                 Value: String(state.selectedSettings[name] || '').trim(),
             };
+        });
+    }
+
+    function buildValidationPayload(bundle) {
+        var sendValue = Number(getCurrentSendValue(bundle) || 0);
+        return {
+            account_number: state.fullPhone || normalizePhone(),
+            country_iso: state.country && state.country.iso ? state.country.iso : '',
+            sku_code: String((bundle && bundle.SkuCode) || ''),
+            bundle_id: String((bundle && bundle.BundleId) || ''),
+            send_value: sendValue,
+            send_currency_iso: String((bundle && bundle.SendCurrencyIso) || 'EUR'),
+            provider_code: String((bundle && bundle.ProviderCode) || ''),
+            settings: getSettingsPayload(bundle),
+            bill_ref: state.selectedBillRef || '',
+            landing_key: landingKey || '',
+            allowed_bundle_ids: allowedBundleIds.slice(),
+        };
+    }
+
+    function buildPrecheckKey(bundle) {
+        var payload = buildValidationPayload(bundle);
+        return JSON.stringify({
+            account_number: payload.account_number,
+            country_iso: payload.country_iso,
+            sku_code: payload.sku_code,
+            bundle_id: payload.bundle_id,
+            send_value: Number(payload.send_value || 0).toFixed(4),
+            send_currency_iso: payload.send_currency_iso,
+            settings: payload.settings,
+            bill_ref: payload.bill_ref,
         });
     }
 
@@ -791,6 +830,48 @@
         return data;
     }
 
+    async function validateRechargePrecheck(bundle) {
+        var payload = buildValidationPayload(bundle);
+        var precheckKey = buildPrecheckKey(bundle);
+        if (state.precheckToken && state.precheckKey === precheckKey) {
+            return { ok: true, precheck_token: state.precheckToken };
+        }
+
+        clearPrecheck();
+        var slowTimer = setTimeout(function () {
+            setFeedback('Seguimos validando con el operador. No cierres esta pantalla.', 'info');
+        }, 3000);
+
+        try {
+            setFeedback('Validando tu recarga con el operador...', 'info');
+            var response = await fetchJson('/precheck', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response || !response.ok || !response.precheck_token) {
+                return {
+                    ok: false,
+                    message: (response && response.message) || 'No pudimos validar la recarga.',
+                };
+            }
+
+            state.precheckToken = String(response.precheck_token || '');
+            state.precheckKey = precheckKey;
+            setFeedback('Recarga validada. Revisa los datos antes de pagar.', 'success');
+            return response;
+        } catch (error) {
+            clearPrecheck();
+            return {
+                ok: false,
+                message: error.message || 'No pudimos validar la recarga. Intenta nuevamente.',
+            };
+        } finally {
+            clearTimeout(slowTimer);
+        }
+    }
+
     function renderEstimateSummary(bundle) {
         var estimateEl = dynamicFieldsEl ? dynamicFieldsEl.querySelector('#dc-range-estimate') : null;
         if (!estimateEl || !bundle) return;
@@ -1027,6 +1108,7 @@
             renderEstimateSummary(bundle);
             rangeInput.addEventListener('input', function () {
                 var value = Number(rangeInput.value || 0);
+                clearPrecheck();
                 state.selectedSendValue = value;
                 state.selectedEstimate = null;
                 state.selectedEstimateError = '';
@@ -1043,6 +1125,7 @@
 
         dynamicFieldsEl.querySelectorAll('[data-setting-name]').forEach(function (input) {
             input.addEventListener('input', function () {
+                clearPrecheck();
                 syncSettingsFromInputs();
                 clearBillSelection(bundle, 'Cambiaste datos requeridos. Consulta la factura otra vez para continuar.');
             });
@@ -1058,6 +1141,7 @@
 
             billSelect.addEventListener('change', function () {
                 var selectedBill = state.selectedBillOptions[parseInt(billSelect.value, 10)] || null;
+                clearPrecheck();
                 if (!selectedBill) {
                     state.selectedBillRef = '';
                     return;
@@ -1696,26 +1780,44 @@
 
     packageSelect.addEventListener('change', function () {
         var selectedIndex = parseInt(packageSelect.value, 10);
+        clearPrecheck();
         state.selected = isNaN(selectedIndex) ? null : (state.visibleBundles[selectedIndex] || null);
         renderPackageCard(state.selected);
     });
 
     btnContinueConfirm.addEventListener('click', async function () {
         if (!state.selected) return;
+        var originalText = btnContinueConfirm.textContent;
+        btnContinueConfirm.disabled = true;
+        btnContinueConfirm.textContent = 'Validando...';
+
         var providerAvailable = await ensureProviderStatus(state.selected, 'package');
         if (!providerAvailable) {
             btnContinueConfirm.disabled = false;
+            btnContinueConfirm.textContent = originalText;
             return;
         }
 
         var validationError = validateSelectedBundle(state.selected);
         if (validationError) {
             setFeedback(validationError, 'warning');
+            btnContinueConfirm.disabled = false;
+            btnContinueConfirm.textContent = originalText;
+            return;
+        }
+
+        var precheck = await validateRechargePrecheck(state.selected);
+        if (!precheck.ok) {
+            setFeedback(precheck.message || 'No pudimos validar la recarga.', 'error');
+            btnContinueConfirm.disabled = false;
+            btnContinueConfirm.textContent = originalText;
             return;
         }
 
         buildConfirmStep(state.selected);
         goToStep('confirm', 'forward');
+        btnContinueConfirm.disabled = false;
+        btnContinueConfirm.textContent = originalText;
     });
 
     btnBackConfirm.addEventListener('click', function () {
@@ -1778,6 +1880,7 @@
             public_price: checkoutPublicPrice,
             public_price_currency: String(displayPrice.currency || selected.SendCurrencyIso || 'EUR'),
             provider_name: getProviderLabel(selected),
+            provider_code: String(selected.ProviderCode || ''),
             bundle_label: selected.DefaultDisplayText || selected.SkuCode,
             bundle_benefit: getBundleBenefitText(selected),
             bundle_id: String((selected && selected.BundleId) || ''),
@@ -1788,6 +1891,9 @@
             is_range: !!selected.IsRange,
             settings: getSettingsPayload(selected),
             bill_ref: state.selectedBillRef || '',
+            landing_key: landingKey || '',
+            allowed_bundle_ids: allowedBundleIds.slice(),
+            precheck_token: state.precheckToken || '',
         };
 
         confirmBtn.textContent = 'Procesando pago...';
@@ -1856,8 +1962,8 @@
         var items = result.Items || result.Result || [];
         var item = items[0] || record;
         var processingState = item.ProcessingState || record.ProcessingState || item.Status || 'Pendiente';
-        var transferRef = transferId.TransferRef || transferId.DistributorRef
-            || result.TransferRef || result.DistributorRef || 'N/A';
+        var transferRef = transferId.TransferRef || result.TransferRef || '';
+        var distributorRef = transferId.DistributorRef || result.DistributorRef || '';
         var status = item.Status || processingState || '';
         var receiptText = String(record.ReceiptText || item.ReceiptText || '');
         var receiptParams = record.ReceiptParams || item.ReceiptParams || {};
@@ -1896,9 +2002,13 @@
             +   '<div class="dc-result-receipt-title">Resumen</div>'
             +   '<div class="dc-result-receipt-text">' + escapeHtml(flowCopy.summary) + '</div>'
             + '</div>'
-            + '<div class="dc-result-row"><span>Referencia</span><span>' + escapeHtml(String(transferRef)) + '</span></div>'
+            + '<div class="dc-result-row"><span>ID de transacción</span><span>' + escapeHtml(String(transferRef || 'Pendiente de confirmación')) + '</span></div>'
             + '<div class="dc-result-row"><span>Estado</span><span>' + escapeHtml(String(status || 'Pendiente')) + '</span></div>'
             + '<div class="dc-result-row"><span>Numero</span><span>' + escapeHtml(String(item.AccountNumber || state.fullPhone || 'N/A')) + '</span></div>';
+
+        if (!transferRef && distributorRef) {
+            html += '<div class="dc-result-row"><span>Referencia interna</span><span>' + escapeHtml(String(distributorRef)) + '</span></div>';
+        }
 
         if (providerLabel && providerLabel !== 'Operador') {
             html += '<div class="dc-result-row"><span>Proveedor</span><span>' + escapeHtml(providerLabel) + '</span></div>';

@@ -741,6 +741,7 @@ class DC_Recargas_API {
             'headers' => [
                 'api_key' => $api_key,
                 'Content-Type' => 'application/json',
+                'X-Correlation-Id' => $this->build_correlation_id($body),
             ],
         ];
 
@@ -836,6 +837,17 @@ class DC_Recargas_API {
         }
 
         return $query;
+    }
+
+    private function build_correlation_id($body = null) {
+        if (is_array($body)) {
+            $distributor_ref = sanitize_text_field((string) ($body['DistributorRef'] ?? ''));
+            if ($distributor_ref !== '') {
+                return $distributor_ref;
+            }
+        }
+
+        return 'WP-' . gmdate('YmdHis') . '-' . strtoupper(wp_generate_password(8, false, false));
     }
 
     private function sanitize_settings($settings) {

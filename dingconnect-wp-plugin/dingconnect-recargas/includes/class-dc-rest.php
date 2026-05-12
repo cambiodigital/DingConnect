@@ -111,6 +111,12 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
         ]);
 
+        register_rest_route('dingconnect/v1', '/precheck', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [$this, 'precheck'],
+            'permission_callback' => '__return_true',
+        ]);
+
         register_rest_route('dingconnect/v1', '/transfer', [
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => [$this, 'transfer'],
@@ -495,6 +501,278 @@ class DC_Recargas_REST {
         ]);
     }
 
+    public function precheck(WP_REST_Request $request) {
+        if (!$this->check_rate_limit('precheck', 8)) {
+            return $this->precheck_error('RATE_LIMIT', 'Hemos alcanzado el límite de solicitudes. Intenta en unos segundos.', 429, true);
+        }
+
+        $params = $request->get_json_params();
+        $params = is_array($params) ? $params : [];
+        $payload = $this->normalize_recharge_payload($params);
+
+        if ($payload['account_number'] === '' || $payload['country_iso'] === '' || $payload['sku_code'] === '' || $payload['send_value'] <= 0) {
+            return $this->precheck_error('MISSING_FIELDS', 'Datos incompletos para validar la recarga.', 400, false);
+        }
+
+        if (strlen($payload['account_number']) < 8) {
+            return $this->precheck_error('NUMBER_INVALID', 'El número introducido no es válido o no admite recargas. Verifica el número e inténtalo de nuevo.', 400, false);
+        }
+
+        $matched_bundle = $this->find_saved_bundle_for_cart($payload['bundle_id'], $payload['sku_code'], $payload['country_iso']);
+        $landing_validation = $this->validate_bundle_for_landing($payload['landing_key'], $payload['bundle_id'], $payload['allowed_bundle_ids']);
+        if (is_wp_error($landing_validation)) {
+            return $this->precheck_wp_error_response($landing_validation, 'PRODUCT_NOT_AVAILABLE');
+        }
+
+        $amount_validation = $this->validate_send_value_against_bundle($payload['sku_code'], $payload['country_iso'], $payload['send_value'], $payload['bundle_id']);
+        if (is_wp_error($amount_validation)) {
+            return $this->precheck_error('AMOUNT_NOT_ALLOWED', $amount_validation->get_error_message(), 400, false, $amount_validation->get_error_data());
+        }
+
+        $lookup = $this->with_retries(function () use ($payload) {
+            return $this->api->get_account_lookup($payload['account_number']);
+        });
+        if (is_wp_error($lookup)) {
+            $this->api->log_operational_event('precheck_lookup_unavailable', [
+                'status' => 'warning',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => [
+                    'reason' => 'lookup_error_continue_to_validate_only',
+                    'error' => $lookup->get_error_message(),
+                    'error_data' => $lookup->get_error_data(),
+                ],
+            ]);
+            $lookup = [];
+        }
+
+        $lookup_context = $this->extract_lookup_context($lookup);
+        if (empty($lookup_context['items']) && $lookup_context['country_iso'] === '' && $lookup_context['provider_code'] === '') {
+            $this->api->log_operational_event('precheck_lookup_empty', [
+                'status' => 'warning',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => [
+                    'reason' => 'lookup_empty_continue_to_validate_only',
+                ],
+            ]);
+        }
+
+        if ($lookup_context['country_iso'] !== '' && $payload['country_iso'] !== '' && $lookup_context['country_iso'] !== $payload['country_iso']) {
+            $this->api->log_operational_event('precheck_lookup_country_mismatch', [
+                'status' => 'warning',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => [
+                    'reason' => 'country_mismatch_continue_to_validate_only',
+                    'lookup_country_iso' => $lookup_context['country_iso'],
+                    'selected_country_iso' => $payload['country_iso'],
+                ],
+            ]);
+        }
+
+        $product_response = $this->with_retries(function () use ($payload, $lookup_context) {
+            return $this->api->get_products_catalog([
+                'account_number' => $payload['account_number'],
+                'country_isos' => [$payload['country_iso']],
+                'provider_codes' => $lookup_context['provider_code'] !== '' ? [$lookup_context['provider_code']] : [],
+                'sku_codes' => [$payload['sku_code']],
+                'take' => 250,
+            ]);
+        });
+        $product_items = [];
+        if (is_wp_error($product_response)) {
+            $this->api->log_operational_event('precheck_products_unavailable', [
+                'status' => 'warning',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => [
+                    'reason' => 'products_error_continue_with_saved_bundle',
+                    'error' => $product_response->get_error_message(),
+                    'error_data' => $product_response->get_error_data(),
+                ],
+            ]);
+        } else {
+            $product_items = $this->extract_response_items($product_response);
+        }
+
+        if (empty($product_items)) {
+            $fallback_response = $this->with_retries(function () use ($payload) {
+                return $this->api->get_products_catalog([
+                    'country_isos' => [$payload['country_iso']],
+                    'sku_codes' => [$payload['sku_code']],
+                    'take' => 250,
+                ]);
+            }, 2);
+            if (!is_wp_error($fallback_response)) {
+                $product_items = $this->extract_response_items($fallback_response);
+            }
+        }
+
+        $product = $this->find_product_by_sku($product_items, $payload['sku_code']);
+        if (!$product && is_array($matched_bundle)) {
+            $product = $this->build_product_from_saved_bundle_for_precheck($matched_bundle, $payload);
+            $this->api->log_operational_event('precheck_saved_bundle_fallback', [
+                'status' => 'warning',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => [
+                    'reason' => 'catalog_missing_continue_to_validate_only',
+                    'bundle_id' => $payload['bundle_id'],
+                ],
+            ]);
+        }
+        if ($product) {
+            $product = $this->enrich_product_for_precheck($product, $payload['country_iso']);
+        }
+        if (!$product) {
+            return $this->precheck_error('PRODUCT_NOT_AVAILABLE', 'Este paquete ya no está disponible para el número indicado. Selecciona otro paquete o número.', 400, false, [
+                'requested_sku' => $payload['sku_code'],
+            ]);
+        }
+
+        if (!$this->product_matches_lookup($product, $lookup_context, $matched_bundle)) {
+            $this->api->log_operational_event('precheck_lookup_product_mismatch', [
+                'status' => 'warning',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => [
+                    'reason' => 'mismatch_continue_to_validate_only',
+                    'provider_code' => sanitize_text_field((string) ($product['ProviderCode'] ?? '')),
+                    'lookup_provider_code' => $lookup_context['provider_code'],
+                ],
+            ]);
+        }
+
+        $account_validation = $this->validate_account_number_against_product($payload, $product, $matched_bundle);
+        if (is_wp_error($account_validation)) {
+            $this->api->log_operational_event('precheck_account_regex_failed', [
+                'status' => 'error',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => $account_validation->get_error_data(),
+            ]);
+
+            return $this->precheck_wp_error_response($account_validation, 'AccountNumberInvalid');
+        }
+
+        $product_amount_validation = $this->validate_amount_against_product($product, $payload['send_value']);
+        if (is_wp_error($product_amount_validation)) {
+            return $this->precheck_error('AMOUNT_NOT_ALLOWED', $product_amount_validation->get_error_message(), 400, false, $product_amount_validation->get_error_data());
+        }
+
+        $settings_validation = $this->validate_settings_for_precheck($payload['settings'], $product, $matched_bundle);
+        if (is_wp_error($settings_validation)) {
+            return $this->precheck_wp_error_response($settings_validation, 'SettingRequired');
+        }
+
+        $lookup_bills_required = !empty($product['LookupBillsRequired']) || (is_array($matched_bundle) && !empty($matched_bundle['lookup_bills_required']));
+        if ($lookup_bills_required && $payload['bill_ref'] === '') {
+            return $this->precheck_error('LookupBillsRequired', 'Debes consultar y seleccionar la factura antes de continuar.', 400, false);
+        }
+
+        $balance_validation = $this->validate_seller_balance_for_precheck($payload['send_value'], $payload['send_currency_iso']);
+        if (is_wp_error($balance_validation)) {
+            $this->api->log_operational_event('precheck_insufficient_seller_balance', [
+                'status' => 'error',
+                'account_number' => $payload['account_number'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'currency' => $payload['send_currency_iso'],
+                'raw_response' => $balance_validation->get_error_data(),
+            ]);
+
+            return $this->wp_error_to_rest_response($balance_validation);
+        }
+
+        $distributor_ref = 'PRECHECK-' . gmdate('YmdHis') . '-' . strtoupper(wp_generate_password(8, false, false));
+        $validate = $this->with_retries(function () use ($payload, $distributor_ref) {
+            return $this->api->send_transfer([
+                'DistributorRef' => $distributor_ref,
+                'AccountNumber' => $payload['account_number'],
+                'SkuCode' => $payload['sku_code'],
+                'SendValue' => $payload['send_value'],
+                'SendCurrencyIso' => $payload['send_currency_iso'],
+                'Settings' => $payload['settings'],
+                'BillRef' => $payload['bill_ref'],
+                'ValidateOnly' => true,
+            ]);
+        });
+
+        $this->api->log_transfer($payload['account_number'], $payload['sku_code'], $payload['send_value'], $payload['send_currency_iso'], $distributor_ref, $validate);
+        if (is_wp_error($validate)) {
+            return $this->precheck_wp_error_response($validate, 'VALIDATE_ONLY_FAILED');
+        }
+
+        if (!$this->is_ding_success($validate)) {
+            $code = $this->extract_first_error_code($validate);
+            if ($code === '') {
+                $code = 'PARTIAL_RESPONSE';
+            }
+
+            return $this->precheck_error($code, $this->user_message_for_code($code), $this->is_retryable_code($code) ? 503 : 400, $this->is_retryable_code($code), [
+                'raw_response' => $validate,
+            ]);
+        }
+
+        $token = 'dc_precheck_' . wp_generate_password(32, false, false);
+        set_transient($token, [
+            'fingerprint' => $this->build_precheck_fingerprint($payload),
+            'account_number' => $payload['account_number'],
+            'country_iso' => $payload['country_iso'],
+            'sku_code' => $payload['sku_code'],
+            'bundle_id' => $payload['bundle_id'],
+            'send_value' => $payload['send_value'],
+            'send_currency_iso' => $payload['send_currency_iso'],
+            'provider_code' => $lookup_context['provider_code'],
+            'created_at' => time(),
+        ], 5 * MINUTE_IN_SECONDS);
+
+        $this->api->log_operational_event('precheck_validated', [
+            'status' => 'success',
+            'account_number' => $payload['account_number'],
+            'sku_code' => $payload['sku_code'],
+            'send_value' => $payload['send_value'],
+            'currency' => $payload['send_currency_iso'],
+            'distributor_ref' => $distributor_ref,
+            'raw_response' => [
+                'provider_code' => $lookup_context['provider_code'],
+                'country_iso' => $payload['country_iso'],
+                'bundle_id' => $payload['bundle_id'],
+            ],
+        ]);
+
+        return rest_ensure_response([
+            'ok' => true,
+            'code' => 'PRECHECK_OK',
+            'message' => 'La recarga fue validada correctamente.',
+            'precheck_token' => $token,
+            'expires_in' => 300,
+            'normalized' => [
+                'account_number' => $payload['account_number'],
+                'country_iso' => $payload['country_iso'],
+                'provider_code' => $lookup_context['provider_code'],
+                'sku_code' => $payload['sku_code'],
+                'send_value' => $payload['send_value'],
+                'send_currency_iso' => $payload['send_currency_iso'],
+            ],
+        ]);
+    }
+
     public function transfer(WP_REST_Request $request) {
         if (!$this->check_rate_limit('transfer', 5)) {
             return new WP_REST_Response(['ok' => false, 'message' => 'Demasiadas solicitudes. Intenta en un minuto.'], 429);
@@ -622,6 +900,11 @@ class DC_Recargas_REST {
             ], 400);
         }
 
+        $precheck_validation = $this->validate_precheck_token($params);
+        if (is_wp_error($precheck_validation)) {
+            return $this->wp_error_to_rest_response($precheck_validation);
+        }
+
         $amount_validation = $this->validate_send_value_against_bundle($sku_code, $country_iso, $send_value, $bundle_id);
         if (is_wp_error($amount_validation)) {
             return $this->wp_error_to_rest_response($amount_validation);
@@ -681,6 +964,8 @@ class DC_Recargas_REST {
                 'message' => $result->get_error_message(),
             ], 400);
         }
+
+        $this->consume_precheck_token($params);
 
         return rest_ensure_response([
             'ok' => true,
@@ -805,6 +1090,695 @@ class DC_Recargas_REST {
         }
 
         return $normalized;
+    }
+
+    private function normalize_recharge_payload($params) {
+        $params = is_array($params) ? $params : [];
+
+        return [
+            'account_number' => $this->sanitize_phone($params['account_number'] ?? ''),
+            'country_iso' => strtoupper(sanitize_text_field((string) ($params['country_iso'] ?? ''))),
+            'sku_code' => sanitize_text_field((string) ($params['sku_code'] ?? '')),
+            'bundle_id' => sanitize_text_field((string) ($params['bundle_id'] ?? '')),
+            'send_value' => (float) ($params['send_value'] ?? 0),
+            'send_currency_iso' => strtoupper(sanitize_text_field((string) ($params['send_currency_iso'] ?? ''))),
+            'provider_code' => sanitize_text_field((string) ($params['provider_code'] ?? '')),
+            'settings' => $this->sanitize_settings($params['settings'] ?? []),
+            'bill_ref' => sanitize_text_field((string) ($params['bill_ref'] ?? '')),
+            'landing_key' => sanitize_key((string) ($params['landing_key'] ?? '')),
+            'allowed_bundle_ids' => $this->parse_bundle_ids(is_array($params['allowed_bundle_ids'] ?? null) ? implode(',', $params['allowed_bundle_ids']) : (string) ($params['allowed_bundle_ids'] ?? '')),
+        ];
+    }
+
+    private function precheck_error($code, $message, $status = 400, $retryable = false, $details = []) {
+        $status = (int) $status;
+        $response_status = ($retryable || $status === 429 || $status >= 500) ? $status : 200;
+
+        return new WP_REST_Response([
+            'ok' => false,
+            'code' => sanitize_text_field((string) $code),
+            'message' => (string) $message,
+            'retryable' => (bool) $retryable,
+            'status' => $status,
+            'details' => is_array($details) ? $details : [],
+        ], $response_status);
+    }
+
+    private function precheck_wp_error_response($error, $fallback_code) {
+        $data = $error instanceof WP_Error ? $error->get_error_data() : [];
+        $data = is_array($data) ? $data : [];
+        $status = isset($data['status']) && is_numeric($data['status']) ? (int) $data['status'] : 500;
+        $code = sanitize_text_field((string) ($data['ding_error_code'] ?? $fallback_code));
+        if ($code === '') {
+            $code = sanitize_text_field((string) $fallback_code);
+        }
+
+        $this->api->log_operational_event('precheck_failed', [
+            'status' => 'error',
+            'raw_response' => [
+                'code' => $code,
+                'message' => $error instanceof WP_Error ? $error->get_error_message() : '',
+                'error_data' => $data,
+            ],
+        ]);
+
+        return $this->precheck_error(
+            $code,
+            $this->user_message_for_code($code, $error instanceof WP_Error ? $error->get_error_message() : ''),
+            $this->is_retryable_code($code) ? max($status, 429) : $status,
+            $this->is_retryable_code($code),
+            $data
+        );
+    }
+
+    private function with_retries(callable $operation, $max_attempts = 3) {
+        $delays_ms = [250, 750, 1500];
+        $last_error = null;
+
+        for ($attempt = 0; $attempt < $max_attempts; $attempt++) {
+            $result = $operation();
+            if (!is_wp_error($result)) {
+                return $result;
+            }
+
+            $last_error = $result;
+            if (!$this->is_transient_wp_error($result)) {
+                return $result;
+            }
+
+            if ($attempt < ($max_attempts - 1)) {
+                usleep($delays_ms[$attempt] * 1000);
+            }
+        }
+
+        return $last_error ?: new WP_Error('dc_timeout', 'Error temporal en el servicio de recargas.', ['status' => 504]);
+    }
+
+    private function is_transient_wp_error($error) {
+        if (!$error instanceof WP_Error) {
+            return false;
+        }
+
+        $data = $error->get_error_data();
+        $status = is_array($data) && isset($data['status']) ? (int) $data['status'] : 0;
+        if (in_array($status, [408, 429], true) || $status >= 500) {
+            return true;
+        }
+
+        return in_array($error->get_error_code(), ['http_request_failed', 'dc_timeout'], true);
+    }
+
+    private function extract_response_items($response) {
+        if (!is_array($response)) {
+            return [];
+        }
+
+        if (isset($response['Result']) && is_array($response['Result'])) {
+            return array_values(array_filter($response['Result'], 'is_array'));
+        }
+
+        if (isset($response['Items']) && is_array($response['Items'])) {
+            return array_values(array_filter($response['Items'], 'is_array'));
+        }
+
+        return [];
+    }
+
+    private function extract_lookup_context($lookup) {
+        $lookup = is_array($lookup) ? $lookup : [];
+        $items = $this->extract_response_items($lookup);
+        $first = is_array($items[0] ?? null) ? $items[0] : [];
+
+        return [
+            'items' => $items,
+            'provider_code' => sanitize_text_field((string) ($first['ProviderCode'] ?? $lookup['ProviderCode'] ?? '')),
+            'country_iso' => strtoupper(sanitize_text_field((string) ($lookup['CountryIso'] ?? $first['CountryIso'] ?? ''))),
+            'region_code' => sanitize_text_field((string) ($first['RegionCode'] ?? $lookup['RegionCode'] ?? '')),
+        ];
+    }
+
+    private function find_product_by_sku($items, $sku_code) {
+        $sku_code = strtoupper(sanitize_text_field((string) $sku_code));
+        foreach ((array) $items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $candidate = strtoupper(sanitize_text_field((string) ($item['SkuCode'] ?? '')));
+            if ($candidate !== '' && $candidate === $sku_code) {
+                return $item;
+            }
+        }
+
+        return null;
+    }
+
+    private function build_product_from_saved_bundle_for_precheck($bundle, $payload) {
+        $bundle = is_array($bundle) ? $bundle : [];
+        $payload = is_array($payload) ? $payload : [];
+
+        $send_value = (float) ($payload['send_value'] ?? ($bundle['send_value'] ?? 0));
+        $send_currency = strtoupper(sanitize_text_field((string) ($payload['send_currency_iso'] ?? ($bundle['send_currency_iso'] ?? ''))));
+        $min_send = isset($bundle['minimum_send_value']) ? (float) $bundle['minimum_send_value'] : (float) ($bundle['send_value'] ?? $send_value);
+        $max_send = isset($bundle['maximum_send_value']) ? (float) $bundle['maximum_send_value'] : (float) ($bundle['send_value'] ?? $send_value);
+
+        if ($min_send <= 0) {
+            $min_send = $send_value;
+        }
+        if ($max_send <= 0) {
+            $max_send = $send_value;
+        }
+
+        return [
+            'SkuCode' => sanitize_text_field((string) ($bundle['sku_code'] ?? ($payload['sku_code'] ?? ''))),
+            'ProviderCode' => sanitize_text_field((string) ($bundle['provider_code'] ?? ($payload['provider_code'] ?? ''))),
+            'CountryIso' => strtoupper(sanitize_text_field((string) ($bundle['country_iso'] ?? ($payload['country_iso'] ?? '')))),
+            'RegionCode' => sanitize_text_field((string) ($bundle['region_code'] ?? '')),
+            'RegionCodes' => array_values(array_filter(array_map('sanitize_text_field', (array) ($bundle['region_codes'] ?? [])))),
+            'SendValue' => $send_value,
+            'SendCurrencyIso' => $send_currency,
+            'Minimum' => [
+                'SendValue' => $min_send,
+                'SendCurrencyIso' => $send_currency,
+            ],
+            'Maximum' => [
+                'SendValue' => $max_send,
+                'SendCurrencyIso' => $send_currency,
+            ],
+            'LookupBillsRequired' => !empty($bundle['lookup_bills_required']),
+            'SettingDefinitions' => $this->normalize_setting_definitions($bundle['setting_definitions'] ?? []),
+            'ValidationRegex' => sanitize_text_field((string) ($bundle['validation_regex'] ?? '')),
+        ];
+    }
+
+    private function enrich_product_for_precheck($product, $country_iso) {
+        $product = is_array($product) ? $product : [];
+        $provider_code = sanitize_text_field((string) ($product['ProviderCode'] ?? ''));
+        if ($provider_code === '') {
+            return $product;
+        }
+
+        $provider_map = $this->get_provider_details_map([$product], $country_iso);
+        $provider = $provider_map[$provider_code] ?? [];
+        if (is_array($provider) && empty($product['ValidationRegex']) && !empty($provider['ValidationRegex'])) {
+            $product['ValidationRegex'] = sanitize_text_field((string) $provider['ValidationRegex']);
+        }
+        if (is_array($provider) && empty($product['CountryIso']) && !empty($provider['CountryIso'])) {
+            $product['CountryIso'] = strtoupper(sanitize_text_field((string) $provider['CountryIso']));
+        }
+
+        return $product;
+    }
+
+    private function product_matches_lookup($product, $lookup_context, $matched_bundle = null) {
+        $product = is_array($product) ? $product : [];
+        $matched_bundle = is_array($matched_bundle) ? $matched_bundle : [];
+        $lookup_context = is_array($lookup_context) ? $lookup_context : [];
+
+        $lookup_provider = sanitize_text_field((string) ($lookup_context['provider_code'] ?? ''));
+        $product_provider = sanitize_text_field((string) ($product['ProviderCode'] ?? ($matched_bundle['provider_code'] ?? '')));
+        if ($lookup_provider !== '' && $product_provider !== '' && strcasecmp($lookup_provider, $product_provider) !== 0) {
+            return false;
+        }
+
+        $lookup_country = strtoupper(sanitize_text_field((string) ($lookup_context['country_iso'] ?? '')));
+        $product_country = strtoupper(sanitize_text_field((string) ($product['CountryIso'] ?? ($matched_bundle['country_iso'] ?? ''))));
+        if ($lookup_country !== '' && $product_country !== '' && $lookup_country !== $product_country) {
+            return false;
+        }
+
+        $lookup_region = strtoupper(sanitize_text_field((string) ($lookup_context['region_code'] ?? '')));
+        $product_region = strtoupper(sanitize_text_field((string) ($product['RegionCode'] ?? ($matched_bundle['region_code'] ?? ''))));
+        $product_regions = array_map('strtoupper', array_filter(array_map('sanitize_text_field', (array) ($product['RegionCodes'] ?? ($matched_bundle['region_codes'] ?? [])))));
+        if ($lookup_region !== '' && $product_region !== '' && $lookup_region !== $product_region && !in_array($lookup_region, $product_regions, true)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function validate_account_number_against_product($payload, $product, $matched_bundle = null) {
+        $payload = is_array($payload) ? $payload : [];
+        $product = is_array($product) ? $product : [];
+        $matched_bundle = is_array($matched_bundle) ? $matched_bundle : [];
+
+        $account_number = $this->sanitize_phone($payload['account_number'] ?? '');
+        if ($account_number === '') {
+            return new WP_Error('dc_account_missing', 'El número introducido no es válido o no admite recargas.', [
+                'status' => 400,
+                'ding_error_code' => 'AccountNumberInvalid',
+                'ding_error_context' => 'AccountNumberMissing',
+            ]);
+        }
+
+        $regex = trim((string) ($product['ValidationRegex'] ?? ($matched_bundle['validation_regex'] ?? '')));
+        $source = $regex !== '' ? 'provider_validation_regex' : '';
+        if ($regex === '') {
+            $fallback = $this->fallback_account_number_regex($payload, $product, $matched_bundle);
+            $regex = (string) ($fallback['regex'] ?? '');
+            $source = (string) ($fallback['source'] ?? '');
+        }
+
+        if ($regex === '') {
+            return true;
+        }
+
+        $candidates = $this->account_number_candidates($account_number, (string) ($payload['country_iso'] ?? ''));
+        $pattern = $this->compile_validation_regex($regex);
+        if ($pattern === '') {
+            $this->api->log_operational_event('precheck_account_regex_unsupported', [
+                'status' => 'warning',
+                'account_number' => $account_number,
+                'sku_code' => sanitize_text_field((string) ($payload['sku_code'] ?? '')),
+                'raw_response' => [
+                    'regex' => $regex,
+                    'source' => $source,
+                ],
+            ]);
+            return true;
+        }
+
+        foreach ($candidates as $candidate) {
+            if (@preg_match($pattern, $candidate) === 1) {
+                return true;
+            }
+        }
+
+        return new WP_Error('dc_account_failed_regex', 'El número introducido no es válido o no admite recargas.', [
+            'status' => 400,
+            'ding_error_code' => 'AccountNumberInvalid',
+            'ding_error_context' => 'AccountNumberFailedRegex',
+            'validation_regex_source' => $source,
+            'validation_regex' => $regex,
+        ]);
+    }
+
+    private function fallback_account_number_regex($payload, $product, $matched_bundle = null) {
+        $payload = is_array($payload) ? $payload : [];
+        $product = is_array($product) ? $product : [];
+        $matched_bundle = is_array($matched_bundle) ? $matched_bundle : [];
+
+        $country_iso = strtoupper(sanitize_text_field((string) ($payload['country_iso'] ?? ($product['CountryIso'] ?? ($matched_bundle['country_iso'] ?? '')))));
+        $sku_code = strtoupper(sanitize_text_field((string) ($payload['sku_code'] ?? ($product['SkuCode'] ?? ($matched_bundle['sku_code'] ?? '')))));
+        $product_type = strtolower(sanitize_text_field((string) ($product['ProductType'] ?? ($matched_bundle['product_type_raw'] ?? ''))));
+        $provider = strtolower(sanitize_text_field((string) ($product['ProviderName'] ?? ($matched_bundle['provider_name'] ?? ''))));
+
+        $is_mobile_like = $product_type === '' || strpos($product_type, 'bundle') !== false || strpos($product_type, 'topup') !== false || strpos($product_type, 'mobile') !== false || strpos($provider, 'claro') !== false;
+        if ($country_iso === 'CO' && $is_mobile_like && strpos($sku_code, 'CO') !== false) {
+            return [
+                'regex' => '^(57)?3[0-9]{9}$',
+                'source' => 'fallback_colombia_mobile',
+            ];
+        }
+
+        return [
+            'regex' => '',
+            'source' => '',
+        ];
+    }
+
+    private function account_number_candidates($account_number, $country_iso = '') {
+        $account_number = $this->sanitize_phone($account_number);
+        $candidates = [];
+        if ($account_number !== '') {
+            $candidates[] = $account_number;
+        }
+
+        $dial = $this->country_dial_code($country_iso);
+        if ($dial !== '' && strpos($account_number, $dial) === 0 && strlen($account_number) > strlen($dial)) {
+            $candidates[] = substr($account_number, strlen($dial));
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
+    }
+
+    private function country_dial_code($country_iso) {
+        $country_iso = strtoupper(sanitize_text_field((string) $country_iso));
+        $map = [
+            'CO' => '57',
+            'CU' => '53',
+            'DO' => '1809',
+            'VE' => '58',
+            'MX' => '52',
+            'PE' => '51',
+            'EC' => '593',
+            'CL' => '56',
+            'BR' => '55',
+            'ES' => '34',
+        ];
+
+        return $map[$country_iso] ?? '';
+    }
+
+    private function compile_validation_regex($regex) {
+        $regex = trim((string) $regex);
+        if ($regex === '') {
+            return '';
+        }
+
+        $delimiter = '~';
+        $pattern = $delimiter . str_replace($delimiter, '\\' . $delimiter, $regex) . $delimiter;
+        return @preg_match($pattern, '') === false ? '' : $pattern;
+    }
+
+    private function validate_amount_against_product($product, $send_value) {
+        $product = is_array($product) ? $product : [];
+        $price = $this->extract_product_price($product);
+        $send_value = (float) $send_value;
+        $min = (float) ($price['MinimumSendValue'] ?? 0);
+        $max = (float) ($price['MaximumSendValue'] ?? 0);
+        $fixed = (float) ($price['SendValue'] ?? 0);
+
+        if ($min > 0 && $send_value < ($min - 0.00001)) {
+            return new WP_Error('dc_amount_product_min', sprintf('El importe seleccionado está por debajo del mínimo permitido. Mínimo: %.2f.', $min), [
+                'status' => 400,
+                'min_send_value' => $min,
+                'max_send_value' => $max,
+            ]);
+        }
+
+        if ($max > 0 && $send_value > ($max + 0.00001)) {
+            return new WP_Error('dc_amount_product_max', sprintf('El importe seleccionado supera el máximo permitido. Máximo: %.2f.', $max), [
+                'status' => 400,
+                'min_send_value' => $min,
+                'max_send_value' => $max,
+            ]);
+        }
+
+        if ($fixed > 0 && $min > 0 && $max > 0 && abs($min - $max) <= 0.00001 && abs($send_value - $fixed) > 0.00001) {
+            return new WP_Error('dc_amount_product_fixed', sprintf('Este producto usa monto fijo. Importe permitido: %.2f.', $fixed), [
+                'status' => 400,
+                'fixed_send_value' => $fixed,
+            ]);
+        }
+
+        return true;
+    }
+
+    private function validate_settings_for_precheck($settings, $product, $matched_bundle = null) {
+        $definitions = $this->normalize_setting_definitions($product['SettingDefinitions'] ?? []);
+        if (empty($definitions) && is_array($matched_bundle)) {
+            $definitions = $this->normalize_setting_definitions($matched_bundle['setting_definitions'] ?? []);
+        }
+
+        if (empty($definitions)) {
+            return true;
+        }
+
+        $setting_map = [];
+        foreach ((array) $settings as $setting) {
+            if (!is_array($setting)) {
+                continue;
+            }
+
+            $name = sanitize_text_field((string) ($setting['Name'] ?? ''));
+            if ($name !== '') {
+                $setting_map[$name] = sanitize_text_field((string) ($setting['Value'] ?? ''));
+            }
+        }
+
+        foreach ($definitions as $definition) {
+            $name = sanitize_text_field((string) ($definition['Name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $value = (string) ($setting_map[$name] ?? '');
+            if (!empty($definition['IsMandatory']) && trim($value) === '') {
+                return new WP_Error('dc_setting_required', 'Completa los datos requeridos por el operador antes de continuar.', [
+                    'status' => 400,
+                    'code' => 'SettingRequired',
+                    'setting' => $name,
+                ]);
+            }
+
+            if ($value === '') {
+                continue;
+            }
+
+            $min_length = (int) ($definition['MinLength'] ?? 0);
+            $max_length = (int) ($definition['MaxLength'] ?? 0);
+            if ($min_length > 0 && strlen($value) < $min_length) {
+                return new WP_Error('dc_setting_invalid', 'Uno de los datos requeridos no cumple la longitud mínima.', ['status' => 400, 'setting' => $name]);
+            }
+            if ($max_length > 0 && strlen($value) > $max_length) {
+                return new WP_Error('dc_setting_invalid', 'Uno de los datos requeridos supera la longitud máxima.', ['status' => 400, 'setting' => $name]);
+            }
+
+            $allowed_values = array_map('strval', (array) ($definition['AllowedValues'] ?? []));
+            if (!empty($allowed_values) && !in_array($value, $allowed_values, true)) {
+                return new WP_Error('dc_setting_invalid', 'Uno de los datos requeridos no es una opción permitida.', ['status' => 400, 'setting' => $name]);
+            }
+
+            $regex = trim((string) ($definition['ValidationRegex'] ?? ''));
+            if ($regex !== '') {
+                $pattern = '/' . str_replace('/', '\/', $regex) . '/';
+                if (@preg_match($pattern, '') !== false && !preg_match($pattern, $value)) {
+                    return new WP_Error('dc_setting_invalid', 'Uno de los datos requeridos no cumple el formato del operador.', ['status' => 400, 'setting' => $name]);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private function validate_seller_balance_for_precheck($send_value, $currency_iso) {
+        $currency_iso = strtoupper(sanitize_text_field((string) $currency_iso));
+        $cache_key = 'dc_precheck_balance_' . md5($currency_iso);
+        $balance = get_transient($cache_key);
+
+        if (false === $balance) {
+            $response = $this->api->get_balance();
+            if (is_wp_error($response)) {
+                $this->api->log_operational_event('precheck_balance_unavailable', [
+                    'status' => 'warning',
+                    'raw_response' => $response->get_error_data(),
+                ]);
+                return true;
+            }
+
+            $balance = $this->normalize_balance_response($response);
+            set_transient($cache_key, $balance, MINUTE_IN_SECONDS);
+        }
+
+        if (!is_array($balance)) {
+            return true;
+        }
+
+        if (($balance['RawShape'] ?? 'unknown') === 'unknown') {
+            return true;
+        }
+
+        $balance_currency = strtoupper(sanitize_text_field((string) ($balance['CurrencyIso'] ?? '')));
+        $balance_amount = (float) ($balance['Balance'] ?? 0);
+        if ($currency_iso !== '' && $balance_currency !== '' && $balance_currency === $currency_iso && $balance_amount < (float) $send_value) {
+            return new WP_Error('dc_seller_balance_insufficient', 'No podemos procesar esta recarga en este momento. Intenta más tarde.', [
+                'status' => 503,
+                'code' => 'SELLER_BALANCE_INSUFFICIENT',
+                'balance' => $balance_amount,
+                'currency' => $balance_currency,
+            ]);
+        }
+
+        return true;
+    }
+
+    private function validate_bundle_for_landing($landing_key, $bundle_id, $allowed_bundle_ids = []) {
+        $landing_key = sanitize_key((string) $landing_key);
+        $bundle_id = sanitize_text_field((string) $bundle_id);
+        $allowed_bundle_ids = array_values(array_filter(array_map('strval', (array) $allowed_bundle_ids)));
+
+        if ($bundle_id === '') {
+            return true;
+        }
+
+        if (!empty($allowed_bundle_ids) && !in_array($bundle_id, $allowed_bundle_ids, true)) {
+            return new WP_Error('dc_bundle_not_allowed', 'Este paquete no pertenece a la landing actual. Actualiza la página y vuelve a intentarlo.', [
+                'status' => 400,
+                'code' => 'PRODUCT_NOT_AVAILABLE',
+            ]);
+        }
+
+        if ($landing_key === '') {
+            return true;
+        }
+
+        $configs = get_option('dc_recargas_landing_shortcodes', []);
+        if (!is_array($configs)) {
+            return true;
+        }
+
+        foreach ($configs as $config) {
+            if (!is_array($config) || sanitize_key((string) ($config['key'] ?? '')) !== $landing_key) {
+                continue;
+            }
+
+            $landing_bundle_ids = array_values(array_filter(array_map('strval', (array) ($config['bundle_ids'] ?? []))));
+            if (!empty($landing_bundle_ids) && !in_array($bundle_id, $landing_bundle_ids, true)) {
+                return new WP_Error('dc_bundle_not_allowed', 'Este paquete ya no está disponible en esta landing. Actualiza la página y elige otro paquete.', [
+                    'status' => 400,
+                    'code' => 'PRODUCT_NOT_AVAILABLE',
+                ]);
+            }
+        }
+
+        return true;
+    }
+
+    private function build_precheck_fingerprint($payload) {
+        $payload = is_array($payload) ? $payload : [];
+        $settings = $this->sanitize_settings($payload['settings'] ?? []);
+        usort($settings, function ($left, $right) {
+            return strcasecmp((string) ($left['Name'] ?? ''), (string) ($right['Name'] ?? ''));
+        });
+
+        return md5(wp_json_encode([
+            'account_number' => $this->sanitize_phone($payload['account_number'] ?? ''),
+            'country_iso' => strtoupper(sanitize_text_field((string) ($payload['country_iso'] ?? ''))),
+            'sku_code' => sanitize_text_field((string) ($payload['sku_code'] ?? '')),
+            'bundle_id' => sanitize_text_field((string) ($payload['bundle_id'] ?? '')),
+            'send_value' => round((float) ($payload['send_value'] ?? 0), 4),
+            'send_currency_iso' => strtoupper(sanitize_text_field((string) ($payload['send_currency_iso'] ?? ''))),
+            'settings' => $settings,
+            'bill_ref' => sanitize_text_field((string) ($payload['bill_ref'] ?? '')),
+        ]));
+    }
+
+    private function validate_precheck_token($params) {
+        $payload = $this->normalize_recharge_payload($params);
+        $token = sanitize_text_field((string) ($params['precheck_token'] ?? ''));
+        if ($token === '') {
+            return new WP_Error('dc_precheck_required', 'Primero debemos validar la recarga antes de pasar al pago.', [
+                'status' => 400,
+                'code' => 'PRECHECK_REQUIRED',
+            ]);
+        }
+
+        $snapshot = get_transient($token);
+        if (!is_array($snapshot)) {
+            return new WP_Error('dc_precheck_expired', 'La validación expiró. Pulsa Continuar para validar nuevamente.', [
+                'status' => 400,
+                'code' => 'PRECHECK_EXPIRED',
+            ]);
+        }
+
+        $fingerprint = $this->build_precheck_fingerprint($payload);
+        if (!hash_equals((string) ($snapshot['fingerprint'] ?? ''), $fingerprint)) {
+            return new WP_Error('dc_precheck_mismatch', 'Los datos cambiaron después de la validación. Valida nuevamente antes de pagar.', [
+                'status' => 400,
+                'code' => 'PRECHECK_MISMATCH',
+            ]);
+        }
+
+        return true;
+    }
+
+    private function consume_precheck_token($params) {
+        $token = sanitize_text_field((string) ($params['precheck_token'] ?? ''));
+        if ($token !== '') {
+            delete_transient($token);
+        }
+    }
+
+    private function is_ding_success($response) {
+        if (!is_array($response)) {
+            return false;
+        }
+
+        if (isset($response['ResultCode']) && is_numeric($response['ResultCode'])) {
+            $result_code = (int) $response['ResultCode'];
+            return $result_code === 1 || $result_code === 2;
+        }
+
+        $items = $this->extract_response_items($response);
+        foreach ($items as $item) {
+            if (isset($item['ResultCode'])) {
+                $item_result_code = (int) $item['ResultCode'];
+                if ($item_result_code !== 1 && $item_result_code !== 2) {
+                    return false;
+                }
+                continue;
+            }
+
+            if (!empty($item['ErrorCodes'])) {
+                return false;
+            }
+        }
+
+        return isset($response['TransferRecord']) || !empty($items);
+    }
+
+    private function extract_first_error_code($response) {
+        $candidates = [];
+        if (is_array($response)) {
+            $candidates[] = $response['ErrorCodes'] ?? [];
+            foreach ($this->extract_response_items($response) as $item) {
+                $candidates[] = $item['ErrorCodes'] ?? [];
+            }
+        }
+
+        foreach ($candidates as $error_codes) {
+            foreach ((array) $error_codes as $error_code) {
+                $code = is_array($error_code)
+                    ? sanitize_text_field((string) ($error_code['Code'] ?? ''))
+                    : sanitize_text_field((string) $error_code);
+                if ($code !== '') {
+                    return $code;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function is_retryable_code($code) {
+        $code = strtolower(sanitize_text_field((string) $code));
+        return in_array($code, [
+            'ratelimited',
+            'providertimedout',
+            'transientprovidererror',
+            'ding_5xx',
+            'ding_timeout',
+            'partial_response',
+            'lookup_failed',
+            'products_failed',
+            'validate_only_failed',
+        ], true);
+    }
+
+    private function user_message_for_code($code, $fallback = '') {
+        $messages = [
+            'NUMBER_INVALID' => 'El número introducido no es válido o no admite recargas.',
+            'LOOKUP_EMPTY' => 'No encontramos este número para recargas. Revisa el país y el número.',
+            'AccountNumberInvalid' => 'El número introducido no es válido o no admite recargas.',
+            'AccountNumberFailedRegex' => 'El formato del número no es válido para este operador.',
+            'InvalidRecipient' => 'No es posible recargar este destinatario. Contacta soporte.',
+            'OPERATOR_NOT_SUPPORTED' => 'El paquete seleccionado no corresponde al operador detectado para este número.',
+            'PROVIDER_MISMATCH' => 'El paquete seleccionado no corresponde al operador detectado para este número.',
+            'ProviderRefusedRequest' => 'El operador rechazó la validación de este número. Verifica los datos.',
+            'NO_PRODUCTS' => 'No hay paquetes disponibles para este número. Selecciona otro paquete o número.',
+            'PRODUCT_NOT_AVAILABLE' => 'Este paquete ya no está disponible para el número indicado.',
+            'ProductUnavailable' => 'El paquete seleccionado no está disponible en este momento.',
+            'AMOUNT_NOT_ALLOWED' => 'El importe seleccionado no está permitido para este paquete.',
+            'ParameterOutOfRange' => 'El importe seleccionado está fuera del rango permitido.',
+            'SendValue' => 'El importe seleccionado no es válido para este paquete.',
+            'LookupBillsRequired' => 'Debes consultar y seleccionar la factura antes de continuar.',
+            'BillRefInvalid' => 'La referencia de factura ya no es válida. Vuelve a consultar la factura.',
+            'SettingRequired' => 'Completa los datos requeridos por el operador antes de continuar.',
+            'InsufficientBalance' => 'No podemos procesar esta recarga en este momento. Intenta más tarde.',
+            'SELLER_BALANCE_INSUFFICIENT' => 'No podemos procesar esta recarga en este momento. Intenta más tarde.',
+            'RateLimited' => 'Hemos alcanzado el límite de solicitudes. Intenta en unos segundos.',
+            'ProviderTimedOut' => 'Error temporal en el servicio de recargas. Intenta de nuevo en unos minutos.',
+            'TransientProviderError' => 'El operador no respondió correctamente. Intenta nuevamente en unos minutos.',
+            'VALIDATE_ONLY_FAILED' => 'No podemos confirmar la recarga con el operador en este momento. Intenta más tarde.',
+            'PARTIAL_RESPONSE' => 'No pudimos confirmar la disponibilidad de la recarga. Intenta nuevamente.',
+        ];
+
+        if (isset($messages[$code])) {
+            return $messages[$code];
+        }
+
+        return $fallback !== '' ? $fallback : 'No pudimos validar la recarga. Revisa los datos e inténtalo de nuevo.';
     }
 
     private function validate_send_value_against_bundle($sku_code, $country_iso, $send_value, $bundle_id = '') {
@@ -1083,8 +2057,8 @@ class DC_Recargas_REST {
     }
 
     private function find_saved_bundle_for_cart($bundle_id, $sku_code, $country_iso) {
-        $options = $this->api->get_options();
-        $bundles = (array) ($options['bundles'] ?? []);
+        $bundles = get_option('dc_recargas_bundles', []);
+        $bundles = is_array($bundles) ? $bundles : [];
         if (empty($bundles)) {
             return null;
         }
@@ -1393,10 +2367,10 @@ class DC_Recargas_REST {
             'ReceiveValue' => (float) ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0)),
             'ReceiveCurrencyIso' => sanitize_text_field($item['ReceiveCurrencyIso'] ?? ($price['ReceiveCurrencyIso'] ?? '')),
             'ReceiveValueExcludingTax' => (float) ($item['ReceiveValueExcludingTax'] ?? ($price['ReceiveValueExcludingTax'] ?? 0)),
-            'MinimumSendValue' => (float) ($minimum['SendValue'] ?? ($item['SendValue'] ?? ($price['SendValue'] ?? 0))),
-            'MaximumSendValue' => (float) ($maximum['SendValue'] ?? ($item['SendValue'] ?? ($price['SendValue'] ?? 0))),
-            'MinimumReceiveValue' => (float) ($minimum['ReceiveValue'] ?? ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0))),
-            'MaximumReceiveValue' => (float) ($maximum['ReceiveValue'] ?? ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0))),
+            'MinimumSendValue' => (float) ($minimum['SendValue'] ?? ($item['MinimumSendValue'] ?? ($item['SendValue'] ?? ($price['SendValue'] ?? 0)))),
+            'MaximumSendValue' => (float) ($maximum['SendValue'] ?? ($item['MaximumSendValue'] ?? ($item['SendValue'] ?? ($price['SendValue'] ?? 0)))),
+            'MinimumReceiveValue' => (float) ($minimum['ReceiveValue'] ?? ($item['MinimumReceiveValue'] ?? ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0)))),
+            'MaximumReceiveValue' => (float) ($maximum['ReceiveValue'] ?? ($item['MaximumReceiveValue'] ?? ($item['ReceiveValue'] ?? ($price['ReceiveValue'] ?? 0)))),
             'CustomerFee' => (float) ($item['CustomerFee'] ?? ($price['CustomerFee'] ?? 0)),
             'DistributorFee' => (float) ($item['DistributorFee'] ?? ($price['DistributorFee'] ?? 0)),
             'TaxRate' => (float) ($item['TaxRate'] ?? ($price['TaxRate'] ?? 0)),

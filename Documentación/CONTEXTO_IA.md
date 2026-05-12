@@ -50,6 +50,7 @@ Namespace actual: `dingconnect/v1`
 - `GET /wp-json/dingconnect/v1/bundles`
 - `GET /wp-json/dingconnect/v1/products`
 	- Query esperada: `account_number`, opcional `country_iso`
+- `POST /wp-json/dingconnect/v1/precheck`
 - `POST /wp-json/dingconnect/v1/transfer`
 - `POST /wp-json/dingconnect/v1/add-to-cart`
 - `GET /wp-json/dingconnect/v1/wizard/config`
@@ -70,11 +71,12 @@ Namespace actual: `dingconnect/v1`
 ### Flujo de transferencia
 
 1. Usuario selecciona bundle.
-2. El frontend muestra una confirmación previa con país, número, operador y precio.
-3. Si WooCommerce no está activo, el frontend envía `account_number`, `sku_code`, `send_value`, `send_currency_iso` al endpoint `/transfer`.
-4. Si WooCommerce está activo, el frontend llama a `/add-to-cart`. El plugin usa la técnica de "Cart swap" (hace snapshot del carrito original en sesión, lo vacía, añade la recarga y redirige al checkout simplificado), permitiendo una recarga aislada. Tras pagar o abandonar el checkout, se restaura silenciosamente el carrito original del cliente.
-5. Backend aplica política de `validate_only` y `allow_real_recharge`.
-6. Toda operación queda registrada en un log interno.
+2. Al pulsar **Continuar**, el frontend llama a `/precheck`; backend valida número/operador/producto/monto/settings/factura/balance y ejecuta `SendTransfer` con `ValidateOnly=true`.
+3. Solo si `/precheck` devuelve `precheck_token`, el frontend muestra la confirmación previa con país, número, operador y precio.
+4. Si WooCommerce no está activo, el frontend envía `account_number`, `sku_code`, `send_value`, `send_currency_iso` al endpoint `/transfer`.
+5. Si WooCommerce está activo, el frontend llama a `/add-to-cart` con `precheck_token`. El backend rechaza token ausente, expirado o con datos distintos; si pasa, el plugin usa la técnica de "Cart swap" (hace snapshot del carrito original en sesión, lo vacía, añade la recarga y redirige al checkout simplificado), permitiendo una recarga aislada. Tras pagar o abandonar el checkout, se restaura silenciosamente el carrito original del cliente.
+6. Backend aplica política de `validate_only` y `allow_real_recharge`.
+7. Toda operación queda registrada en un log interno.
 
 ## Capacidades nuevas ya implementadas
 
@@ -146,6 +148,10 @@ Namespace actual: `dingconnect/v1`
 60. Hardening de despacho WooCommerce: nuevo control por pasarela para elegir etapa de ejecución (`payment_complete`/`processing`/`completed`), bloqueo de envío real cuando el modo efectivo es `ValidateOnly`, y degradación a `pending_confirmation` cuando Ding responde `Complete` sin `TransferRef` confirmado (incluyendo `0`).
 61. Mejora UI en Editor shortcode dinámico: tabla de productos más compacta y legible al desglosar columnas, y modal de edición ensanchado al 85% para mayor comodidad visual con alineación vertical centrada. Además se restableció la edición contextual de productos sin perder el modal de shortcodes original al guardar o cancelar.
 62. Checkout independiente de recargas con "Cart Swap": el flujo en WooCommerce ahora aisla la recarga sin perder el carrito original del usuario, mediante snapshot en sesión y hooks de restauración automática post-pago o por cancelación/abandono de página. v2.8.16.
+63. Validación pre-checkout reforzada: `/precheck` ejecuta validación backend con DingConnect (`GetAccountLookup`, `GetProducts`, `GetBalance`, `SendTransfer ValidateOnly=true`) antes de mostrar confirmación; `/add-to-cart` exige token temporal coincidente. Desde v2.8.43, lookup/catálogo son señales auxiliares con fallback a bundle guardado; discrepancias de país/proveedor se registran como warning y la decisión final queda en `SendTransfer ValidateOnly=true`.
+64. Alineación con documentación oficial DingConnect: `ResultCode=1` se interpreta como éxito, `ResultCode=2` como advertencia, y las llamadas salientes incorporan `X-Correlation-Id` para soporte.
+65. UX de precheck en frontend: los rechazos funcionales esperados de `/precheck` responden `ok:false` con HTTP 200 para mostrar feedback al cliente sin ensuciar consola; solo fallos temporales reales mantienen HTTP 429/5xx y `retryable:true`.
+66. Desde v2.8.44, `/precheck` valida `AccountNumber` contra `ValidationRegex` del proveedor/producto/bundle antes de emitir token. Para móviles Colombia sin regex disponible se usa fallback conservador `^(57)?3[0-9]{9}$`, porque `ValidateOnly=true` puede no reproducir el rechazo final `AccountNumberInvalid / AccountNumberFailedRegex`.
 
 ## Hallazgos clave para futuras IA
 

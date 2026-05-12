@@ -1956,13 +1956,10 @@ class DC_Recargas_WooCommerce {
                     if ($voucher) {
                         if (!isset($voucher['transaction_id']) || (string) ($voucher['transaction_id'] ?? '') === '') {
                             $tx_id = (string) ($voucher['transfer_ref'] ?? $item->get_meta('_dc_transfer_ref'));
-                            if ($tx_id === '') {
-                                $tx_id = (string) $item->get_meta('_dc_distributor_ref');
-                            }
-                            if ($tx_id === '') {
-                                $tx_id = (string) $order->get_transaction_id();
-                            }
                             $voucher['transaction_id'] = $tx_id;
+                        }
+                        if (!isset($voucher['distributor_ref']) || (string) ($voucher['distributor_ref'] ?? '') === '') {
+                            $voucher['distributor_ref'] = (string) $item->get_meta('_dc_distributor_ref');
                         }
                         if (!isset($voucher['status']) || (string) ($voucher['status'] ?? '') === '') {
                             $voucher['status'] = (string) $item->get_meta('_dc_transfer_status');
@@ -2005,16 +2002,11 @@ class DC_Recargas_WooCommerce {
                     $public_currency = $send_currency;
                 }
                 $tx_id = (string) ($payload['transaction_id'] ?? $item->get_meta('_dc_transfer_ref'));
-                if ($tx_id === '') {
-                    $tx_id = (string) $item->get_meta('_dc_distributor_ref');
-                }
-                if ($tx_id === '') {
-                    $tx_id = (string) $order->get_transaction_id();
-                }
 
                 $voucher = [
                     'contract_version' => 'voucher.legacy',
                     'transaction_id' => $tx_id,
+                    'distributor_ref' => (string) $item->get_meta('_dc_distributor_ref'),
                     'status' => (string) ($payload['status'] ?? $item->get_meta('_dc_transfer_status')),
                     'operator' => (string) ($payload['operator'] ?? $item->get_meta('_dc_provider_name')),
                     'beneficiary' => (string) ($payload['beneficiary_phone'] ?? $item->get_meta('_dc_account_number')),

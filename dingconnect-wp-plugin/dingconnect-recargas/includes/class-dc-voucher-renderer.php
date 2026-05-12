@@ -62,7 +62,8 @@ class DC_Recargas_Voucher_Renderer {
     public function render_rows(array $voucher): array {
         $beneficiary = (string) ($voucher['beneficiary'] ?? ($voucher['beneficiary_phone'] ?? ''));
         $status = self::translate_status((string) ($voucher['status'] ?? ''));
-        $ref = (string) ($voucher['transaction_id'] ?? '');
+        $ref = (string) ($voucher['transaction_id'] ?? ($voucher['transfer_ref'] ?? ''));
+        $distributor_ref = sanitize_text_field((string) ($voucher['distributor_ref'] ?? ''));
         $country = (string) ($voucher['country_iso'] ?? '');
         $bundle = (string) ($voucher['bundle'] ?? '');
 
@@ -130,6 +131,7 @@ class DC_Recargas_Voucher_Renderer {
             'PIN' => $pin,
             'Ref. proveedor' => $provider_ref,
             'ID de transacción' => $ref,
+            'Referencia interna' => ($ref === '' ? $distributor_ref : ''),
             'Estado' => $status,
             'Fecha' => $timestamp,
         ];

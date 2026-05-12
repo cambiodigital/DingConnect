@@ -5,6 +5,12 @@
 Priorizar próximos proyectos y funcionalidades sobre la base actual del plugin WordPress de DingConnect.
 
 ## Cambios recientes (Completado)
+- **12 Mayo 2026:** Se incorporó precheck backend antes de confirmación/checkout: nuevo endpoint `POST /wp-json/dingconnect/v1/precheck` con `GetAccountLookup`, validación de producto/monto/settings/factura, balance y `SendTransfer ValidateOnly=true`; `add-to-cart` ahora exige token temporal válido para evitar cobros sin validación previa.
+- **12 Mayo 2026:** Se alineó la interpretación de `ResultCode` con la documentación oficial de DingConnect (`1=Success`, `2=Success With Warning`) y se añadió `X-Correlation-Id` en las llamadas salientes para trazabilidad API.
+- **12 Mayo 2026:** Se reforzó el comprobante final cliente: modal, PDF y resultado directo muestran `TransferRef` como `ID de transacción`; si Ding aún no confirma `TransferRef`, se muestra `Pendiente de confirmación` y la referencia interna queda separada para soporte.
+- **12 Mayo 2026:** Se ajustó `/precheck` tras pruebas reales: `GetAccountLookup` queda como señal auxiliar y no bloquea si viene vacío; la decisión final depende de `SendTransfer ValidateOnly=true`. También se acepta `ResultCode=2` como éxito con advertencia según documentación oficial.
+- **12 Mayo 2026:** Se endureció `/precheck` para pruebas reales en frontend: errores funcionales esperados devuelven `ok:false` con HTTP 200 para evitar ruido rojo en consola y mostrar feedback controlado; fallos o discrepancias de `GetAccountLookup`/`GetProducts` ya no bloquean si existe bundle guardado, se registran como warning admin y se continúa hasta `SendTransfer ValidateOnly=true`.
+- **12 Mayo 2026:** Se corrigió falso positivo de precheck detectado con `AccountNumberInvalid / AccountNumberFailedRegex`: backend valida `AccountNumber` contra `ValidationRegex` de proveedor/producto/bundle antes de emitir token, añade fallback controlado para móviles Colombia (`57 + 3XXXXXXXXX`) y corrige mensajes con tildes en respuestas de validación.
 - **12 Mayo 2026:** Se eliminaron las indicaciones "Recibe estimado" y "Recibe sin impuestos" del paso de confirmación en el frontend público, ya que esa información ya está cubierta por el campo de beneficio (benefit).
 - **12 Mayo 2026:** Se agregaron 4 campos personalizables para los textos del frontend de la landing: `package_stage_title`, `package_stage_subtitle`, `confirm_stage_title` y `confirm_stage_subtitle`. Configurables independientemente por cada shortcode desde el panel admin.
 
