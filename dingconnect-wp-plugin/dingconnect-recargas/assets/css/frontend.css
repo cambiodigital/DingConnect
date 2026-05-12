@@ -1230,6 +1230,15 @@
     color: #2563eb;
 }
 
+.dc-confirm-row.dc-confirm-row-message {
+    display: block;
+    text-align: center;
+}
+
+.dc-confirm-row.dc-confirm-row-message .dc-confirm-row-value {
+    text-align: center;
+}
+
 .dc-confirm-btn {
     flex: 1;
     box-sizing: border-box;

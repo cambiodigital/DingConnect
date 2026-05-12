@@ -776,7 +776,18 @@
             throw new Error('El servidor devolvio una respuesta invalida (HTTP ' + response.status + ').');
         }
 
-        if (!response.ok) throw new Error((data && data.message) || 'Error en la solicitud.');
+        if (!response.ok) {
+            if (data && data.code === 'rest_cookie_invalid_nonce') {
+                var msg = 'Tu sesión ha expirado. Actualizando la página para continuar...';
+                if (typeof setFeedback === 'function') setFeedback(msg, 'warning');
+                if (typeof setFeedbackConfirm === 'function') setFeedbackConfirm(msg, 'warning');
+                setTimeout(function () {
+                    window.location.reload();
+                }, 2000);
+                return new Promise(function() {});
+            }
+            throw new Error((data && data.message) || 'Error en la solicitud.');
+        }
         return data;
     }
 
@@ -1534,6 +1545,12 @@
             ? '<span class="dc-featured-badge">⭐ Paquete destacado</span>'
             : '';
 
+        var isoStr = String(countryIso || '').toUpperCase();
+        var flagUrl = getFlagUrl(countryIso);
+        var chipContent = flagUrl 
+            ? '<img src="' + escapeHtml(flagUrl) + '" alt="' + escapeHtml(isoStr) + '" class="dc-flag-img" loading="lazy" decoding="async" onerror="this.outerHTML=\'' + escapeHtml(isoStr) + '\'">'
+            : escapeHtml(isoStr || 'N/A');
+
         packageCard.innerHTML = ''
             + '<div class="dc-package-card-head' + featuredClass + '">'
             +   '<div class="dc-package-copy">'
@@ -1545,7 +1562,7 @@
             +     '<span class="dc-package-price-label">Precio</span>'
             +     '<strong>' + escapeHtml(amount) + '</strong>'
             +   '</div>'
-            +   '<div class="dc-package-iso-chip">' + escapeHtml(countryIso || 'N/A') + '</div>'
+            +   '<div class="dc-package-iso-chip" title="' + escapeHtml(isoStr) + '">' + chipContent + '</div>'
             + '</div>'
             + '<div class="dc-package-benefit">'
             +   '<div class="dc-package-benefit-text">' + escapeHtml(benefit) + '</div>'
@@ -1578,6 +1595,13 @@
             contextBundle.innerHTML = '';
         }
 
+        var phoneStr = state.fullPhone || normalizePhone() || '';
+        var countryName = state.country ? state.country.name : '';
+        var dialPrefix = state.country ? '+' + state.country.dial : '';
+        if (dialPrefix && phoneStr.startsWith(dialPrefix)) {
+            phoneStr = dialPrefix + ' ' + phoneStr.substring(dialPrefix.length);
+        }
+
         confirmCard.innerHTML = ''
             + '<div class="dc-confirm-hero' + featuredClass + '">'
             +   '<div class="dc-confirm-hero-copy">'
@@ -1589,7 +1613,11 @@
             +     '<strong class="dc-confirm-amount">' + escapeHtml(price) + '</strong>'
             +   '</div>'
             + '</div>'
-            + '<div class="dc-confirm-benefit-wide">' + escapeHtml(benefit) + '</div>';
+            + '<div class="dc-confirm-benefit-wide">' + escapeHtml(benefit) + '</div>'
+            + '<div class="dc-confirm-row">'
+            +   '<span class="dc-confirm-row-label">Número</span>'
+            +   '<span class="dc-confirm-row-value"><strong>' + escapeHtml(phoneStr) + '</strong><br><small style="font-weight:400;color:#64748b">' + escapeHtml(countryName) + '</small></span>'
+            + '</div>';
 
         if (isRangeBundle(bundle)) {
             confirmCard.innerHTML += ''
@@ -1641,8 +1669,7 @@
 
         if (confirmCopy.confirmValue) {
             confirmCard.innerHTML += ''
-                + '<div class="dc-confirm-row">'
-            +   '<span class="dc-confirm-row-label">' + escapeHtml(confirmCopy.confirmLabel) + '</span>'
+                + '<div class="dc-confirm-row dc-confirm-row-message">'
             +   '<span class="dc-confirm-row-value is-benefit">' + escapeHtml(confirmCopy.confirmValue) + '</span>'
                 + '</div>';
         }

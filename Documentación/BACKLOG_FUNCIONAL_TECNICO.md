@@ -4,6 +4,9 @@
 
 Priorizar próximos proyectos y funcionalidades sobre la base actual del plugin WordPress de DingConnect.
 
+## Cambios recientes (Completado)
+- **12 Mayo 2026:** Se agregaron 4 campos personalizables para los textos del frontend de la landing: `package_stage_title`, `package_stage_subtitle`, `confirm_stage_title` y `confirm_stage_subtitle`. Configurables independientemente por cada shortcode desde el panel admin.
+
 ## Prioridad P0 (crítico)
 
 1. Unificar contrato entre frontend y REST del plugin.
@@ -89,14 +92,22 @@ Una iniciativa se considera lista cuando cumple:
 1. Mejora de UI en el modal de edición de shortcodes dinámicos: Se desglosó la columna consolidada de Producto en columnas individuales (País, Tipo, Nombre, SKU, Operador) para hacer la tabla más compacta y legible. El modal ahora ocupa el 85% del ancho de la pantalla y la tabla alinea su contenido verticalmente al centro. Se restableció la opción de abrir el producto al hacer clic, con la mejora de regresar automáticamente al modal de shortcode tras guardar o cancelar.
 2. Corrección de estado post-pago en WooCommerce: el pedido ahora transiciona automáticamente a "Completado" cuando la API retorna estado "Complete" con TransferRef válido (Ref ≠ 0 y no vacía). Se añadió safety-net en la página thank-you que fuerza sincronización de estado antes de renderizar el voucher. El webhook handler ahora sincroniza el estado del pedido tras procesar notificaciones de DingConnect. El voucher/PDF en thank-you incluye feedback explícito de éxito ("Tu recarga fue exitosa") y muestra el ID de transacción (TransferRef) como comprobante. v2.8.15.
 
+## Avances implementados (12-05-2026)
+
+1. Mejora visual de UI en los resultados de búsqueda: Se agregó la renderización de la bandera del país en lugar de solo mostrar las letras ISO (ej. CU, DO) en la etiqueta de la esquina del paquete (Beneficios recibidos), alineándolo con la apariencia del selector de país para un diseño más consistente.
+2. Recuperación automática de sesión expirada en frontend: Se capturó el error `rest_cookie_invalid_nonce` ("Ha fallado la comprobación de la cookie") en las peticiones AJAX. Ahora, si la sesión expira tras dejar la pestaña abierta mucho tiempo, se muestra un aviso amigable y se recarga la página automáticamente para obtener un nuevo nonce sin mostrar errores técnicos al usuario.
+3. Restauración de UI en confirmación de recarga: Se agregó de vuelta el número beneficiario junto con el código de país en la tarjeta de confirmación del frontend, asegurando que el usuario verifique esta información clave antes de proceder al pago (v2.8.34).
+4. Mejora UX en confirmación de recarga: Se eliminó la etiqueta "Entrega" y se ajustó el mensaje de confirmación ("Tras confirmar, pasaras al pago...") para que ocupe todo el ancho de la tarjeta, mejorando la legibilidad (v2.8.35).
+
 ## Avances implementados (11-05-2026)
 
 1. Eliminación de salvaguarda financiera en carrito: se removió la validación restrictiva que bloqueaba transacciones cuando el precio comercial del bundle era inferior al costo de recarga (`send_value`).
+2. Eliminación de validación EstimatePrices en add_to_cart: se quitó la validación estricta de "ParameterOutOfRange" pre-carrito porque el monto ya se valida correctamente contra el Coste DIN local, permitiendo añadir al carrito montos válidos según la configuración del bundle.
 
 ## Avances implementados (10-05-2026)
 
 1. Ajuste de cierre de pedido WooCommerce por confirmación DingConnect: el pedido solo se marca como `completed` cuando todas las recargas quedan en éxito confirmado (estado exitoso + `TransferRef` confirmado). El estado `pending_confirmation` se trata como pendiente (no como error) para evitar pasar el pedido a `on-hold` prematuramente. La transición de estado se ejecuta con `WC_Order->update_status()` y lock anti-bucle para respetar hooks estándar de WooCommerce.
-2. Hardening de abandono en checkout (Cart Swap): al iniciar checkout de recarga se guarda snapshot del carrito incluso si estaba vacío, se aplica expiración de 5 minutos desde el alta en carrito y se agrega guard en checkout para redirigir a tienda cuando expira o cuando se vuelve sin marcador de sesión (cierre de navegador). Al salir de checkout se restaura el carrito previo y se elimina la recarga aislada.
+2. Hardening de abandono en checkout (Cart Swap): al iniciar checkout de recarga se guarda snapshot del carrito incluso si estaba vacío, se aplica expiración de 15 minutos desde el alta en carrito y se agrega guard en checkout para redirigir a tienda cuando expira o cuando se vuelve sin marcador de sesión (cierre de navegador). Al salir de checkout se restaura el carrito previo y se elimina la recarga aislada.
 3. Ajuste UX en frontend público (shortcode `dingconnect_recargas`): el campo de beneficio/descripcion del producto ahora aprovecha el ancho completo de la tarjeta (fuera del contenedor de cabecera), y en el paso `Confirma tu recarga` se ocultaron Operador, Número y País para simplificar la revisión previa.
 4. Ajuste UX en checkout WooCommerce para recargas: el campo de teléfono se muestra como "Tu teléfono" y se suprime el indicador de cantidad (`× 1`) en el resumen de checkout para ítems de recarga.
 5. Mejora visual del comprobante post-pago (thank-you + Guardar PDF): se añadió logo de Cubakilos, se incrementó el padding de columnas del recibo y el botón `Guardar PDF` imprime desde una ventana limpia para evitar una hoja en blanco previa.
@@ -473,3 +484,25 @@ Dos escenarios contribuyentes:
 - `includes/class-dc-voucher-renderer.php` — nuevo método `translate_status()` con mapeo completo de estados a español.
 - `assets/js/frontend.js` — eliminación de 6 fugas de marca "DingConnect" en textos cliente.
 - `dingconnect-recargas.php` — versión 2.8.11.
+## Corrección de errores en Voucher y Estado (v2.8.30, 11-05-2026)
+
+**Problema detectado**: se reportó un error JS en consola al intentar abrir o imprimir el voucher en la página de Thank You (`dcPrintVoucher is not defined`). Además, el cliente reportó que "no se ve el transfer ID" y "el pedido se queda en procesando cuando la recarga fue exitosa".
+
+### Causa raíz
+
+1. **Error de escape en JavaScript (Voucher):** El modal de impresión en `class-dc-woocommerce.php` inyectaba CSS dentro del script. La fuente `"Segoe UI"` estaba doblemente escapada como `\\\"Segoe UI\\\"` en PHP, lo que en JavaScript generaba un error de sintaxis y abortaba la declaración de la función `dcPrintVoucher`.
+2. **Síntomas de Transfer ID y Estado "Procesando" (Actualizado el 12-05-2026):** Aunque inicialmente se pensó que era por el modo simulación (`ValidateOnly: true`), el usuario confirmó estar operando en modo **Producción**. La verdadera causa técnica de este comportamiento radica en el flujo diferido de DingConnect:
+   - **Comportamiento "Deferred" (Batch):** En producción, ciertos productos de recarga se procesan de forma asíncrona. La primera respuesta a `SendTransfer` devuelve un estado transitorio (ej. `Submitted`) sin un `TransferRef` final asignado.
+   - **Mecanismo de Seguridad Local:** El plugin protege el pedido y lo mantiene en estado `procesando` (con `pending_confirmation`) para no dar por completado un pedido que podría fallar en DingConnect. El `TransferRef` no aparece en el comprobante porque aún no ha sido confirmado por DingConnect.
+   - **Ventana de Conciliación:** El plugin depende del cron (`ListTransferRecords`) para sincronizar el estado final, el cual por defecto espera 10 minutos. Hasta que no se ejecute, el pedido se mantiene en `procesando`.
+
+### Correcciones aplicadas
+
+1. **Solución a `dcPrintVoucher`:** Se corrigió el escape en el CSS embebido en `class-dc-woocommerce.php`, usando comillas simples (`'Segoe UI'`) en lugar de dobles escapadas. Esto soluciona el error en consola y restablece la funcionalidad del botón "Guardar PDF".
+2. **Documentación de hallazgos:** Se creó el documento `Documentación/HALLAZGOS_PRODUCCION_CHECKOUT.md` detallando la verdadera causa del comportamiento diferido en producción, junto con recomendaciones para reducir el tiempo de polling o implementar Webhooks.
+3. **Guía de Webhooks:** Se redactó `Documentación/GUIA_WEBHOOK_DINGCONNECT.md` con las instrucciones paso a paso para configurar los webhooks (Deferred SendTransfer) tanto en el plugin como en el portal de DingConnect.
+
+**Archivos modificados**:
+- `includes/class-dc-woocommerce.php` — corrección de sintaxis JS/CSS para voucher.
+- `dingconnect-recargas.php` — bump de versión a 2.8.30.
+- `Documentación/HALLAZGOS_PRODUCCION_CHECKOUT.md` — archivo creado con la explicación detallada para posterior ajuste y solución definitiva.

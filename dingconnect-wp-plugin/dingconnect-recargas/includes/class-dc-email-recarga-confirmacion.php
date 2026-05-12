@@ -93,6 +93,17 @@ class WC_DC_Email_Recarga_Confirmacion extends WC_Email {
                 if (!isset($this->recarga_data_v2['bundle']) || (string) ($this->recarga_data_v2['bundle'] ?? '') === '') {
                     $this->recarga_data_v2['bundle'] = (string) $item->get_meta('_dc_bundle_label');
                 }
+                
+                if (!isset($this->recarga_data_v2['transaction_id']) || (string) ($this->recarga_data_v2['transaction_id'] ?? '') === '') {
+                    $tx_id = (string) ($this->recarga_data_v2['transfer_ref'] ?? $item->get_meta('_dc_transfer_ref'));
+                    if ($tx_id === '') {
+                        $tx_id = (string) $item->get_meta('_dc_distributor_ref');
+                    }
+                    if ($tx_id === '') {
+                        $tx_id = (string) $order->get_transaction_id();
+                    }
+                    $this->recarga_data_v2['transaction_id'] = $tx_id;
+                }
             }
         }
 

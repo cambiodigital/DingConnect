@@ -81,6 +81,10 @@ class DC_Recargas_Frontend {
             'country' => '',
             'title' => 'Recargas Internacionales',
             'subtitle' => 'Ingresa el número y elige tu paquete',
+            'package_stage_title' => 'Elige un paquete',
+            'package_stage_subtitle' => 'Selecciona el paquete disponible para este número y revisa sus beneficios antes de confirmar.',
+            'confirm_stage_title' => 'Confirma tu recarga',
+            'confirm_stage_subtitle' => 'Revisa los datos antes de enviarlos al flujo de pago o a la recarga directa.',
         ], (array) $atts, 'dingconnect_recargas');
 
         $landing_key = sanitize_key((string) $atts['landing_key']);
@@ -108,6 +112,26 @@ class DC_Recargas_Frontend {
         $subtitle = sanitize_text_field((string) $atts['subtitle']);
         if ($subtitle === 'Ingresa el número y elige tu paquete' && !empty($config['subtitle'])) {
             $subtitle = sanitize_text_field((string) $config['subtitle']);
+        }
+
+        $package_stage_title = sanitize_text_field((string) $atts['package_stage_title']);
+        if ($package_stage_title === 'Elige un paquete' && !empty($config['package_stage_title'])) {
+            $package_stage_title = sanitize_text_field((string) $config['package_stage_title']);
+        }
+
+        $package_stage_subtitle = sanitize_text_field((string) $atts['package_stage_subtitle']);
+        if ($package_stage_subtitle === 'Selecciona el paquete disponible para este número y revisa sus beneficios antes de confirmar.' && !empty($config['package_stage_subtitle'])) {
+            $package_stage_subtitle = sanitize_text_field((string) $config['package_stage_subtitle']);
+        }
+
+        $confirm_stage_title = sanitize_text_field((string) $atts['confirm_stage_title']);
+        if ($confirm_stage_title === 'Confirma tu recarga' && !empty($config['confirm_stage_title'])) {
+            $confirm_stage_title = sanitize_text_field((string) $config['confirm_stage_title']);
+        }
+
+        $confirm_stage_subtitle = sanitize_text_field((string) $atts['confirm_stage_subtitle']);
+        if ($confirm_stage_subtitle === 'Revisa los datos antes de enviarlos al flujo de pago o a la recarga directa.' && !empty($config['confirm_stage_subtitle'])) {
+            $confirm_stage_subtitle = sanitize_text_field((string) $config['confirm_stage_subtitle']);
         }
 
         $bundle_attr = implode(',', $bundle_ids);
@@ -146,8 +170,8 @@ class DC_Recargas_Frontend {
                         <div id="dc-package-stage" class="dc-package-stage" hidden>
                             <div class="dc-context-strip" id="dc-context-phone"></div>
                             <div class="dc-package-stage-header">
-                                <h3>Elige un paquete</h3>
-                                <p>Selecciona el paquete disponible para este número y revisa sus beneficios antes de confirmar.</p>
+                                <h3><?php echo esc_html($package_stage_title); ?></h3>
+                                <p><?php echo esc_html($package_stage_subtitle); ?></p>
                             </div>
                             <select id="dc-product-type-filter" class="dc-product-type-filter" hidden aria-label="Filtrar por tipo de producto"></select>
                             <label class="dc-package-select-label" for="dc-package-select">Paquetes disponibles</label>
@@ -164,8 +188,8 @@ class DC_Recargas_Frontend {
                     <!-- Paso 2: Confirmar -->
                     <div class="dc-pane" id="dc-pane-confirm" hidden>
                         <div class="dc-pane-header dc-pane-header--compact">
-                            <h2>Confirma tu recarga</h2>
-                            <p>Revisa los datos antes de enviarlos al flujo de pago o a la recarga directa.</p>
+                            <h2><?php echo esc_html($confirm_stage_title); ?></h2>
+                            <p><?php echo esc_html($confirm_stage_subtitle); ?></p>
                         </div>
                         <div class="dc-context-strip" id="dc-context-bundle"></div>
                         <div id="dc-confirm-card" class="dc-confirm-card"></div>

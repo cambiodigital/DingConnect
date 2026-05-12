@@ -99,7 +99,7 @@ La landing se construye desde bundles guardados, no desde productos live.
 
 `handle_add_landing_shortcode()` y `handle_update_landing_shortcode()` hacen esto:
 
-1. Recogen `landing_name`, `landing_key`, `landing_title`, `landing_subtitle`, `bundle_ids[]`, `featured_bundle_id` y `bundle_order` del DOM.
+1. Recogen `landing_name`, `landing_key`, `landing_title`, `landing_subtitle`, `package_stage_title`, `package_stage_subtitle`, `confirm_stage_title`, `confirm_stage_subtitle`, `bundle_ids[]`, `featured_bundle_id` y `bundle_order` del DOM.
 2. Validan que los `bundle_ids` existan en `dc_recargas_bundles`.
 3. Reordenan SOLO los bundles seleccionados con `order_selected_bundles()`.
 4. Derivan `country_iso` automáticamente:

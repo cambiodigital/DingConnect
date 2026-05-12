@@ -140,7 +140,7 @@ Flujo recomendado:
 Nota operativa WooCommerce (abril 2026):
 
 - Para shortcodes en modo `payment_mode=woocommerce`, la recarga se agrega al carrito y el envío a DingConnect se ejecuta solo cuando la orden ya está pagada (`is_paid`).
-- Cart Swap (checkout aislado): al iniciar una recarga en modo WooCommerce, el plugin hace snapshot del carrito previo (aunque estuviera vacío), vacía el carrito y deja solo la recarga para un checkout simplificado. Si el cliente abandona checkout, vuelve sin continuidad de sesión (cierre de navegador) o expira la ventana de 5 minutos desde el alta en carrito, el sistema elimina la recarga aislada, restaura el carrito previo y redirige a la tienda.
+- Cart Swap (checkout aislado): al iniciar una recarga en modo WooCommerce, el plugin hace snapshot del carrito previo (aunque estuviera vacío), vacía el carrito y deja solo la recarga para un checkout simplificado. Si el cliente abandona checkout, vuelve sin continuidad de sesión (cierre de navegador) o expira la ventana de 15 minutos desde el alta en carrito, el sistema elimina la recarga aislada, restaura el carrito previo y redirige a la tienda.
 - El plugin permite definir en admin (`Credenciales > Pasarelas permitidas`) qué métodos de pago WooCommerce quedan habilitados para carritos con recargas DingConnect.
 - Si no se selecciona ninguna pasarela en esa lista, checkout conserva todas las pasarelas activas de WooCommerce.
 - Hardening de bypass REST: cuando `payment_mode=woocommerce`, el endpoint `POST /wp-json/dingconnect/v1/transfer` responde `403` y obliga a usar `POST /wp-json/dingconnect/v1/add-to-cart` + checkout.

@@ -3,7 +3,7 @@
  * Plugin Name: DingConnect Recargas
  * Description: Plugin para vender recargas y bundles con DingConnect
  * desde WordPress. Hecho por Cambiodigital.net, personalizado para cubakilos.com.
- * Version: 2.8.28
+ * Version: 2.8.36
  * Author: Cambiodigital.net (personalizado para cubakilos.com)
  * Author URI: https://cambiodigital.net
  * Requires at least: 6.0
@@ -28,7 +28,7 @@ if (defined('DC_RECARGAS_FILE') && realpath(DC_RECARGAS_FILE) !== realpath($dc_r
 }
 
 if (!defined('DC_RECARGAS_VERSION')) {
-    define('DC_RECARGAS_VERSION', '2.8.26');
+    define('DC_RECARGAS_VERSION', '2.8.30');
 }
 
 if (!defined('DC_RECARGAS_FILE')) {

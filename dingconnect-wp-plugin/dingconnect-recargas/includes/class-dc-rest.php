@@ -627,33 +627,6 @@ class DC_Recargas_REST {
             return $this->wp_error_to_rest_response($amount_validation);
         }
 
-        // Live validation contra DingConnect para evitar ParameterOutOfRange post-pago
-        $estimate_payload = [
-            [
-                'SkuCode'         => $sku_code,
-                'SendValue'       => $send_value,
-                'SendCurrencyIso' => $send_currency_iso,
-                'BatchItemRef'    => 'WP-VAL-' . wp_generate_password(6, false, false),
-            ]
-        ];
-
-        $estimate_response = $this->api->estimate_prices($estimate_payload);
-        if (is_wp_error($estimate_response)) {
-            return new WP_REST_Response([
-                'ok'      => false,
-                'message' => $estimate_response->get_error_message() ?: 'El proveedor rechazó este importe. Por favor, actualiza la página y vuelve a intentarlo.',
-            ], 400);
-        }
-
-        $estimate_items = $estimate_response['Result'] ?? $estimate_response['Items'] ?? [];
-        if (!empty($estimate_items[0]['ErrorCodes'])) {
-            $error_code    = $estimate_items[0]['ErrorCodes'][0]['Code'] ?? 'UnknownError';
-            return new WP_REST_Response([
-                'ok'      => false,
-                'message' => 'El importe no es válido para este proveedor (' . $error_code . '). Por favor, verifica el catálogo.',
-            ], 400);
-        }
-
         $matched_bundle = $this->find_saved_bundle_for_cart($bundle_id, $sku_code, $country_iso);
         if (is_array($matched_bundle)) {
             $resolved_benefit = $this->extract_bundle_benefit_for_checkout($matched_bundle);

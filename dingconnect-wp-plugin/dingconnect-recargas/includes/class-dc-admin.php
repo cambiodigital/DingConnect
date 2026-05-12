@@ -116,6 +116,10 @@ class DC_Recargas_Admin {
         if ($hook_suffix !== 'toplevel_page_dc-recargas') {
             return;
         }
+        
+        // Enqueue pointer scripts and styles to avoid JS errors if WordPress or other plugins try to use them
+        wp_enqueue_style('wp-pointer');
+        wp_enqueue_script('wp-pointer');
     }
 
     public function handle_add_landing_shortcode() {
@@ -129,6 +133,10 @@ class DC_Recargas_Admin {
         $key_input = sanitize_key((string) ($_POST['landing_key'] ?? ''));
         $title = sanitize_text_field((string) ($_POST['landing_title'] ?? ''));
         $subtitle = sanitize_text_field((string) ($_POST['landing_subtitle'] ?? ''));
+        $package_stage_title = sanitize_text_field((string) ($_POST['package_stage_title'] ?? ''));
+        $package_stage_subtitle = sanitize_text_field((string) ($_POST['package_stage_subtitle'] ?? ''));
+        $confirm_stage_title = sanitize_text_field((string) ($_POST['confirm_stage_title'] ?? ''));
+        $confirm_stage_subtitle = sanitize_text_field((string) ($_POST['confirm_stage_subtitle'] ?? ''));
         $raw_bundle_order = wp_unslash($_POST['bundle_order'] ?? []);
         $featured_bundle_id = sanitize_text_field((string) ($_POST['featured_bundle_id'] ?? ''));
 
@@ -204,6 +212,10 @@ class DC_Recargas_Admin {
             'key' => $key,
             'title' => $title,
             'subtitle' => $subtitle,
+            'package_stage_title' => $package_stage_title,
+            'package_stage_subtitle' => $package_stage_subtitle,
+            'confirm_stage_title' => $confirm_stage_title,
+            'confirm_stage_subtitle' => $confirm_stage_subtitle,
             'country_iso' => $country_iso,
             'bundle_ids' => $selected_bundle_ids,
             'featured_bundle_id' => $featured_bundle_id,
@@ -343,6 +355,10 @@ class DC_Recargas_Admin {
             'key' => $this->generate_unique_landing_key($base_key . '-copy', $shortcodes),
             'title' => sanitize_text_field((string) ($source['title'] ?? '')),
             'subtitle' => sanitize_text_field((string) ($source['subtitle'] ?? '')),
+            'package_stage_title' => sanitize_text_field((string) ($source['package_stage_title'] ?? '')),
+            'package_stage_subtitle' => sanitize_text_field((string) ($source['package_stage_subtitle'] ?? '')),
+            'confirm_stage_title' => sanitize_text_field((string) ($source['confirm_stage_title'] ?? '')),
+            'confirm_stage_subtitle' => sanitize_text_field((string) ($source['confirm_stage_subtitle'] ?? '')),
             'country_iso' => strtoupper(sanitize_text_field((string) ($source['country_iso'] ?? ''))),
             'bundle_ids' => is_array($source['bundle_ids'] ?? null) ? array_values(array_unique(array_map('sanitize_text_field', $source['bundle_ids']))) : [],
             'featured_bundle_id' => sanitize_text_field((string) ($source['featured_bundle_id'] ?? '')),
@@ -378,6 +394,10 @@ class DC_Recargas_Admin {
         $key_input = sanitize_key((string) ($_POST['landing_key'] ?? ''));
         $title = sanitize_text_field((string) ($_POST['landing_title'] ?? ''));
         $subtitle = sanitize_text_field((string) ($_POST['landing_subtitle'] ?? ''));
+        $package_stage_title = sanitize_text_field((string) ($_POST['package_stage_title'] ?? ''));
+        $package_stage_subtitle = sanitize_text_field((string) ($_POST['package_stage_subtitle'] ?? ''));
+        $confirm_stage_title = sanitize_text_field((string) ($_POST['confirm_stage_title'] ?? ''));
+        $confirm_stage_subtitle = sanitize_text_field((string) ($_POST['confirm_stage_subtitle'] ?? ''));
         $raw_bundle_order = wp_unslash($_POST['bundle_order'] ?? []);
         $featured_bundle_id = sanitize_text_field((string) ($_POST['featured_bundle_id'] ?? ''));
 
@@ -463,6 +483,10 @@ class DC_Recargas_Admin {
         $shortcodes[$landing_index]['key'] = $key;
         $shortcodes[$landing_index]['title'] = $title;
         $shortcodes[$landing_index]['subtitle'] = $subtitle;
+        $shortcodes[$landing_index]['package_stage_title'] = $package_stage_title;
+        $shortcodes[$landing_index]['package_stage_subtitle'] = $package_stage_subtitle;
+        $shortcodes[$landing_index]['confirm_stage_title'] = $confirm_stage_title;
+        $shortcodes[$landing_index]['confirm_stage_subtitle'] = $confirm_stage_subtitle;
         $shortcodes[$landing_index]['country_iso'] = $country_iso;
         $shortcodes[$landing_index]['bundle_ids'] = $selected_bundle_ids;
         $shortcodes[$landing_index]['featured_bundle_id'] = $featured_bundle_id;
@@ -3928,6 +3952,22 @@ class DC_Recargas_Admin {
                         <th scope="row"><label for="dc_landing_subtitle">Subtítulo del formulario</label></th>
                         <td><input type="text" id="dc_landing_subtitle" name="landing_subtitle" class="regular-text" placeholder="Elige un paquete y confirma tu recarga"></td>
                     </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_package_stage_title">Título "Elegir paquete"</label></th>
+                        <td><input type="text" id="dc_landing_package_stage_title" name="package_stage_title" class="regular-text" placeholder="Elige un paquete"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_package_stage_subtitle">Subtítulo "Elegir paquete"</label></th>
+                        <td><input type="text" id="dc_landing_package_stage_subtitle" name="package_stage_subtitle" class="regular-text" placeholder="Selecciona el paquete disponible..."></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_confirm_stage_title">Título "Confirmar"</label></th>
+                        <td><input type="text" id="dc_landing_confirm_stage_title" name="confirm_stage_title" class="regular-text" placeholder="Confirma tu recarga"></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="dc_landing_confirm_stage_subtitle">Subtítulo "Confirmar"</label></th>
+                        <td><input type="text" id="dc_landing_confirm_stage_subtitle" name="confirm_stage_subtitle" class="regular-text" placeholder="Revisa los datos antes de enviarlos..."></td>
+                    </tr>
                 </table>
 
                 <div class="dc-landing-bundles-full-width">
@@ -4094,6 +4134,22 @@ class DC_Recargas_Admin {
                             <tr>
                                 <th scope="row"><label for="dc_edit_landing_subtitle">Subtítulo del formulario</label></th>
                                 <td><input type="text" id="dc_edit_landing_subtitle" name="landing_subtitle" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_package_stage_title">Título "Elegir paquete"</label></th>
+                                <td><input type="text" id="dc_edit_landing_package_stage_title" name="package_stage_title" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_package_stage_subtitle">Subtítulo "Elegir paquete"</label></th>
+                                <td><input type="text" id="dc_edit_landing_package_stage_subtitle" name="package_stage_subtitle" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_confirm_stage_title">Título "Confirmar"</label></th>
+                                <td><input type="text" id="dc_edit_landing_confirm_stage_title" name="confirm_stage_title" class="regular-text"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row"><label for="dc_edit_landing_confirm_stage_subtitle">Subtítulo "Confirmar"</label></th>
+                                <td><input type="text" id="dc_edit_landing_confirm_stage_subtitle" name="confirm_stage_subtitle" class="regular-text"></td>
                             </tr>
                         </table>
 
@@ -7637,6 +7693,10 @@ class DC_Recargas_Admin {
                     if (landingEditKeyEl) landingEditKeyEl.value = landing.key || '';
                     if (landingEditTitleEl) landingEditTitleEl.value = landing.title || '';
                     if (landingEditSubtitleEl) landingEditSubtitleEl.value = landing.subtitle || '';
+                    if (landingEditPackageStageTitleEl) landingEditPackageStageTitleEl.value = landing.package_stage_title || '';
+                    if (landingEditPackageStageSubtitleEl) landingEditPackageStageSubtitleEl.value = landing.package_stage_subtitle || '';
+                    if (landingEditConfirmStageTitleEl) landingEditConfirmStageTitleEl.value = landing.confirm_stage_title || '';
+                    if (landingEditConfirmStageSubtitleEl) landingEditConfirmStageSubtitleEl.value = landing.confirm_stage_subtitle || '';
 
                     if (landingEditBundleCheckboxEls.length) {
                         var selectedMap = {};

@@ -266,7 +266,7 @@ class DC_Recargas_WooCommerce {
         );
 
         $now = time();
-        $ttl_seconds = 300;
+        $ttl_seconds = 900; // 15 minutes
 
         $session = WC()->session;
         $swap_active = $session ? (bool) $session->get('dc_cart_swap_active') : false;
@@ -1955,7 +1955,14 @@ class DC_Recargas_WooCommerce {
                     $voucher = $this->voucher_service->get_item_voucher_v2($item);
                     if ($voucher) {
                         if (!isset($voucher['transaction_id']) || (string) ($voucher['transaction_id'] ?? '') === '') {
-                            $voucher['transaction_id'] = (string) ($voucher['transfer_ref'] ?? $item->get_meta('_dc_transfer_ref'));
+                            $tx_id = (string) ($voucher['transfer_ref'] ?? $item->get_meta('_dc_transfer_ref'));
+                            if ($tx_id === '') {
+                                $tx_id = (string) $item->get_meta('_dc_distributor_ref');
+                            }
+                            if ($tx_id === '') {
+                                $tx_id = (string) $order->get_transaction_id();
+                            }
+                            $voucher['transaction_id'] = $tx_id;
                         }
                         if (!isset($voucher['status']) || (string) ($voucher['status'] ?? '') === '') {
                             $voucher['status'] = (string) $item->get_meta('_dc_transfer_status');
@@ -1997,9 +2004,17 @@ class DC_Recargas_WooCommerce {
                 if ($public_currency === '') {
                     $public_currency = $send_currency;
                 }
+                $tx_id = (string) ($payload['transaction_id'] ?? $item->get_meta('_dc_transfer_ref'));
+                if ($tx_id === '') {
+                    $tx_id = (string) $item->get_meta('_dc_distributor_ref');
+                }
+                if ($tx_id === '') {
+                    $tx_id = (string) $order->get_transaction_id();
+                }
+
                 $voucher = [
                     'contract_version' => 'voucher.legacy',
-                    'transaction_id' => (string) ($payload['transaction_id'] ?? $item->get_meta('_dc_transfer_ref')),
+                    'transaction_id' => $tx_id,
                     'status' => (string) ($payload['status'] ?? $item->get_meta('_dc_transfer_status')),
                     'operator' => (string) ($payload['operator'] ?? $item->get_meta('_dc_provider_name')),
                     'beneficiary' => (string) ($payload['beneficiary_phone'] ?? $item->get_meta('_dc_account_number')),
@@ -2119,7 +2134,7 @@ class DC_Recargas_WooCommerce {
             var styles = ""
                 + "@page{size:A6 portrait;margin:5mm;}"
                 + "html,body{height:auto!important;}"
-                + "body{margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:-apple-system,BlinkMacSystemFont,\\\"Segoe UI\\\",Roboto,\\\"Helvetica Neue\\\",Arial,sans-serif;}"
+                + "body{margin:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;}"
                 + ".dc-voucher-print-root{width:89mm;max-width:89mm;margin:0 auto;}"
                 + ".dc-voucher-brand{display:flex;align-items:center;justify-content:center;gap:10px;padding:0 0 12px;margin:0 0 12px;border-bottom:1px solid #e2e8f0;}"
                 + ".dc-voucher-brand img{height:34px;width:auto;object-fit:contain;}"
@@ -2131,7 +2146,7 @@ class DC_Recargas_WooCommerce {
                 + ".dc-voucher-container td{padding:6px 8px!important;border-bottom:1px solid #e2e8f0!important;}";
 
             w.document.open();
-            w.document.write("<!doctype html><html lang=\\\"es\\\"><head><meta charset=\\\"utf-8\\\"><title>Comprobante de recarga</title><style>" + styles + "</style></head><body><div class=\\\"dc-voucher-print-root\\\">" + root.innerHTML + "</div></body></html>");
+            w.document.write("<!doctype html><html lang=\'es\'><head><meta charset=\'utf-8\'><title>Comprobante de recarga</title><style>" + styles + "</style></head><body><div class=\'dc-voucher-print-root\'>" + root.innerHTML + "</div></body></html>");
             w.document.close();
 
             w.addEventListener("load", function () {
