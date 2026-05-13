@@ -1923,6 +1923,8 @@ class DC_Recargas_WooCommerce {
         $all_success = ($summary['total'] > 0 && $summary['success'] === $summary['total']);
         $has_pending = $this->order_has_pending_recargas($order);
         $has_errors = $this->order_has_error_recargas($order);
+        $any_not_terminal = ($summary['total'] > 0 && $summary['success'] < $summary['total']);
+        $has_not_started = ($summary['total'] > 0 && isset($summary['status_map']['not_started']));
         $has_dc_items = false;
 
         ob_start();
@@ -1941,7 +1943,11 @@ class DC_Recargas_WooCommerce {
         if ($all_success) {
             echo '<p class="dc-voucher-modal-success" style="margin:0 0 14px;color:#166534;background:#dcfce7;padding:10px;border-radius:6px;text-align:center;font-weight:600;">Tu recarga fue exitosa. Guarda este comprobante con el ID de transacción como referencia.</p>';
         }
-        if ($has_pending && !$all_success) {
+        if ($all_success) {
+            echo '<p class="dc-voucher-modal-success" style="margin:0 0 14px;color:#166534;background:#dcfce7;padding:10px;border-radius:6px;text-align:center;font-weight:600;">Tu recarga fue exitosa. Guarda este comprobante con el ID de transacción como referencia.</p>';
+        } elseif ($has_not_started) {
+            echo '<p class="dc-voucher-modal-warning" style="margin:0 0 14px;color:#1e40af;background:#dbeafe;padding:10px;border-radius:6px;text-align:center;">Estamos procesando tu recarga. Esta página se actualizará automáticamente cuando el pago se confirme.</p>';
+        } elseif ($has_pending) {
             echo '<p class="dc-voucher-modal-warning" style="margin:0 0 14px;color:#7c2d12;background:#ffedd5;padding:10px;border-radius:6px;">Tu pedido contiene operaciones pendientes. No repitas la compra mientras el estado siga Submitted o Pending; el sistema seguirá conciliando según la política configurada.</p>';
         }
         if ($has_errors) {
@@ -1983,6 +1989,37 @@ class DC_Recargas_WooCommerce {
                             $voucher['bundle'] = (string) $item->get_meta('_dc_bundle_label');
                         }
                         echo $this->voucher_renderer->render_html($voucher);
+                    } else {
+                        $public_price = (float) $item->get_meta('_dc_public_price');
+                        $public_currency = (string) $item->get_meta('_dc_public_currency_iso');
+                        $send_currency = (string) $item->get_meta('_dc_send_currency_iso');
+                        if ($public_price <= 0) {
+                            $public_price = (float) $item->get_meta('_dc_send_value');
+                        }
+                        if ($public_currency === '') {
+                            $public_currency = $send_currency;
+                        }
+                        $item_status = (string) $item->get_meta('_dc_transfer_status');
+                        $fallback_voucher = [
+                            'contract_version' => 'voucher.v1.fallback',
+                            'transaction_id' => (string) $item->get_meta('_dc_transfer_ref'),
+                            'distributor_ref' => (string) $item->get_meta('_dc_distributor_ref'),
+                            'status' => $item_status !== '' ? $item_status : 'pending',
+                            'operator' => (string) $item->get_meta('_dc_provider_name'),
+                            'beneficiary' => (string) $item->get_meta('_dc_account_number'),
+                            'public_price' => $public_price,
+                            'public_currency' => $public_currency,
+                            'amount_sent' => (float) $item->get_meta('_dc_send_value'),
+                            'amount_sent_currency' => $send_currency,
+                            'amount_received' => 0,
+                            'country_iso' => (string) $item->get_meta('_dc_country_iso'),
+                            'bundle' => (string) $item->get_meta('_dc_bundle_label'),
+                            'timestamp' => current_time('mysql'),
+                            'receipt_text' => '',
+                            'receipt_params' => [],
+                            'bill_ref' => (string) $item->get_meta('_dc_bill_ref'),
+                        ];
+                        echo $this->voucher_renderer->render_html($fallback_voucher);
                     }
                 }
             }
@@ -2108,8 +2145,20 @@ class DC_Recargas_WooCommerce {
         }
         </style>';
 
+        // Config de auto-refresh para items no terminales
+        $auto_refresh_config = [
+            'enabled' => $any_not_terminal,
+            'order_id' => (int) $order->get_id(),
+            'rest_base' => rtrim(rest_url('dingconnect/v1'), '/'),
+            'nonce' => wp_create_nonce('wp_rest'),
+            'max_attempts' => 20,
+            'interval_ms' => 15000,
+        ];
+
         // Script para abrir automáticamente
         echo '<script>
+        var dcVoucherAutoRefresh = ' . wp_json_encode($auto_refresh_config) . ';
+
         function dcPrintVoucher() {
             var root = document.getElementById("dc-voucher-print-root");
             if (!root) {
@@ -2148,10 +2197,53 @@ class DC_Recargas_WooCommerce {
             });
         }
 
+        function dcPollVoucherStatus() {
+            if (!dcVoucherAutoRefresh || !dcVoucherAutoRefresh.enabled) {
+                return;
+            }
+
+            var cfg = dcVoucherAutoRefresh;
+            var attempts = parseInt(sessionStorage.getItem("dc_voucher_poll_attempts") || "0", 10);
+
+            if (attempts >= cfg.max_attempts) {
+                sessionStorage.removeItem("dc_voucher_poll_attempts");
+                return;
+            }
+
+            sessionStorage.setItem("dc_voucher_poll_attempts", String(attempts + 1));
+
+            setTimeout(function () {
+                var url = cfg.rest_base + "/order-voucher-status?order_id=" + encodeURIComponent(cfg.order_id);
+
+                fetch(url, {
+                    headers: { "X-WP-Nonce": cfg.nonce }
+                })
+                .then(function (response) {
+                    if (!response.ok) throw new Error("HTTP " + response.status);
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (data && data.terminal) {
+                        sessionStorage.removeItem("dc_voucher_poll_attempts");
+                        window.location.reload();
+                    } else {
+                        dcPollVoucherStatus();
+                    }
+                })
+                .catch(function () {
+                    dcPollVoucherStatus();
+                });
+            }, cfg.interval_ms);
+        }
+
         document.addEventListener("DOMContentLoaded", function() {
             var modal = document.getElementById("dc-voucher-modal");
             if (modal) {
                 modal.style.display = "flex";
+            }
+
+            if (dcVoucherAutoRefresh && dcVoucherAutoRefresh.enabled) {
+                dcPollVoucherStatus();
             }
         });
         </script>';

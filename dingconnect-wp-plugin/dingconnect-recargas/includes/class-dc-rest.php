@@ -135,6 +135,18 @@ class DC_Recargas_REST {
             'permission_callback' => '__return_true',
         ]);
 
+        register_rest_route('dingconnect/v1', '/order-voucher-status', [
+            'methods' => WP_REST_Server::READABLE,
+            'callback' => [$this, 'order_voucher_status'],
+            'permission_callback' => '__return_true',
+            'args' => [
+                'order_id' => [
+                    'required' => true,
+                    'sanitize_callback' => 'absint',
+                ],
+            ],
+        ]);
+
     }
 
     public function status() {
@@ -146,6 +158,54 @@ class DC_Recargas_REST {
             'validate_only' => !empty($options['validate_only']),
             'allow_real_recharge' => !empty($options['allow_real_recharge']),
         ]);
+    }
+
+    public function order_voucher_status(WP_REST_Request $request) {
+        $order_id = (int) $request->get_param('order_id');
+        if ($order_id < 1) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'ID de pedido no válido.'], 400);
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return new WP_REST_Response(['ok' => false, 'message' => 'Pedido no encontrado.'], 404);
+        }
+
+        $has_dc = false;
+        $all_terminal = true;
+
+        foreach ($order->get_items() as $item) {
+            if ($item->get_meta('_dc_recarga') !== 'yes') {
+                continue;
+            }
+
+            $has_dc = true;
+            $status = strtolower((string) $item->get_meta('_dc_transfer_status'));
+
+            if ($status === '' || $status === 'not_started') {
+                $all_terminal = false;
+                break;
+            }
+
+            $is_success_status = $this->api->is_successful_transfer_status($status);
+            $is_pending_status = $this->api->is_pending_transfer_status($status);
+
+            if ($is_pending_status) {
+                $all_terminal = false;
+                break;
+            }
+
+            if ($is_success_status && !$this->api->is_confirmed_transfer_reference((string) $item->get_meta('_dc_transfer_ref'))) {
+                $all_terminal = false;
+                break;
+            }
+        }
+
+        if (!$has_dc) {
+            return rest_ensure_response(['ok' => true, 'terminal' => true]);
+        }
+
+        return rest_ensure_response(['ok' => true, 'terminal' => $all_terminal]);
     }
 
     public function balance() {

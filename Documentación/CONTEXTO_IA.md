@@ -58,6 +58,8 @@ Namespace actual: `dingconnect/v1`
 - `GET /wp-json/dingconnect/v1/wizard/session/{session_id}`
 - `GET /wp-json/dingconnect/v1/wizard/offers`
 - `POST /wp-json/dingconnect/v1/wizard/sync-now`
+- `GET /wp-json/dingconnect/v1/order-voucher-status`
+  - Query esperada: `order_id`
 
 ## Flujos implementados
 
@@ -152,6 +154,7 @@ Namespace actual: `dingconnect/v1`
 64. Alineación con documentación oficial DingConnect: `ResultCode=1` se interpreta como éxito, `ResultCode=2` como advertencia, y las llamadas salientes incorporan `X-Correlation-Id` para soporte.
 65. UX de precheck en frontend: los rechazos funcionales esperados de `/precheck` responden `ok:false` con HTTP 200 para mostrar feedback al cliente sin ensuciar consola; solo fallos temporales reales mantienen HTTP 429/5xx y `retryable:true`.
 66. Desde v2.8.44, `/precheck` valida `AccountNumber` contra `ValidationRegex` del proveedor/producto/bundle antes de emitir token. Para móviles Colombia sin regex disponible se usa fallback conservador `^(57)?3[0-9]{9}$`, porque `ValidateOnly=true` puede no reproducir el rechazo final `AccountNumberInvalid / AccountNumberFailedRegex`.
+67. Desde v2.8.45, el modal de comprobante en `order-received` ya no queda en blanco cuando la pasarela de pago es asíncrona: el render v2 tiene fallback construido desde meta del item (operador, número, país, bundle, precio) mientras la transferencia no se haya procesado, y se activa auto-refresh JS vía `GET /order-voucher-status` que recarga la página cuando el estado se vuelve terminal.
 
 ## Hallazgos clave para futuras IA
 
