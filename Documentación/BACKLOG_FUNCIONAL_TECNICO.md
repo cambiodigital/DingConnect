@@ -5,6 +5,8 @@
 Priorizar próximos proyectos y funcionalidades sobre la base actual del plugin WordPress de DingConnect.
 
 ## Cambios recientes (Completado)
+- **15 Mayo 2026 (v2.8.47):** Voucher (thank-you): se eliminó la fila "País" del comprobante (no se muestra en ningún caso).
+- **15 Mayo 2026 (v2.8.46):** Checkout thank-you: se corrigió duplicación del aviso de éxito del comprobante, la fecha/hora del voucher se muestra en zona horaria España (Europe/Madrid) y se oculta la fila "País" cuando el valor viene vacío/`[]`.
 - **13 Mayo 2026 (v2.8.45):** Se corrigió modal en blanco en `order-received` para pagos con pasarelas asíncronas: el comprobante v2 ahora muestra fallback construido desde item meta cuando `_dc_voucher_payload_v2` aún no existe. Se añadió auto-refresh JS (cada 15s, máx 20 intentos) que consulta el nuevo endpoint `GET /wp-json/dingconnect/v1/order-voucher-status` y recarga la página cuando la transferencia alcanza estado terminal.
 - **12 Mayo 2026:** Se incorporó precheck backend antes de confirmación/checkout: nuevo endpoint `POST /wp-json/dingconnect/v1/precheck` con `GetAccountLookup`, validación de producto/monto/settings/factura, balance y `SendTransfer ValidateOnly=true`; `add-to-cart` ahora exige token temporal válido para evitar cobros sin validación previa.
 - **12 Mayo 2026:** Se alineó la interpretación de `ResultCode` con la documentación oficial de DingConnect (`1=Success`, `2=Success With Warning`) y se añadió `X-Correlation-Id` en las llamadas salientes para trazabilidad API.

@@ -15,3 +15,10 @@
   1. **Acelerar el Cron Local:** En la pestaña *Credenciales* del plugin, ajustar "Política Submitted: backoff (minutos)" de `10,20,40` a tiempos más cortos, como `1,2,5`.
   2. **Activar Webhooks:** Habilitar la recepción de Webhooks en el plugin y configurar la URL en el portal de DingConnect. Esto permitirá que la tienda se entere al instante cuando DingConnect complete la recarga y asigne el `TransferRef`, actualizando el pedido a `Completado`.
   3. **Verificar Logs Nativos:** Inspeccionar la tabla "Registros" (Transfer Logs) en el plugin para ver la respuesta "Raw" (cruda) exacta de ese pedido. Así validaremos si DingConnect envió el `TransferRef` en un campo inesperado que el método `extract_transfer_snapshot()` no esté leyendo adecuadamente.
+
+## 3. Voucher (Thank-you): Hora ES + Fila País Vacía + Aviso Duplicado (Solucionado)
+- **Síntoma:** En el comprobante del checkout (thank-you) la hora no estaba en zona horaria España, el aviso verde de éxito aparecía duplicado y se mostraba una fila `País: []`.
+- **Solución aplicada (v2.8.46):**
+  - El aviso de éxito del modal se renderiza una sola vez.
+  - La fecha/hora del voucher se formatea en `Europe/Madrid`.
+  - La fila `País` se eliminó del comprobante.

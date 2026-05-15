@@ -1942,9 +1942,6 @@ class DC_Recargas_WooCommerce {
 
         if ($all_success) {
             echo '<p class="dc-voucher-modal-success" style="margin:0 0 14px;color:#166534;background:#dcfce7;padding:10px;border-radius:6px;text-align:center;font-weight:600;">Tu recarga fue exitosa. Guarda este comprobante con el ID de transacción como referencia.</p>';
-        }
-        if ($all_success) {
-            echo '<p class="dc-voucher-modal-success" style="margin:0 0 14px;color:#166534;background:#dcfce7;padding:10px;border-radius:6px;text-align:center;font-weight:600;">Tu recarga fue exitosa. Guarda este comprobante con el ID de transacción como referencia.</p>';
         } elseif ($has_not_started) {
             echo '<p class="dc-voucher-modal-warning" style="margin:0 0 14px;color:#1e40af;background:#dbeafe;padding:10px;border-radius:6px;text-align:center;">Estamos procesando tu recarga. Esta página se actualizará automáticamente cuando el pago se confirme.</p>';
         } elseif ($has_pending) {
@@ -2000,6 +1997,9 @@ class DC_Recargas_WooCommerce {
                             $public_currency = $send_currency;
                         }
                         $item_status = (string) $item->get_meta('_dc_transfer_status');
+                        $voucher_ts_utc = (int) current_time('timestamp', true);
+                        $voucher_ts_local = (string) current_time('mysql');
+
                         $fallback_voucher = [
                             'contract_version' => 'voucher.v1.fallback',
                             'transaction_id' => (string) $item->get_meta('_dc_transfer_ref'),
@@ -2014,7 +2014,8 @@ class DC_Recargas_WooCommerce {
                             'amount_received' => 0,
                             'country_iso' => (string) $item->get_meta('_dc_country_iso'),
                             'bundle' => (string) $item->get_meta('_dc_bundle_label'),
-                            'timestamp' => current_time('mysql'),
+                            'timestamp' => $voucher_ts_local,
+                            'timestamp_utc' => $voucher_ts_utc,
                             'receipt_text' => '',
                             'receipt_params' => [],
                             'bill_ref' => (string) $item->get_meta('_dc_bill_ref'),

@@ -41,6 +41,7 @@ class DC_Recargas_Voucher {
             'bundle' => (string) $item->get_meta('_dc_bundle_label'),
             'beneficiary' => (string) $item->get_meta('_dc_account_number'),
             'timestamp' => current_time('mysql'),
+            'timestamp_utc' => (int) current_time('timestamp', true),
             'receipt_text' => (string) ($snapshot['receipt_text'] ?? ''),
             'receipt_params' => (array) ($snapshot['receipt_params'] ?? []),
         ];

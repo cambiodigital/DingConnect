@@ -64,7 +64,6 @@ class DC_Recargas_Voucher_Renderer {
         $status = self::translate_status((string) ($voucher['status'] ?? ''));
         $ref = (string) ($voucher['transaction_id'] ?? ($voucher['transfer_ref'] ?? ''));
         $distributor_ref = sanitize_text_field((string) ($voucher['distributor_ref'] ?? ''));
-        $country = (string) ($voucher['country_iso'] ?? '');
         $bundle = (string) ($voucher['bundle'] ?? '');
 
         $paid_amount = '';
@@ -91,13 +90,10 @@ class DC_Recargas_Voucher_Renderer {
             }
         }
 
-        $timestamp = (string) ($voucher['timestamp'] ?? '');
-        if ($timestamp !== '') {
-            $ts = strtotime($timestamp);
-            if ($ts) {
-                $timestamp = function_exists('date_i18n') ? date_i18n('d/m/Y H:i', $ts) : date('d/m/Y H:i', $ts);
-            }
-        }
+        $timestamp = self::format_timestamp_madrid(
+            (string) ($voucher['timestamp'] ?? ''),
+            $voucher['timestamp_utc'] ?? null
+        );
 
         $receipt_params = is_array($voucher['receipt_params'] ?? null) ? $voucher['receipt_params'] : [];
         $pin = '';
@@ -123,7 +119,6 @@ class DC_Recargas_Voucher_Renderer {
         $rows = [
             'Operador' => $voucher['operator'] ?? '',
             'Número de destino' => $beneficiary,
-            'País' => $country,
             'Paquete' => $bundle,
             'Importe pagado' => $paid_amount,
             'Monto recibido' => $received_amount,
@@ -137,6 +132,41 @@ class DC_Recargas_Voucher_Renderer {
         ];
 
         return $rows;
+    }
+
+    private static function format_timestamp_madrid(string $timestamp, $timestamp_utc = null): string {
+        $timestamp = trim($timestamp);
+        $tz = new DateTimeZone('Europe/Madrid');
+
+        try {
+            if ($timestamp_utc !== null && is_numeric($timestamp_utc) && (int) $timestamp_utc > 0) {
+                $dt = (new DateTimeImmutable('@' . (int) $timestamp_utc))->setTimezone($tz);
+            } else {
+                if ($timestamp === '') {
+                    return '';
+                }
+
+                $source_tz = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone('UTC');
+                $dt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $timestamp, $source_tz);
+                if (!$dt) {
+                    $dt = new DateTimeImmutable($timestamp, $source_tz);
+                }
+                $dt = $dt->setTimezone($tz);
+            }
+        } catch (Exception $e) {
+            $ts = strtotime($timestamp);
+            if (!$ts) {
+                return $timestamp;
+            }
+            return function_exists('wp_date')
+                ? wp_date('d/m/Y H:i', $ts, $tz)
+                : (new DateTimeImmutable('@' . $ts))->setTimezone($tz)->format('d/m/Y H:i');
+        }
+
+        $ts = $dt->getTimestamp();
+        return function_exists('wp_date')
+            ? wp_date('d/m/Y H:i', $ts, $tz)
+            : $dt->format('d/m/Y H:i');
     }
 
     public static function translate_status($raw): string {
