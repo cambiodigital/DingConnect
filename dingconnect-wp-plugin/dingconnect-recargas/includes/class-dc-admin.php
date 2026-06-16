@@ -88,6 +88,10 @@ class DC_Recargas_Admin {
     public function render_submenu_tab_redirect() {
         $submenu_items = $this->get_admin_submenu_items();
         $current_page = sanitize_key((string) ($_GET['page'] ?? ''));
+        $allowed_pages = array_keys($submenu_items);
+        if (!in_array($current_page, $allowed_pages, true)) {
+            $current_page = 'dc-recargas';
+        }
         $target_tab = isset($submenu_items[$current_page]['tab'])
             ? sanitize_key((string) $submenu_items[$current_page]['tab'])
             : 'tab_setup';
