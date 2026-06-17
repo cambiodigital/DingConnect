@@ -2417,9 +2417,6 @@ class DC_Recargas_REST {
         $price = !empty($minimum) ? $minimum : $maximum;
 
         $send_currency = sanitize_text_field($item['SendCurrencyIso'] ?? ($price['SendCurrencyIso'] ?? ''));
-        if ('' === $send_currency) {
-            error_log('[DingConnect] extract_product_price: SendCurrencyIso ausente en producto SKU=' . ($item['SkuCode'] ?? 'desconocido'));
-        }
 
         return [
             'SendValue' => (float) ($item['SendValue'] ?? ($price['SendValue'] ?? 0)),
