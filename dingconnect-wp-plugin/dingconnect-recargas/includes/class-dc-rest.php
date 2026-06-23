@@ -20,7 +20,7 @@ class DC_Recargas_REST {
         register_rest_route('dingconnect/v1', '/status', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'status'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => [$this, 'can_manage_options'],
         ]);
 
         register_rest_route('dingconnect/v1', '/balance', [
@@ -32,7 +32,7 @@ class DC_Recargas_REST {
         register_rest_route('dingconnect/v1', '/bundles', [
             'methods' => WP_REST_Server::READABLE,
             'callback' => [$this, 'bundles'],
-            'permission_callback' => '__return_true',
+            'permission_callback' => [$this, 'can_manage_options'],
         ]);
 
         register_rest_route('dingconnect/v1', '/landing-config', [
