@@ -8329,8 +8329,13 @@ class DC_Recargas_Admin {
     }
 
     private function get_landing_country_choices($bundles = null, $landings = null) {
-        $bundles = is_array($bundles) ? $bundles : get_option('dc_recargas_bundles', []);
-        $landings = is_array($landings) ? $landings : get_option('dc_recargas_landing_shortcodes', []);
+        static $cached_bundles = null, $cached_landings = null;
+        $cached_bundles = $cached_bundles ?? get_option('dc_recargas_bundles', []);
+        $cached_landings = $cached_landings ?? get_option('dc_recargas_landing_shortcodes', []);
+
+        $bundles = is_array($bundles) ? $bundles : $cached_bundles;
+        $landings = is_array($landings) ? $landings : $cached_landings;
+
         $reference_map = class_exists('DC_Recargas_Frontend') ? DC_Recargas_Frontend::get_country_reference_map() : [];
         $choices = [];
 
@@ -8357,20 +8362,9 @@ class DC_Recargas_Admin {
             ];
         };
 
-        foreach ((array) $bundles as $bundle) {
-            if (!is_array($bundle)) {
-                continue;
-            }
-
-            $add_choice($bundle['country_iso'] ?? '');
-        }
-
-        foreach ((array) $landings as $landing) {
-            if (!is_array($landing)) {
-                continue;
-            }
-
-            $add_choice($landing['country_iso'] ?? '');
+        $isos = array_unique(array_merge(array_column($bundles, 'country_iso'), array_column($landings, 'country_iso')));
+        foreach ($isos as $iso) {
+            $add_choice($iso);
         }
 
         uasort($choices, function ($left, $right) {
